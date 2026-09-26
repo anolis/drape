@@ -16,7 +16,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import requests  # noqa: E402
 
-from . import animation, desktop, installer, pling, previews, settings, system  # noqa: E402
+from . import animation, desktop, installer, peek, pling, previews, settings, system  # noqa: E402
 from . import helper as root_helper  # noqa: E402
 from .installer import system_copies, system_file_name  # noqa: E402,F401
 
@@ -99,6 +99,52 @@ class WindowBordersHelp(Gtk.Box):
                 self.apps.set_markup("\n".join(lines))
             self.apps.show()
         run_async(desktop.open_windows, done)
+
+
+PART_NAMES = {"icons": "Icons", "cursors": "Cursors", "gtk": "Controls", "wm": "Window borders",
+              "desktop": "Desktop", "wallpapers": "Wallpaper", "plymouth": "Boot splash", "login": "Login screen"}
+# which glyph a browse tab expects to see
+TAB_PART = {"icons": "icons", "cursors": "cursors", "gtk": "gtk", "wm": "wm", "desktop": "desktop",
+            "wallpapers": "wallpapers", "login": "login", "boot": "plymouth"}
+_peeks = ThreadPoolExecutor(max_workers=1)  # small and gentle: one listing at a time, after pictures
+
+GLYPH_CSS = b"""
+.drape-glyphs { background-color: rgba(0, 0, 0, 0.55); border-radius: 6px; padding: 3px 5px; }
+.drape-glyphs image { color: #ffffff; }
+.drape-glyphs.misfiled { background-color: rgba(192, 28, 40, 0.85); }
+"""
+
+
+class Glyphs(Gtk.Box):
+    """Small symbols on a card saying what its download actually contains."""
+
+    ORDER = ["desktop", "gtk", "wm", "icons", "cursors", "wallpapers", "login", "plymouth"]
+
+    def __init__(self):
+        super().__init__(spacing=4, halign=Gtk.Align.START, valign=Gtk.Align.START, margin=6, no_show_all=True)
+        self.get_style_context().add_class("drape-glyphs")
+
+    def show_parts(self, parts, expected=None, complete=True):
+        for c in self.get_children():
+            c.destroy()
+        parts = [p for p in self.ORDER if p in parts]
+        if not parts:
+            self.hide()
+            return False
+        for p in parts:
+            img = Gtk.Image.new_from_icon_name(f"drape-part-{p}-symbolic", Gtk.IconSize.MENU)
+            img.show()
+            self.pack_start(img, False, False, 0)
+        names = ", ".join(PART_NAMES[p] for p in parts)
+        misfiled = bool(expected) and expected not in parts and complete
+        ctx = self.get_style_context()
+        (ctx.add_class if misfiled else ctx.remove_class)("misfiled")
+        if misfiled and parts == ["wallpapers"]:
+            names = "only pictures"
+        self.set_tooltip_text(f"Filed under {PART_NAMES[expected]}, but contains {names}" if misfiled
+                              else f"Contains: {names}")
+        self.show()
+        return misfiled
 
 
 CHUNK = 10          # results per request: small batches paint sooner on slow connections
@@ -505,6 +551,8 @@ class Card(Gtk.FlowBoxChild):
         ev.add(overlay)
         ev.connect("button-release-event", lambda *_: window.show_details(kind, item))
         frame.add(ev)
+        self.glyphs = Glyphs()
+        overlay.add_overlay(self.glyphs)
         if item.previews:
             # starts when the card is first drawn: a running spinner redraws 60 times a second even off screen
             spinner = Gtk.Spinner(active=False, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -519,7 +567,7 @@ class Card(Gtk.FlowBoxChild):
                 self.image.disconnect(handler[0])
                 spinner.start()
                 load_image(pling.thumb_url(item.previews[0]), self.image, CARD_W, CARD_H,
-                           on_done=lambda _ok: spinner.destroy(), alive=alive.is_set)
+                           on_done=lambda _ok: (spinner.destroy(), self._peek(alive)), alive=alive.is_set)
                 return False
             handler = [self.image.connect("draw", first_draw)]
         else:
@@ -534,11 +582,45 @@ class Card(Gtk.FlowBoxChild):
                         f"{item.downloads:,} downloads</small>")
         meta.get_style_context().add_class("dim-label")
         box.pack_start(meta, False, False, 0)
+        self.misfiled = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34, no_show_all=True)
+        box.pack_start(self.misfiled, False, False, 0)
+        if not item.previews:
+            self._peek(None)
 
         self.actions = Gtk.Box(spacing=6)
         box.pack_start(self.actions, False, False, 0)
         self.add(box)
         self.refresh()
+
+    def _peek(self, alive):
+        """Find out what the download contains (cached, or a small partial read) and show glyphs."""
+        f = self.item.best_file()
+        if not f:
+            return
+        hit = peek.cached(self.item.id, f.name)
+        if hit is not None:
+            self._show_glyphs(*hit)
+            return
+
+        def work():
+            if alive is not None and not alive.is_set():
+                return
+            result = peek.contents(self.item.id, f.url, f.name)
+            GLib.idle_add(self._show_glyphs, *result)
+        _peeks.submit(lambda: _safe(work))
+
+    def _show_glyphs(self, parts, complete):
+        expected = TAB_PART.get(self.kind)
+        if self.glyphs.show_parts(parts, expected, complete):
+            not_ = GLib.markup_escape_text(PART_NAMES[expected])
+            if set(parts) == {"wallpapers"}:
+                text = f"⚠ Only pictures inside, not {not_}"
+            else:
+                names = " and ".join(PART_NAMES[p] for p in Glyphs.ORDER if p in parts)
+                text = f"⚠ Contains {GLib.markup_escape_text(names)}, not {not_}"
+            self.misfiled.set_markup(f"<small>{text}</small>")
+            self.misfiled.show()
+        return False
 
     def refresh(self):
         for c in self.actions.get_children():
@@ -827,8 +909,15 @@ class InstalledCard(Gtk.FlowBoxChild):
         elif key.isdigit():
             ev.set_tooltip_text("Details")
             ev.connect("button-release-event", lambda *_: window.show_details_by_id(kind, key))
-        frame.add(ev)
+        overlay = Gtk.Overlay()
+        overlay.add(ev)
+        glyphs = Glyphs()
+        overlay.add_overlay(glyphs)
+        frame.add(overlay)
         entry_image(key, entry, image, CARD_W, CARD_H, wallpaper)
+        glyphs.show_parts({"login" if p in ("sddm", "webgreeter") else p
+                           for c in (entry["components"] if not wallpaper else [wallpaper])
+                           for p in c["provides"] if p != "xfwm"})
         box.pack_start(frame, False, False, 0)
 
         title_text = Path(wallpaper["path"]).stem if wallpaper else entry["title"]
@@ -1640,6 +1729,14 @@ class Window(Gtk.ApplicationWindow):
                 self.notify(f"Downloaded {item.name}. Apply it to install it for the whole system "
                             "(you'll be asked for your password).")
                 return
+            if apply_kind and not any(matches(apply_kind, c) for c in result["components"]):
+                # misfiled on gnome-look: don't apply something other than what the tab is for
+                parts = sorted({PART_NAMES.get(p, p) for c in result["components"] for p in c["provides"]
+                                if p in PART_NAMES})
+                self.notify(f"Installed {item.name}, but it contains {', '.join(parts) or 'something else'}, "
+                            f"not {PART_NAMES.get(TAB_PART.get(apply_kind, ''), apply_kind)}, so it wasn't applied. "
+                            "Find it on the Installed page.")
+                return
             if apply_kind:
                 comps = [c for c in result["components"] if matches(apply_kind, c)] or result["components"]
                 if len(comps) == 1 or apply_kind == "wallpapers":
@@ -1923,6 +2020,14 @@ class Window(Gtk.ApplicationWindow):
 class App(Gtk.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_OPEN)
+
+    def do_startup(self):
+        Gtk.Application.do_startup(self)
+        Gtk.IconTheme.get_default().append_search_path(str(Path(__file__).resolve().parent.parent / "data" / "icons"))
+        css = Gtk.CssProvider()
+        css.load_from_data(GLYPH_CSS)
+        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css,
+                                                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
     def _window(self):
         return self.get_active_window() or Window(self)
