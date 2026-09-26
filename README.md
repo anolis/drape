@@ -19,6 +19,8 @@ click. No hunting for archives, no guessing which folder things go in.
   Backgrounds settings).
 - **Converts Windows cursor packs.** Lots of cursor uploads are Windows `.cur`/`.ani` packs; drape
   converts them to Linux cursors automatically, using the pack's `Install.inf` to map each cursor.
+- **Shows variants before you pick.** Packs with Dark / Light / Compact variants get an
+  [Apply | ▾] button; ▾ lists the variants with a live preview drawn from each one's own files.
 - **Applies them.** Sets the matching setting for Cinnamon or GNOME. Packs with several variants
   (Dark, Compact, …) let you pick which one.
 - **Boot splash, login and lock screens.** Plymouth boot splashes and SDDM / LightDM web greeter
@@ -27,6 +29,8 @@ click. No hunting for archives, no guessing which folder things go in.
   Controls theme, icons and cursor can be used for the LightDM login screen too, and the
   **Lock & login** page sets up the Cinnamon lock screen's clock and fonts. A setting (on by
   default) only shows login themes that work on your computer.
+- **Shows where everything went.** ⋯ → *Show installed files* lists every folder an item
+  installed (including system copies), with sizes, file lists and a button to open each one.
 - **Cleans up.** Everything is tracked in `~/.local/share/drape/installed.json`, so Remove deletes
   exactly what was installed, and *Check for updates* compares against gnome-look.org.
 - **Works with gnome-look.org's own Install buttons** (`ocs://` links) once registered.
@@ -47,7 +51,7 @@ when GNOME updates.
 
 ## Install
 
-Needs Python 3.12+, PyGObject with GTK 3, and `python3-requests` (all present on Cinnamon/GNOME desktops).
+Needs Python 3.12+, PyGObject with GTK 3, Pillow and `python3-requests` (all present on Cinnamon/GNOME desktops), plus polkit for boot splash and login screen changes.
 
 ```sh
 ./install.sh            # per-user, no root; adds a menu entry and the ocs:// handler

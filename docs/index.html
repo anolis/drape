@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>drape — theme manager for Linux</title>
-<meta name="description" content="Browse and install icons, cursors, GTK themes, window borders and wallpapers from gnome-look.org one piece at a time. One click to install, one click to apply.">
+<meta name="description" content="Browse and install icons, cursors, GTK themes, window borders, wallpapers, login screens and boot splashes from gnome-look.org one piece at a time. One click to install, one click to apply.">
 <meta property="og:title" content="drape — theme manager for Linux">
-<meta property="og:description" content="Icons, cursors, themes and wallpapers from gnome-look.org. One click to install, one click to apply.">
+<meta property="og:description" content="Icons, cursors, themes, wallpapers, login screens and boot splashes from gnome-look.org. One click to install, one click to apply.">
 <meta property="og:image" content="img/shot-icons.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 4h20v4c-3 0-5 3-5 7v13H11V15c0-4-2-7-5-7z' fill='%23d9480f'/%3E%3C/svg%3E">
 <style>
@@ -82,6 +82,7 @@
   }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .grid.two-up { grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); }
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
   .card h3 { margin: 0 0 6px; font-size: 18px; }
   .card p { margin: 0; color: var(--muted); font-size: 15.5px; }
@@ -132,12 +133,12 @@
 
   <div class="hero">
     <h1>Theme your Linux desktop <em>one piece at a time.</em></h1>
-    <p>Icons, cursors, themes and wallpapers from gnome-look.org. One click to install, one click to apply. No archives, no hidden folders.</p>
+    <p>Icons, cursors, themes, wallpapers, login screens and boot splashes from gnome-look.org. One click to install, one click to apply. No archives, no hidden folders.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Install drape</a>
       <a class="btn" href="https://github.com/anolis/drape">View source</a>
     </div>
-    <div class="shot"><img src="img/shot-cursors.png" alt="drape showing the Cursors category with WhiteSur, Sweet and Layan cursor themes, each with Install and Install &amp; apply buttons" width="1232" height="780"></div>
+    <div class="shot"><img src="img/shot-cursors.png" alt="drape showing the Cursors category with WhiteSur, Sweet and Layan cursor themes, each with Install and Install &amp; apply buttons" width="1487" height="859"></div>
   </div>
 
   <section id="features">
@@ -149,11 +150,28 @@
     <div class="grid">
       <div class="card"><h3>Knows what's in the box</h3><p>Downloads are unpacked, including archives inside archives, and each folder is identified by its contents, not by the category someone uploaded it to.</p></div>
       <div class="card"><h3>Puts it in the right place</h3><p>Icons, cursors, themes and wallpapers each land where your desktop looks for them. Wallpapers also show up in Backgrounds settings.</p></div>
-      <div class="card"><h3>Applies in one click</h3><p>Sets the right setting for Cinnamon or GNOME. Packs with Dark, Light or Compact variants let you pick one from a menu.</p></div>
-      <div class="card"><h3>Removes cleanly</h3><p>Every install is tracked, so Remove deletes exactly what drape added, and <em>Check for updates</em> knows what's new.</p></div>
+      <div class="card"><h3>Applies in one click</h3><p>Sets the right setting for Cinnamon or GNOME, and makes sure apps that ignore live settings pick up your cursor too.</p></div>
+      <div class="card"><h3>See each variant before you pick</h3><p>Packs with Dark, Light or Compact variants get a picker with a live preview drawn from the variant itself: its real icons, cursors, or a sample window in that theme.</p></div>
+      <div class="card"><h3>Windows cursors just work</h3><p>Plenty of cursor uploads are Windows <code>.cur</code>/<code>.ani</code> packs. drape converts them to Linux cursors, animations included.</p></div>
+      <div class="card"><h3>Your themes, at a glance</h3><p>Installed themes sit in the same tabs and picture grid you browse, marked when in use, with Update and Remove on each.</p></div>
+      <div class="card"><h3>Removes cleanly</h3><p>Every install is tracked, so Remove deletes exactly what drape added, and <em>Show installed files</em> tells you where everything went.</p></div>
       <div class="card"><h3>Works with gnome-look.org</h3><p>Prefer browsing the website? Its <em>Install</em> buttons open straight in drape.</p></div>
-      <div class="card"><h3>Boot to login, themed</h3><p>Plymouth boot splashes and login screen themes install with one password prompt. Theme for a login screen you don't have? drape offers to set it up.</p></div>
       <div class="card"><h3>Careful with your files</h3><p>Downloads are checksum-verified, archives can't write outside their folder, and drape asks before replacing a theme it didn't install.</p></div>
+    </div>
+  </section>
+
+  <section id="system">
+    <h2>From boot to login to lock</h2>
+    <p class="lede">Your look doesn't have to stop at the desktop. Changes outside your home folder ask for your password once, and drape never replaces or removes system themes it didn't install.</p>
+    <div class="grid two-up">
+      <div class="card"><h3>Boot splash</h3><p>Browse Plymouth themes and apply one in a click. drape installs it and rebuilds the boot image for you.</p></div>
+      <div class="card"><h3>Login screen</h3><p>SDDM and LightDM web greeter themes, or your own wallpaper, Controls theme, icons and cursor on the LightDM login screen. <em>Use my current desktop look</em> does it all at once.</p></div>
+      <div class="card"><h3>Missing a login screen?</h3><p>Theme meant for one you don't have? drape offers to install it and switch to it. Or keep <em>Only show themes that work on this computer</em> on and never see them.</p></div>
+      <div class="card"><h3>Lock screen</h3><p>Set Cinnamon's lock screen clock, date format, fonts and message, and see whether your Controls theme styles it. On GNOME, give it its own wallpaper.</p></div>
+    </div>
+    <div class="gallery" style="margin-top:24px">
+      <figure><img src="img/shot-boot.png" alt="The Boot splash tab showing Plymouth themes such as Darwin, MacOS Boot and Vortex Ubuntu" loading="lazy" width="1487" height="859"><figcaption>Boot splashes from gnome-look's Plymouth collection.</figcaption></figure>
+      <figure><img src="img/shot-lock.png" alt="The Lock and login page showing the current login screen settings, login screen software choices and lock screen clock options" loading="lazy" width="1487" height="859"><figcaption>Login screen and lock screen settings in one place.</figcaption></figure>
     </div>
   </section>
 
@@ -175,16 +193,18 @@
     <h2>Screenshots</h2>
     <p class="lede">drape uses your own GTK theme, so it always matches the look you've picked.</p>
     <div class="gallery">
-      <figure><img src="img/shot-icons.png" alt="The Icons category showing Candy, Papirus and Tela icon themes" loading="lazy" width="1232" height="780"><figcaption>Browse icon themes by popularity, rating or date.</figcaption></figure>
-      <figure><img src="img/shot-details.png" alt="Details dialog for WhiteSur cursors with a large preview, variant picker and Install buttons" loading="lazy" width="940" height="739"><figcaption>Details with previews and a choice of variants.</figcaption></figure>
-      <figure><img src="img/shot-wallpapers.png" alt="The Wallpapers category with landscape and abstract wallpapers" loading="lazy" width="1232" height="780"><figcaption>Wallpapers go straight into Backgrounds settings.</figcaption></figure>
-      <figure><img src="img/shot-installed.png" alt="The Installed page listing themes with Apply and Remove buttons for each variant" loading="lazy" width="1232" height="780"><figcaption>Everything you've installed, with a picture of each, so you can find the one to switch or remove.</figcaption></figure>
+      <figure><img src="img/shot-icons.png" alt="The Icons category showing Candy, Papirus and Tela icon themes" loading="lazy" width="1487" height="859"><figcaption>Browse icon themes by popularity, rating or date.</figcaption></figure>
+      <figure><img src="img/shot-installed.png" alt="The Installed page's Controls tab: a grid of installed themes with Apply, Remove and more buttons" loading="lazy" width="1491" height="859"><figcaption>Installed themes in the same tabs and grid, with a picture of each.</figcaption></figure>
+      <figure><img src="img/shot-variants.png" alt="The variant picker for Alcove GTK themes: a list of four variants beside a sample window drawn in the highlighted Alcove-jive-Dark variant" loading="lazy" width="1491" height="859"><figcaption>Hover a variant to see it: this sample window is drawn in Alcove-jive-Dark.</figcaption></figure>
+      <figure><img src="img/shot-files.png" alt="The Show installed files window listing each Alcove variant's folder with its size, file count and an expanded file list" loading="lazy" width="812" height="659"><figcaption>Show installed files: every location, its size and contents.</figcaption></figure>
+      <figure><img src="img/shot-wallpapers.png" alt="The Wallpapers category with landscape and abstract wallpapers" loading="lazy" width="1487" height="859"><figcaption>Wallpapers go straight into Backgrounds settings.</figcaption></figure>
+      <figure><img src="img/shot-details.png" alt="Details dialog for WhiteSur cursors with a large preview, variant picker and Install buttons" loading="lazy" width="940" height="739"><figcaption>Details with previews and a choice of downloads.</figcaption></figure>
     </div>
   </section>
 
   <section id="install">
     <h2>Install</h2>
-    <p class="lede">Needs Python 3.12+, GTK 3 with PyGObject, and python3-requests. Cinnamon and GNOME desktops already have all three. No root required.</p>
+    <p class="lede">Needs Python 3.12+, GTK 3 with PyGObject, Pillow and python3-requests. Cinnamon and GNOME desktops already have them. Installing drape needs no root; boot splash and login screen changes ask for your password through polkit.</p>
     <div class="two">
       <div>
         <h3>Get it</h3>
@@ -199,6 +219,7 @@ cd drape
         <h3>Or use the command line</h3>
 <pre><code>drape search icons papirus
 drape install 1166289 --apply
+drape search boot
 drape list
 drape remove 1166289
 drape updates</code></pre>
