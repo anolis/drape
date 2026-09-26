@@ -155,8 +155,40 @@ class WindowManagerPage(Gtk.ScrolledWindow):
         else:
             rows.append(_row("Compiz is installed", Gtk.Label(label="✓"),
                              "Choose it above to switch now."))
+        if self.state[0] or self.state[1]:
+            ours = compiz.removable()
+            if ours:
+                rm = Gtk.Button(label="Remove")
+                rm.get_style_context().add_class("destructive-action")
+                rm.connect("clicked", lambda _b: self._remove(ours))
+                what = "Compiz and the MATE session" if sess not in ("mate", "xfce") else "Compiz"
+                rows.append(_row(f"Remove {what}", rm,
+                                 f"Takes out the {len(ours)} packages drape's install added. Anything you installed "
+                                 "yourself stays."))
         box.pack_start(_framed(rows), False, False, 0)
         return box
+
+    def _remove(self, packages):
+        from . import helper
+        if compiz.session() == "mate":
+            self.win.notify("You're using the MATE session right now. Log into Cinnamon first, then remove it.")
+            return
+        _removed, beyond = helper.removal_plan(packages)
+        if beyond:
+            self.win.notify("Can't remove these safely: other software you installed needs "
+                            + ", ".join(beyond[:5]) + ("…" if len(beyond) > 5 else "") + ".")
+            return
+        names = ", ".join(packages[:6]) + (f" and {len(packages) - 6} more" if len(packages) > 6 else "")
+        if not self.win.ask("Remove Compiz and the MATE session?",
+                            f"drape will remove the {len(packages)} packages its install added ({GLib.markup_escape_text(names)}). "
+                            "Things you installed yourself stay. This needs your password.", "Remove",
+                            destructive=True):
+            return
+        if compiz.session() != "mate":
+            compiz.use_compiz_in_mate(False)
+        self.win.run_root([["remove-drape-packages", "--of", *(compiz.COMPIZ_PACKAGES + compiz.MATE_SESSION_PACKAGES),
+                            "--", *packages]],
+                          "Removing Compiz…", lambda: (self.win.notify("Removed. Cinnamon is unchanged."), self.load()))
 
     def _install(self):
         pkgs = compiz.packages_to_install()

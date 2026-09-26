@@ -457,7 +457,130 @@ def cmd_apt_install(args):
     if not apt:
         raise HelperError("apt-get not found - install the packages with your distribution's tools.")
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
-    run([apt, "install", "-y", "--no-install-recommends"] + args.packages, env=env)
+    # Drape::Install marks this in apt's history, so drape can later remove exactly what it added
+    cmd = [apt, "install", "-y", "--no-install-recommends", "-o", "APT::Status-Fd=1",
+           "-o", "Drape::Install=1"] + args.packages
+    log("$ " + " ".join(cmd))
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    for line in proc.stdout:
+        report = apt_progress(line)
+        if report:
+            progress(*report)
+        elif line.strip():
+            log(line.rstrip())
+    if proc.wait() != 0:
+        raise HelperError(f"apt-get failed with exit code {proc.returncode}")
+    progress(100, "Done")
+
+
+APT_HISTORY = Path("/var/log/apt")
+
+
+def _history_entries():
+    """apt's history, oldest first, as dicts of its fields (Commandline, Install, ...)."""
+    import gzip
+    files = sorted(APT_HISTORY.glob("history.log.*.gz"), key=lambda p: int(p.name.split(".")[2]), reverse=True)
+    files.append(APT_HISTORY / "history.log")
+    for path in files:
+        try:
+            text = gzip.open(path, "rt", errors="replace").read() if path.suffix == ".gz" else \
+                path.read_text(errors="replace")
+        except OSError:
+            continue
+        for block in text.split("\n\n"):
+            entry = {}
+            for line in block.splitlines():
+                key, sep, value = line.partition(": ")
+                if sep:
+                    entry[key] = value
+            if entry:
+                yield entry
+
+
+def _by_drape(commandline):
+    """True for apt runs made by drape's helper (marked, or the unmarked form earlier versions used)."""
+    if "Drape::Install=1" in commandline:
+        return True
+    prefix = "apt-get install -y --no-install-recommends "
+    if prefix not in commandline:
+        return False
+    names = commandline.split(prefix, 1)[1].split()
+    return bool(names) and all(n in PACKAGES for n in names)
+
+
+def drape_installed_packages(of=None):
+    """Packages drape's own installs added (with their dependencies), still installed. `of` limits it
+    to installs that asked for any of those packages (e.g. the Compiz ones)."""
+    added = []
+    for entry in _history_entries():
+        cmd = entry.get("Commandline", "")
+        if not _by_drape(cmd):
+            continue
+        if of and not set(cmd.split()) & set(of):
+            continue
+        for item in re.findall(r"([a-z0-9][a-z0-9+.-]*)(?::[a-z0-9]+)? \(", entry.get("Install", "")):
+            if item not in added:
+                added.append(item)
+    if not added:
+        return []
+    r = subprocess.run(["dpkg-query", "-W", "-f", "${Package} ${db:Status-Abbrev}\n", *added],
+                       capture_output=True, text=True)
+    present = {line.split()[0] for line in r.stdout.splitlines() if len(line.split()) > 1 and line.split()[1] == "ii"}
+    return [p for p in added if p in present]
+
+
+def removal_plan(packages):
+    """(what apt would remove, anything beyond `packages` it would also remove)."""
+    r = subprocess.run(["apt-get", "-s", "remove", *packages], capture_output=True, text=True,
+                       env=dict(os.environ, LC_ALL="C"))
+    removed = re.findall(r"^Remv (\S+)", r.stdout, re.M)
+    return removed, [p for p in removed if p not in packages]
+
+
+def cmd_remove_drape_packages(args):
+    """Remove packages that drape's own installs added - nothing else, and never something another
+    installed package still needs."""
+    allowed = set(drape_installed_packages(args.of or None))
+    extra = [p for p in args.packages if p not in allowed]
+    if extra:
+        raise HelperError(f"drape didn't install: {', '.join(extra)}")
+    if not args.packages:
+        log("Nothing to remove.")
+        return
+    _removed, beyond = removal_plan(args.packages)
+    if beyond:
+        raise HelperError("Other installed software needs these packages: " + ", ".join(beyond))
+    apt = which("apt-get")
+    cmd = [apt, "remove", "-y", "-o", "APT::Status-Fd=1", *args.packages]
+    log("$ " + " ".join(cmd))
+    proc = subprocess.Popen(cmd, env=dict(os.environ, DEBIAN_FRONTEND="noninteractive"), stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+    for line in proc.stdout:
+        report = apt_progress(line)
+        if report:
+            progress(report[0], report[1])
+        elif line.strip():
+            log(line.rstrip())
+    if proc.wait() != 0:
+        raise HelperError(f"apt-get failed with exit code {proc.returncode}")
+    progress(100, "Done")
+
+
+def apt_progress(line):
+    """(overall percent, text) from one of apt's status lines, or None. Downloading fills the first
+    half of the bar and installing the second."""
+    m = re.match(r"^(dlstatus|pmstatus):([^:]*):([\d.]+):(.*)$", line.strip())
+    if not m:
+        return None
+    kind, _pkg, pct, text = m.groups()
+    pct = float(pct)
+    overall = pct / 2 if kind == "dlstatus" else 50 + pct / 2
+    return min(overall, 100.0), text.strip()
+
+
+def progress(percent, text):
+    """A line drape shows as a progress bar (other output is just logged)."""
+    print(f"PROGRESS {percent:.1f} {text}", flush=True)
 
 
 def main(argv=None):
@@ -502,6 +625,11 @@ def main(argv=None):
     p = sub.add_parser("display-manager")
     p.add_argument("name")
     p.set_defaults(func=cmd_display_manager)
+
+    p = sub.add_parser("remove-drape-packages")
+    p.add_argument("--of", nargs="*", default=[], help="only installs that asked for these packages")
+    p.add_argument("packages", nargs="*")
+    p.set_defaults(func=cmd_remove_drape_packages)
 
     p = sub.add_parser("apt-install")
     p.add_argument("packages", nargs="+")

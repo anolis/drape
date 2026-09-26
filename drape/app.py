@@ -1851,9 +1851,44 @@ class Window(Gtk.ApplicationWindow):
         d.format_secondary_text("You'll be asked for your password.")
         spinner = Gtk.Spinner(active=True, margin=8)
         d.get_message_area().pack_start(spinner, False, False, 0)
+        # long jobs (installing software) report real progress; the spinner gives way to a bar
+        bar = Gtk.ProgressBar(show_text=True, margin_top=8, no_show_all=True)
+        bar.set_size_request(360, -1)
+        step = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=48, no_show_all=True)
+        step.get_style_context().add_class("dim-label")
+        d.get_message_area().pack_start(bar, False, False, 0)
+        d.get_message_area().pack_start(step, False, False, 0)
         d.show_all()
 
+        # the bar glides toward each new value instead of jumping
+        anim = {"shown": 0.0, "target": 0.0, "tick": None}
+
+        def glide():
+            gap = anim["target"] - anim["shown"]
+            anim["shown"] += gap * 0.15 if abs(gap) > 0.002 else gap
+            bar.set_fraction(anim["shown"])
+            bar.set_text(f"{anim['shown'] * 100:.0f}%")
+            if anim["shown"] == anim["target"]:
+                anim["tick"] = None
+                return False
+            return True
+
+        def progress(percent, text):
+            def update():
+                if spinner.get_visible():
+                    spinner.hide()
+                    d.format_secondary_text("")
+                    bar.show()
+                    step.show()
+                anim["target"] = max(anim["target"], min(percent / 100, 1.0))  # never slides backwards
+                if anim["tick"] is None:
+                    anim["tick"] = GLib.timeout_add(16, glide)
+                step.set_text(text)
+            GLib.idle_add(update)
+
         def done(result):
+            if anim["tick"] is not None:
+                GLib.source_remove(anim["tick"])
             d.destroy()
             if result.ok:
                 if on_success:
@@ -1864,7 +1899,7 @@ class Window(Gtk.ApplicationWindow):
                 error_dialog(self, title.rstrip("…") + " failed", "\n".join(lines))
             self.refresh_item()
 
-        run_async(lambda: system.run_helper(*commands), done)
+        run_async(lambda: system.run_helper(*commands, on_progress=progress), done)
 
     def ask(self, title, text, yes, no="Cancel", destructive=False):
         d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,

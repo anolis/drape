@@ -164,8 +164,9 @@ class Result:
     cancelled: bool = False
 
 
-def run_helper(*commands):
-    """Run one or more helper commands as root with a single password prompt. Blocking."""
+def run_helper(*commands, on_progress=None):
+    """Run one or more helper commands as root with a single password prompt. Blocking.
+    on_progress(percent, text) is called (from this thread) as long operations report progress."""
     pkexec = which("pkexec")
     if pkexec is None:
         return Result(False, "pkexec was not found. Install polkit (the policykit-1 package).")
@@ -174,13 +175,25 @@ def run_helper(*commands):
         if i:
             args.append(";;")
         args += [str(a) for a in cmd]
-    proc = subprocess.run([pkexec, sys.executable or "/usr/bin/python3", str(HELPER), "batch", *args],
-                          capture_output=True, text=True)
-    output = (proc.stdout + proc.stderr).strip()
-    cancelled = proc.returncode in (126, 127)
+    proc = subprocess.Popen([pkexec, sys.executable or "/usr/bin/python3", str(HELPER), "batch", *args],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    lines = []
+    for line in proc.stdout:
+        if line.startswith("PROGRESS "):
+            _, pct, *text = line.rstrip("\n").split(" ", 2)
+            if on_progress:
+                try:
+                    on_progress(float(pct), text[0] if text else "")
+                except ValueError:
+                    pass
+        else:
+            lines.append(line)
+    code = proc.wait()
+    output = "".join(lines).strip()
+    cancelled = code in (126, 127)
     if cancelled and not output:
         output = "Authentication was cancelled."
-    return Result(proc.returncode == 0, output, cancelled)
+    return Result(code == 0, output, cancelled)
 
 
 def staging_dir():

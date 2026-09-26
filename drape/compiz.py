@@ -116,6 +116,15 @@ def package_manager_busy():
     return False
 
 
+def removable():
+    """Packages drape's Compiz install added that are still installed (what 'Remove' takes out)."""
+    from . import helper
+    try:
+        return helper.drape_installed_packages(COMPIZ_PACKAGES + MATE_SESSION_PACKAGES)
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
 def install_state():
     """What's installed right now; the Window manager page redraws when this changes."""
     return (compiz_installed(), mate_session_installed(), ccsm_available())
