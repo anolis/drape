@@ -60,6 +60,29 @@ def login_commands(greeter, kind, component):
     return cmds
 
 
+def system_copies(entry):
+    """(helper kind, name, path, label) for every copy drape put in a system directory for this
+    entry: boot splash / login themes, and things used for the login screen."""
+    found = []
+    for c in entry["components"]:
+        if c.get("system"):
+            path = root_helper.DIRS[c["system"]] / c["name"]
+            if (path / root_helper.MARKER).exists():
+                label = {"plymouth": "Boot splash", "sddm": "SDDM login theme",
+                         "webgreeter": "Web greeter login theme"}[c["system"]]
+                found.append((c["system"], c["name"], path, label + " (system copy)"))
+            continue
+        for kind in ("gtk", "icons", "background"):
+            if kind == "background" and c["provides"] != ["wallpapers"]:
+                continue
+            name = system_file_name(c) if kind == "background" else c["name"]
+            path = root_helper.DIRS[kind] / name
+            marker = Path(str(path) + root_helper.MARKER) if kind == "background" else path / root_helper.MARKER
+            if marker.exists():
+                found.append((kind, name, path, "Login screen copy"))
+    return found
+
+
 def matches(kind, component):
     return bool(TAB_PARTS.get(kind, {kind}) & set(component["provides"]))
 
@@ -527,7 +550,7 @@ class InstalledCard(Gtk.FlowBoxChild):
             ub = Gtk.Button(label="Update")
             ub.connect("clicked", lambda _b: window.install(update))
             actions.pack_start(ub, False, False, 0)
-        extra = []
+        extra = [("Show installed files…", lambda *_: window.show_files(key, wallpaper))]
         target = wallpaper or (comps[0] if len(comps) == 1 else None)
         if kind in ("wallpapers", "gtk", "icons", "cursors"):
             extra.append(("Use for login screen…", lambda *_: window.use_for_login(kind, target) if target
@@ -964,9 +987,7 @@ class Window(Gtk.ApplicationWindow):
             d.destroy()
             if not ok:
                 return
-        cmds = [["uninstall", c["system"], c["name"]] for c in entry["components"]
-                if c.get("system") and (root_helper.DIRS[c["system"]] / c["name"] / root_helper.MARKER).exists()]
-        cmds += self._login_copies(entry)
+        cmds = [["uninstall", kind, name] for kind, name, _path, _label in system_copies(entry)]
 
         def finish():
             installer.remove(key)
@@ -976,18 +997,6 @@ class Window(Gtk.ApplicationWindow):
             self.run_root(cmds, f"Removing {entry['title']}…", finish)
         else:
             finish()
-
-    def _login_copies(self, entry):
-        """Uninstall commands for copies drape made for the login screen."""
-        cmds = []
-        for c in entry["components"]:
-            for kind in ("gtk", "icons", "background"):
-                name = system_file_name(c) if kind == "background" else c["name"]
-                path = root_helper.DIRS[kind] / name
-                marker = path / root_helper.MARKER if kind != "background" else Path(str(path) + root_helper.MARKER)
-                if marker.exists() and (kind != "background" or c["provides"] == ["wallpapers"]):
-                    cmds.append(["uninstall", kind, name])
-        return cmds
 
     # ------------------------------------------------------------ system (root) actions
     def run_root(self, commands, title, on_success=None):
@@ -1079,6 +1088,12 @@ class Window(Gtk.ApplicationWindow):
         cmds = login_commands(greeter, kind, component)
         self.run_root(cmds, "Updating the login screen…",
                       lambda: self.notify(f"The login screen now uses {component['name']}."))
+
+    def show_files(self, key, only=None):
+        from .filesview import FilesDialog
+        entry = installer.load_manifest().get(key)
+        if entry:
+            FilesDialog(self, entry, system_copies(entry), only).show_all()
 
     def pick_variant_for_login(self, kind, comps):
         d = Gtk.Dialog(title="Which variant for the login screen?", transient_for=self, modal=True,

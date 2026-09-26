@@ -307,3 +307,19 @@ class InstallerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FilesViewTest(unittest.TestCase):
+    def test_scan_counts_without_following_links(self):
+        from drape import filesview
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t) / "theme"
+            (d / "a").mkdir(parents=True)
+            (d / "a" / "x.png").write_bytes(b"12345")
+            (d / "index.theme").write_bytes(b"123")
+            (d / "link").symlink_to("/usr")
+            size, count, names = filesview.scan(d)
+            self.assertEqual(count, 3)
+            self.assertIn("a/x.png", names)
+            self.assertLess(size, 1000)  # /usr wasn't walked
+            self.assertIsNone(filesview.scan(Path(t) / "gone"))
