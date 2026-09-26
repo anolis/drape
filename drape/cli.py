@@ -70,6 +70,10 @@ def _apply(entry, name=None):
     comps = [c for c in entry["components"] if name in (None, c["name"])]
     if not comps:
         sys.exit(f"No component named {name!r}")
+    system_comps = [c for c in comps if c.get("system")]
+    if system_comps:
+        _apply_system(system_comps[0])
+        return
     applied = []
     seen = set()
     for c in comps:
@@ -78,6 +82,27 @@ def _apply(entry, name=None):
         applied += desktop.apply_component(c, only=parts)
         seen.update(c["provides"])
     print("Applied: " + (", ".join(applied) or "nothing (unsupported desktop?)"))
+
+
+def _apply_system(c):
+    """Boot splash / login screen themes: copy into place and apply as root (asks for a password)."""
+    from . import system
+    kind, name = c["system"], c["name"]
+    req = system.requirement(kind)
+    if not req.installed:
+        how = f"install it with: sudo apt install {req.package}" if req.package else f"get it from {req.url}"
+        sys.exit(f"{name} needs {req.label}, which isn't installed - {how}")
+    cmds = [["install", kind, c["path"], "--name", name],
+            {"plymouth": ["set-plymouth", name], "sddm": ["sddm-theme", name],
+             "webgreeter": ["web-greeter-theme", name]}[kind]]
+    if kind == "plymouth":
+        print("Rebuilding the boot image takes a minute…", file=sys.stderr)
+    r = system.run_helper(*cmds)
+    if not r.ok:
+        sys.exit(r.output or "failed")
+    print(f"Applied: {kind} {name}")
+    if not req.active:
+        print(f"Note: {req.label} isn't your active login screen - switch to it in drape's Lock & login page.")
 
 
 def cmd_apply(a):

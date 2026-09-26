@@ -21,11 +21,29 @@ click. No hunting for archives, no guessing which folder things go in.
   converts them to Linux cursors automatically, using the pack's `Install.inf` to map each cursor.
 - **Applies them.** Sets the matching setting for Cinnamon or GNOME. Packs with several variants
   (Dark, Compact, …) let you pick which one.
+- **Boot splash, login and lock screens.** Plymouth boot splashes and SDDM / LightDM web greeter
+  login themes install and apply in one click (with one password prompt). If a theme is for a
+  login screen you don't have, drape offers to install it and to switch to it. Your own wallpaper,
+  Controls theme, icons and cursor can be used for the LightDM login screen too, and the
+  **Lock & login** page sets up the Cinnamon lock screen's clock and fonts. A setting (on by
+  default) only shows login themes that work on your computer.
 - **Cleans up.** Everything is tracked in `~/.local/share/drape/installed.json`, so Remove deletes
   exactly what was installed, and *Check for updates* compares against gnome-look.org.
 - **Works with gnome-look.org's own Install buttons** (`ocs://` links) once registered.
 - **Safe by default.** Downloads are checksum-verified, archive extraction rejects path tricks, and
   drape won't overwrite themes it didn't install without asking.
+
+## Root access
+
+Boot splash and login screen changes need root. They go through a small helper
+(`drape/helper.py`) run with `pkexec`, so you get the normal password prompt and only those
+specific actions run as root. The helper copies files without following links swapped in along
+the way, marks everything it installs, and never replaces or removes system themes it didn't
+install. Its Plymouth handling is adapted from
+[Plymouth Configurator](https://github.com/anolis/plymouth-configurator).
+
+GDM login themes aren't supported: they work by replacing a core GNOME Shell file, which breaks
+when GNOME updates.
 
 ## Install
 
@@ -41,7 +59,7 @@ Or run it in place: `./bin/drape`.
 ## Command line
 
 ```sh
-drape search icons papirus           # kinds: icons cursors gtk wm desktop wallpapers
+drape search icons papirus           # kinds: icons cursors gtk wm desktop wallpapers login boot
 drape show 1166289                   # details and download variants
 drape install 1166289 --apply        # --file N picks a variant
 drape install-url 'ocs://install?url=…'

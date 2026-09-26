@@ -15,7 +15,8 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import requests  # noqa: E402
 
-from . import desktop, installer, pling, previews  # noqa: E402
+from . import desktop, installer, pling, previews, settings, system  # noqa: E402
+from . import helper as root_helper  # noqa: E402
 
 APP_ID = "io.github.anolis.Drape"
 THUMB_DIR = Path(GLib.get_user_cache_dir()) / "drape" / "thumbs"
@@ -23,6 +24,44 @@ CARD_W, CARD_H = 260, 160
 PAGE_SIZE = 30
 
 _images = ThreadPoolExecutor(max_workers=6)
+
+
+# tabs whose installed items are identified by other part names
+TAB_PARTS = {"login": {"sddm", "webgreeter"}, "boot": {"plymouth"}}
+
+
+LOGIN_KEYS = {"gtk": ("gtk", "theme-name"), "icons": ("icons", "icon-theme-name"),
+              "cursors": ("icons", "cursor-theme-name")}
+
+
+def system_file_name(component):
+    """File name for a wallpaper copied to /usr/share/backgrounds/drape; includes the pack name,
+    since packs often use generic names like 1920x1080.png."""
+    p = Path(component["path"])
+    stem = f"{p.parent.name} - {p.stem}" if p.parent.parent == installer.WALLPAPER_DIR else p.stem
+    return installer._system_name(stem) + p.suffix.lower()
+
+
+def login_commands(greeter, kind, component):
+    """Helper commands that copy an installed item into /usr/share and point the greeter at it
+    (the login screen runs as its own user and can't read your home folder)."""
+    if kind == "wallpapers":
+        name = system_file_name(component)
+        return [["install", "background", component["path"], "--name", name],
+                ["greeter-set", greeter, f"background={root_helper.DIRS['background'] / name}"]]
+    target, key = LOGIN_KEYS[kind]
+    name = component["name"]
+    dest = root_helper.DIRS[target] / name
+    cmds = []
+    # a system theme of the same name is already readable by the login screen
+    if not dest.exists() or (dest / root_helper.MARKER).exists():
+        cmds.append(["install", target, component["path"], "--name", name])
+    cmds.append(["greeter-set", greeter, f"{key}={name}"])
+    return cmds
+
+
+def matches(kind, component):
+    return bool(TAB_PARTS.get(kind, {kind}) & set(component["provides"]))
 
 
 def run_async(work, done, error=None):
@@ -64,6 +103,13 @@ def load_image(url, image, width, height):
 
 def in_use(component):
     """True if this installed component is what the desktop is currently using."""
+    kind = component.get("system")
+    if kind == "plymouth":
+        return system.current_plymouth() == component["name"]
+    if kind == "sddm":
+        return system.display_manager() == "sddm" and system.current_sddm_theme() == component["name"]
+    if kind == "webgreeter":
+        return system.current_web_greeter_theme() == component["name"]
     for part in component["provides"]:
         value = Path(component["path"]).as_uri() if part == "wallpapers" else component["name"]
         if desktop.get(part) == value:
@@ -210,7 +256,7 @@ class ApplyControl(Gtk.Box):
             return []
         comps = entry["components"]
         if self.kind and self.kind != "wallpapers":
-            comps = [c for c in comps if self.kind in c["provides"]] or comps
+            comps = [c for c in comps if matches(self.kind, c)] or comps
         return comps
 
     def _target(self, comps):
@@ -314,7 +360,12 @@ class BrowsePage(Gtk.Box):
         self.status = Gtk.Label(margin=24, no_show_all=True, wrap=True)
         self.status.get_style_context().add_class("dim-label")
 
+        # explains what this tab shows on this computer (login screens, boot splash)
+        self.banner = Gtk.Label(xalign=0, wrap=True, margin=12, margin_bottom=0, no_show_all=True, use_markup=True)
+        self.banner.get_style_context().add_class("dim-label")
+
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        inner.pack_start(self.banner, False, False, 0)
         inner.pack_start(self.status, False, False, 0)
         inner.pack_start(self.flow, False, False, 0)
         inner.pack_start(self.more, False, False, 0)
@@ -341,6 +392,12 @@ class BrowsePage(Gtk.Box):
         self._set_status("Loading…" if not append else "")
         self.more.hide()
         query, sort, page = self.win.query(), self.win.sort(), self.page
+        categories, banner = self._scope()
+        self.banner.set_markup(banner)
+        self.banner.set_visible(bool(banner))
+        if categories == "":
+            self._set_status("")
+            return
 
         def done(result):
             if gen != self.generation:
@@ -358,7 +415,29 @@ class BrowsePage(Gtk.Box):
             if gen == self.generation:
                 self._set_status(str(e))
 
-        run_async(lambda: pling.search(self.kind, query, sort, page, PAGE_SIZE), done, error)
+        run_async(lambda: pling.search(self.kind, query, sort, page, PAGE_SIZE, categories), done, error)
+
+    def _scope(self):
+        """(categories to search or None for the default, explanation) for this computer."""
+        only = settings.get("only_applicable")
+        if self.kind == "login":
+            cats = system.login_categories(only)
+            dm, greeter = system.display_manager(), system.lightdm_greeter()
+            current = f"LightDM with {greeter}" if dm == "lightdm" else (dm or "unknown")
+            if cats == "":
+                return "", (f"Your login screen is <b>{GLib.markup_escape_text(current)}</b>. It doesn't use "
+                            "downloadable themes: choose <b>⋯ → Use for login screen</b> on any installed "
+                            "wallpaper, Controls theme, icon set or cursor, or see <b>Lock &amp; login</b>.\n\n"
+                            "To browse themes for other login screens (SDDM, web greeters), turn off "
+                            "<b>Only show themes that work on this computer</b> in the ☰ menu.")
+            note = f"Your login screen is <b>{GLib.markup_escape_text(current)}</b>."
+            if not only:
+                note += " Showing themes for every login screen - drape tells you if one needs something installed."
+            return cats, note
+        if self.kind == "boot" and not system.plymouth_installed():
+            return None, ("Plymouth, which draws the boot splash, isn't installed. drape will offer to install "
+                          "it when you apply one.")
+        return None, ""
 
     def refresh_cards(self, item_id=None):
         for c in self.cards():
@@ -396,7 +475,7 @@ class InstalledCard(Gtk.FlowBoxChild):
         super().__init__()
         self.win, self.kind, self.key, self.entry = window, kind, key, entry
         comps = [wallpaper] if wallpaper else \
-            [c for c in entry["components"] if kind in c["provides"]] or entry["components"]
+            [c for c in entry["components"] if matches(kind, c)] or entry["components"]
         using = [c for c in comps if in_use(c)]
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
@@ -448,6 +527,24 @@ class InstalledCard(Gtk.FlowBoxChild):
             ub = Gtk.Button(label="Update")
             ub.connect("clicked", lambda _b: window.install(update))
             actions.pack_start(ub, False, False, 0)
+        extra = []
+        target = wallpaper or (comps[0] if len(comps) == 1 else None)
+        if kind in ("wallpapers", "gtk", "icons", "cursors"):
+            extra.append(("Use for login screen…", lambda *_: window.use_for_login(kind, target) if target
+                          else window.pick_variant_for_login(kind, comps)))
+        if kind == "wallpapers" and desktop.current_desktop() == "gnome":
+            extra.append(("Use for lock screen", lambda *_: window.use_for_lock(wallpaper)))
+        if extra:
+            menu = Gtk.Menu()
+            for label, cb in extra:
+                mi = Gtk.MenuItem(label=label)
+                mi.connect("activate", cb)
+                menu.append(mi)
+            menu.show_all()
+            more = Gtk.MenuButton(popup=menu, image=Gtk.Image.new_from_icon_name("view-more-symbolic",
+                                                                                 Gtk.IconSize.BUTTON))
+            more.set_tooltip_text("More")
+            actions.pack_end(more, False, False, 0)
         rm = Gtk.Button.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.BUTTON)
         if wallpaper:
             rm.set_tooltip_text("Remove this wallpaper")
@@ -504,11 +601,10 @@ class InstalledPage(Gtk.Box):
                 c.destroy()
             n = 0
             for key, e in sorted(m.items(), key=lambda kv: kv[1]["title"].lower()):
-                provides = {p for c in e["components"] for p in c["provides"]}
                 if key_name == "other":
                     if key in placed:
                         continue
-                elif key_name not in provides:
+                elif not any(matches(key_name, c) for c in e["components"]):
                     continue
                 placed.add(key)
                 if key_name == "wallpapers":
@@ -660,18 +756,29 @@ class Window(Gtk.ApplicationWindow):
             self.sort_combo.append(key, label)
         self.sort_combo.set_active_id("downloads")
         self.sort_combo.connect("changed", lambda _c: self.reload_all())
+        menu = Gtk.Menu()
+        only = Gtk.CheckMenuItem(label="Only show themes that work on this computer",
+                                 active=settings.get("only_applicable"))
+        only.connect("toggled", self._toggle_applicable)
+        menu.append(only)
+        menu.show_all()
+        hb.pack_end(Gtk.MenuButton(popup=menu, image=Gtk.Image.new_from_icon_name("open-menu-symbolic",
+                                                                                  Gtk.IconSize.BUTTON)))
         hb.pack_end(self.sort_combo)
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
         self.pages = {}
         for k in pling.KINDS:
-            if k.key != "wallpapers" and not desktop.supported(k.key):
+            if k.key not in ("wallpapers", "login", "boot") and not desktop.supported(k.key):
                 continue  # e.g. no "Desktop" (Cinnamon theme) page on GNOME
             p = BrowsePage(self, k.key)
             self.pages[k.key] = p
             self.stack.add_titled(p, k.key, k.label)
         self.installed = InstalledPage(self, [k for k in pling.KINDS if k.key in self.pages])
         self.stack.add_titled(self.installed, "installed", "Installed")
+        from .lockpage import LockLoginPage
+        self.lockpage = LockLoginPage(self, login_commands)
+        self.stack.add_titled(self.lockpage, "lock", "Lock & login")
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
         side = Gtk.StackSidebar(stack=self.stack)
@@ -695,6 +802,13 @@ class Window(Gtk.ApplicationWindow):
         self.on_page()
 
     # ------------------------------------------------------------ helpers
+    def _toggle_applicable(self, item):
+        settings.set("only_applicable", item.get_active())
+        for key in ("login", "boot"):
+            if key in self.pages:
+                self.pages[key].loaded = False
+        self.on_page()
+
     def query(self):
         return self.search.get_text().strip()
 
@@ -708,17 +822,19 @@ class Window(Gtk.ApplicationWindow):
 
     def on_page(self):
         child = self.stack.get_visible_child()
-        searchable = child is not self.installed
+        searchable = child not in (self.installed, self.lockpage)
         self.search.set_sensitive(searchable)
         self.sort_combo.set_sensitive(searchable)
-        if child is self.installed:
+        if child is self.lockpage:
+            self.lockpage.load()
+        elif child is self.installed:
             self.installed.load()
         elif not child.loaded:
             child.load()
 
     def reload_current(self):
         child = self.stack.get_visible_child()
-        if child is not self.installed:
+        if child in self.pages.values():
             child.load()
         for p in self.pages.values():
             if p is not child:
@@ -783,8 +899,12 @@ class Window(Gtk.ApplicationWindow):
                 return
             self.installed.updates.pop(item.id, None)
             self.refresh_item(item.id)
+            if any(c.get("system") for c in result["components"]) and not apply_kind:
+                self.notify(f"Downloaded {item.name}. Apply it to install it for the whole system "
+                            "(you'll be asked for your password).")
+                return
             if apply_kind:
-                comps = [c for c in result["components"] if apply_kind in c["provides"]] or result["components"]
+                comps = [c for c in result["components"] if matches(apply_kind, c)] or result["components"]
                 if len(comps) == 1 or apply_kind == "wallpapers":
                     self.apply(comps[0], apply_kind)
                 else:
@@ -809,6 +929,9 @@ class Window(Gtk.ApplicationWindow):
         return ok
 
     def apply(self, component, kind=None):
+        if component.get("system"):
+            self.apply_system(component)
+            return
         only = [kind] if kind and kind in component["provides"] else None
         applied = desktop.apply_component(component, only)
         if applied:
@@ -841,9 +964,144 @@ class Window(Gtk.ApplicationWindow):
             d.destroy()
             if not ok:
                 return
-        installer.remove(key)
-        self.notify(f"Removed {entry['title']}.")
-        self.refresh_item()
+        cmds = [["uninstall", c["system"], c["name"]] for c in entry["components"]
+                if c.get("system") and (root_helper.DIRS[c["system"]] / c["name"] / root_helper.MARKER).exists()]
+        cmds += self._login_copies(entry)
+
+        def finish():
+            installer.remove(key)
+            self.notify(f"Removed {entry['title']}.")
+            self.refresh_item()
+        if cmds:
+            self.run_root(cmds, f"Removing {entry['title']}…", finish)
+        else:
+            finish()
+
+    def _login_copies(self, entry):
+        """Uninstall commands for copies drape made for the login screen."""
+        cmds = []
+        for c in entry["components"]:
+            for kind in ("gtk", "icons", "background"):
+                name = system_file_name(c) if kind == "background" else c["name"]
+                path = root_helper.DIRS[kind] / name
+                marker = path / root_helper.MARKER if kind != "background" else Path(str(path) + root_helper.MARKER)
+                if marker.exists() and (kind != "background" or c["provides"] == ["wallpapers"]):
+                    cmds.append(["uninstall", kind, name])
+        return cmds
+
+    # ------------------------------------------------------------ system (root) actions
+    def run_root(self, commands, title, on_success=None):
+        """Run helper commands with one password prompt, showing progress."""
+        d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.OTHER,
+                              buttons=Gtk.ButtonsType.NONE, text=title)
+        d.format_secondary_text("You'll be asked for your password.")
+        spinner = Gtk.Spinner(active=True, margin=8)
+        d.get_message_area().pack_start(spinner, False, False, 0)
+        d.show_all()
+
+        def done(result):
+            d.destroy()
+            if result.ok:
+                if on_success:
+                    on_success()
+            elif not result.cancelled:
+                lines = [l for l in result.output.splitlines() if l.startswith("Error:")] or \
+                    result.output.splitlines()[-6:]
+                error_dialog(self, title.rstrip("…") + " failed", "\n".join(lines))
+            self.refresh_item()
+
+        run_async(lambda: system.run_helper(*commands), done)
+
+    def ask(self, title, text, yes, no="Cancel", destructive=False):
+        d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
+                              buttons=Gtk.ButtonsType.NONE, text=title)
+        d.format_secondary_markup(text)
+        d.add_button(no, Gtk.ResponseType.CANCEL)
+        b = d.add_button(yes, Gtk.ResponseType.ACCEPT)
+        b.get_style_context().add_class("destructive-action" if destructive else "suggested-action")
+        ok = d.run() == Gtk.ResponseType.ACCEPT
+        d.destroy()
+        return ok
+
+    def apply_system(self, component):
+        kind, name = component["system"], component["name"]
+        req = system.requirement(kind)
+        esc = GLib.markup_escape_text
+        cmds = []
+        installed, active = req.installed, req.active
+        if not installed:
+            if req.package:
+                if not self.ask(f"Install {req.label}?",
+                                f"<b>{esc(name)}</b> is for {esc(req.label)}, which isn't installed. drape can "
+                                f"install it now (package <tt>{esc(req.package)}</tt>).", "Install and apply"):
+                    return
+                cmds.append(["apt-install", req.package])
+                installed = True
+            else:
+                d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.INFO,
+                                      buttons=Gtk.ButtonsType.CLOSE, text=f"{name} needs {req.label}")
+                d.format_secondary_markup(
+                    f"That isn't available from your distribution's software sources. You can get it from "
+                    f"<a href=\"{esc(req.url)}\">{esc(req.url)}</a>. The theme is downloaded; apply it again "
+                    "once that's installed.")
+                d.run()
+                d.destroy()
+                return
+        cmds.append(["install", kind, component["path"], "--name", name])
+        cmds.append({"plymouth": ["set-plymouth", name], "sddm": ["sddm-theme", name],
+                     "webgreeter": ["web-greeter-theme", name]}[kind])
+        switched = False
+        if not active and req.activate:
+            switched = self.ask("Switch your login screen?", esc(req.note) + "\n\nIf you don't switch, the "
+                                "theme is still set up and will be used if you switch later.",
+                                "Switch", "Keep current login screen")
+            if switched:
+                cmds.append(req.activate)
+
+        def success():
+            if kind == "plymouth":
+                self.notify(f"{name} is now your boot splash. You'll see it next time you start up.")
+            elif switched or active:
+                self.notify(f"{name} is now your login screen" + (" (after a restart)." if switched else "."))
+            else:
+                self.notify(f"{name} is set up. It'll show once you switch to {req.label}.")
+        title = f"Setting up {name}…" + (" (rebuilding the boot image takes a minute)" if kind == "plymouth" else "")
+        self.run_root(cmds, title, success)
+
+    def use_for_login(self, kind, component):
+        """Put an installed wallpaper / Controls theme / icons / cursor on the login screen."""
+        dm, greeter = system.display_manager(), system.lightdm_greeter()
+        if dm != "lightdm" or greeter not in system.GTK_GREETERS:
+            error_dialog(self, "Your login screen can't use this",
+                         f"Your login screen is {greeter if dm == 'lightdm' else dm}, which has its own themes. "
+                         "Browse them under Login screen, or switch login screen on the Lock & login page.")
+            return
+        cmds = login_commands(greeter, kind, component)
+        self.run_root(cmds, "Updating the login screen…",
+                      lambda: self.notify(f"The login screen now uses {component['name']}."))
+
+    def pick_variant_for_login(self, kind, comps):
+        d = Gtk.Dialog(title="Which variant for the login screen?", transient_for=self, modal=True,
+                       use_header_bar=True)
+        d.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Use", Gtk.ResponseType.ACCEPT)
+        combo = Gtk.ComboBoxText(margin=12)
+        for i, c in enumerate(comps):
+            combo.append(str(i), c["name"])
+        combo.set_active(0)
+        d.get_content_area().add(combo)
+        d.show_all()
+        ok = d.run() == Gtk.ResponseType.ACCEPT
+        choice = comps[int(combo.get_active_id())]
+        d.destroy()
+        if ok:
+            self.use_for_login(kind, choice)
+
+    def use_for_lock(self, component):
+        """GNOME has a separate lock screen wallpaper."""
+        from gi.repository import Gio as _Gio
+        s = _Gio.Settings.new("org.gnome.desktop.screensaver")
+        s.set_string("picture-uri", Path(component["path"]).as_uri())
+        self.notify(f"The lock screen now shows {Path(component['path']).name}.")
 
     def install_link(self, url):
         self.notify("Installing from gnome-look.org link…")

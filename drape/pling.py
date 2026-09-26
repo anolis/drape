@@ -24,6 +24,8 @@ KINDS = [
     Kind("wm", "Window borders", "125"),
     Kind("desktop", "Desktop", "133"),
     Kind("wallpapers", "Wallpapers", "295,261,58,300,283,302,303,360"),
+    Kind("login", "Login screen", "101,154,131"),
+    Kind("boot", "Boot splash", "108"),
 ]
 KINDS_BY_KEY = {k.key: k for k in KINDS}
 
@@ -114,10 +116,10 @@ def _get(path, params=None):
     return data
 
 
-def search(kind, query="", sort="top", page=0, pagesize=30):
+def search(kind, query="", sort="top", page=0, pagesize=30, categories=None):
     """Return (items, total) for one kind of content."""
     data = _get("content/data", {
-        "categories": KINDS_BY_KEY[kind].categories,
+        "categories": categories or KINDS_BY_KEY[kind].categories,
         "search": query,
         "sortmode": SORT_MODES.get(sort, "top"),
         "page": page,
