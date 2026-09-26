@@ -33,10 +33,12 @@ class WindowBordersHelp(Gtk.Box):
     def __init__(self, window):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12, margin_bottom=0)
         self.win = window
-        note = Gtk.Label(label=WM_NOTE, xalign=0, wrap=True)
+        # note and buttons share one row to save vertical space
+        row = Gtk.Box(spacing=12)
+        note = Gtk.Label(label=WM_NOTE, xalign=0, wrap=True, valign=Gtk.Align.CENTER)
         note.get_style_context().add_class("dim-label")
-        self.pack_start(note, False, False, 0)
-        buttons = Gtk.Box(spacing=6)
+        row.pack_start(note, True, True, 0)
+        buttons = Gtk.Box(spacing=6, valign=Gtk.Align.CENTER)
         sample = Gtk.Button(label="Show a sample window")
         sample.set_tooltip_text("Opens a small window with a classic title bar, so you can see the borders")
         sample.connect("clicked", lambda _b: window.show_border_sample())
@@ -45,7 +47,8 @@ class WindowBordersHelp(Gtk.Box):
         self.check.set_tooltip_text("Shows which of the apps you have open right now use these borders")
         self.check.connect("clicked", lambda _b: self.run_check())
         buttons.pack_start(self.check, False, False, 0)
-        self.pack_start(buttons, False, False, 0)
+        row.pack_end(buttons, False, False, 0)
+        self.pack_start(row, False, False, 0)
         self.apps = Gtk.Label(xalign=0, wrap=True, use_markup=True, no_show_all=True)
         self.pack_start(self.apps, False, False, 0)
         # forget the answer when the user leaves this tab
