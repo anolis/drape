@@ -420,3 +420,12 @@ class AnimationTest(unittest.TestCase):
             still = Path(t) / "still.png"
             Image.new("RGB", (10, 10)).save(still)
             self.assertIsNone(app._frames(still, 50, 50))
+
+
+class WindowBordersTest(unittest.TestCase):
+    def test_which_windows_the_window_manager_decorates(self):
+        from drape import desktop
+        self.assertTrue(desktop.classify_window(False, ""))                           # plain window
+        self.assertTrue(desktop.classify_window(False, "0x3, 0x3e, 0x7e, 0x0, 0x0"))  # some decorations
+        self.assertFalse(desktop.classify_window(False, "0x2, 0x0, 0x0, 0x0, 0x0"))   # asked for none
+        self.assertFalse(desktop.classify_window(True, ""))                           # draws its own

@@ -139,3 +139,72 @@ def cinnamon_theme_outdated(theme_dir):
 
 OUTDATED_NOTE = ("made for an older Cinnamon: system dialogs such as password prompts and the logout "
                  "dialog won't have a background")
+
+
+# ---------------------------------------------------------------- which open windows show window borders
+
+def _xprop(*args):
+    try:
+        return subprocess.run(["xprop", *args], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+@functools.lru_cache(maxsize=1)
+def _app_names():
+    """Window class / program name -> the app's name in the menu."""
+    from gi.repository import Gio
+    names = {}
+    for info in Gio.AppInfo.get_all():
+        if not isinstance(info, Gio.DesktopAppInfo) or info.get_nodisplay():
+            continue
+        name = info.get_name()
+        keys = [info.get_startup_wm_class(), Path(info.get_id() or "").stem, Path(info.get_executable() or "").name]
+        for k in keys:
+            if k:
+                names.setdefault(k.lower(), name)
+    return names
+
+
+def _app_name(res_name, res_class):
+    """Readable name from the app's menu entry (e.g. nemo -> Files), else its window class."""
+    names = _app_names()
+    for k in (res_class, res_name, res_name.removesuffix(".bin"), res_class.split(".")[-1]):
+        if k and k.lower() in names:
+            return names[k.lower()]
+    return res_class
+
+
+def classify_window(frame_extents, motif_hints):
+    """True if the window manager draws this window's title bar (so window borders apply to it)."""
+    if frame_extents:
+        return False  # the app draws its own (client-side decorations)
+    m = re.findall(r"0x[0-9a-f]+|\d+", motif_hints or "")
+    if len(m) >= 3:
+        flags, decorations = int(m[0], 0), int(m[2], 0)
+        if flags & 2 and decorations == 0:
+            return False  # the app asked for no window manager decorations
+    return True
+
+
+def open_windows():
+    """[(app name, shows window borders)] for open app windows, or None if this can't be told
+    (not X11, or xprop missing). Only called when the user asks; reads each window's class and
+    title-bar hints, nothing else, and the result isn't stored."""
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland" or not _xprop("-root", "_NET_CLIENT_LIST"):
+        return None
+    seen = {}
+    for wid in re.findall(r"0x[0-9a-f]+", _xprop("-root", "_NET_CLIENT_LIST").split("=", 1)[-1]):
+        props = _xprop("-id", wid, "WM_CLASS", "_NET_WM_WINDOW_TYPE", "_GTK_FRAME_EXTENTS", "_MOTIF_WM_HINTS")
+        wtype = re.search(r"_NET_WM_WINDOW_TYPE\(ATOM\) = (\S+)", props)
+        if wtype and not wtype.group(1).rstrip(",").endswith(("NORMAL", "DIALOG")):
+            continue  # desktop, panels, ...
+        cls = re.search(r'WM_CLASS\(STRING\) = "([^"]*)", "([^"]*)"', props)
+        if not cls:
+            continue
+        frame = re.search(r"_GTK_FRAME_EXTENTS\(CARDINAL\) = ", props)
+        motif = re.search(r"_MOTIF_WM_HINTS\(_MOTIF_WM_HINTS\) = (.*)", props)
+        name = _app_name(cls.group(1), cls.group(2))
+        classic = classify_window(bool(frame), motif.group(1) if motif else "")
+        seen[name] = seen.get(name, False) or classic
+    return sorted(seen.items(), key=lambda kv: kv[0].lower())

@@ -26,6 +26,78 @@ CARD_W, CARD_H = 260, 160
 # Window borders only reach apps that let the window manager draw their title bar
 WM_NOTE = ("Window borders only show on apps with a classic title bar, like Files (Nemo). Apps that draw "
            "their own title bar, like drape and most GNOME apps, follow your Controls theme instead.")
+class WindowBordersHelp(Gtk.Box):
+    """Explains which apps window borders reach, with a sample window to see them on. Checking the open
+    windows only happens when the user asks, and the answer isn't kept."""
+
+    def __init__(self, window):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=12, margin_bottom=0)
+        self.win = window
+        note = Gtk.Label(label=WM_NOTE, xalign=0, wrap=True)
+        note.get_style_context().add_class("dim-label")
+        self.pack_start(note, False, False, 0)
+        buttons = Gtk.Box(spacing=6)
+        sample = Gtk.Button(label="Show a sample window")
+        sample.set_tooltip_text("Opens a small window with a classic title bar, so you can see the borders")
+        sample.connect("clicked", lambda _b: window.show_border_sample())
+        buttons.pack_start(sample, False, False, 0)
+        self.check = Gtk.Button(label="Check my open windows")
+        self.check.set_tooltip_text("Shows which of the apps you have open right now use these borders")
+        self.check.connect("clicked", lambda _b: self.run_check())
+        buttons.pack_start(self.check, False, False, 0)
+        self.pack_start(buttons, False, False, 0)
+        self.apps = Gtk.Label(xalign=0, wrap=True, use_markup=True, no_show_all=True)
+        self.pack_start(self.apps, False, False, 0)
+        # forget the answer when the user leaves this tab
+        self.connect("unmap", lambda *_: (self.apps.set_text(""), self.apps.hide()))
+        # only if the user chose "Always allow"
+        self.connect("map", lambda *_: settings.get("window_check") == "always" and self.run_check(asked=True))
+
+    def _consent(self):
+        """Ask before looking at the user's open windows. Returns True to go ahead."""
+        d = Gtk.MessageDialog(transient_for=self.win, modal=True, message_type=Gtk.MessageType.QUESTION,
+                              buttons=Gtk.ButtonsType.NONE, text="Check your open windows?")
+        d.format_secondary_text(
+            "To show which apps use these borders, drape looks at the windows you have open right now: each "
+            "app's name and whether it draws its own title bar. It doesn't look at anything else, and nothing "
+            "is saved or sent anywhere.")
+        d.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Just this once", 1, "Always allow", 2)
+        d.set_default_response(1)
+        resp = d.run()
+        d.destroy()
+        if resp == 2:
+            settings.set("window_check", "always")
+            self.win.sync_menu()
+        return resp in (1, 2)
+
+    def run_check(self, asked=False):
+        if not self.check.get_sensitive():
+            return
+        if not asked and settings.get("window_check") != "always" and not self._consent():
+            return
+        self.check.set_sensitive(False)
+
+        def done(windows):
+            self.check.set_sensitive(True)
+            esc = GLib.markup_escape_text
+            if windows is None:
+                self.apps.set_text("drape can't tell on this desktop session.")
+            else:
+                classic = [n for n, c in windows if c]
+                own = [n for n, c in windows if not c]
+                lines = []
+                if classic:
+                    lines.append("<b>Show these borders:</b> " + esc(", ".join(classic)))
+                if own:
+                    lines.append("<b>Draw their own title bar:</b> " + esc(", ".join(own)))
+                lines.append("<small>Only looks at the windows you have open right now. Nothing is saved or "
+                             "sent anywhere." + (" Turn off automatic checks in the ☰ menu." if
+                                                 settings.get("window_check") == "always" else "") + "</small>")
+                self.apps.set_markup("\n".join(lines))
+            self.apps.show()
+        run_async(desktop.open_windows, done)
+
+
 CHUNK = 10          # results per request: small batches paint sooner on slow connections
 FIRST_CHUNKS = 3    # batches requested up front when a tab opens
 
@@ -532,6 +604,8 @@ class BrowsePage(Gtk.Box):
 
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         inner.pack_start(self.banner, False, False, 0)
+        if kind == "wm":
+            inner.pack_start(WindowBordersHelp(window), False, False, 0)
         inner.pack_start(self.status, False, False, 0)
         inner.pack_start(self.flow, False, False, 0)
         inner.pack_start(self.more, False, False, 0)
@@ -693,8 +767,6 @@ class BrowsePage(Gtk.Box):
             if d and desktop.cinnamon_theme_outdated(d):
                 return None, (f"⚠ Your Desktop theme <b>{GLib.markup_escape_text(current)}</b> was "
                               f"{desktop.OUTDATED_NOTE}. Pick a newer one to fix that.")
-        if self.kind == "wm":
-            return None, WM_NOTE
         if self.kind == "boot" and not system.plymouth_installed():
             return None, ("Plymouth, which draws the boot splash, isn't installed. drape will offer to install "
                           "it when you apply one.")
@@ -1055,15 +1127,17 @@ class InstalledPage(Gtk.Box):
         self.tabs.connect("notify::visible-child", lambda *_: self._sync_chip())
         self.pack_start(self.chips, False, False, 0)
         # a short explanation for tabs that need one
-        self.hint = Gtk.Label(xalign=0, wrap=True, margin=12, margin_bottom=0, no_show_all=True)
-        self.hint.get_style_context().add_class("dim-label")
+        self.hint = WindowBordersHelp(window)
+        self.hint.set_no_show_all(True)
         self.pack_start(self.hint, False, False, 0)
         self.pack_start(self.tabs, True, True, 0)
 
     def _sync_chip(self):
         name = self.tabs.get_visible_child_name()
-        self.hint.set_text(WM_NOTE if name == "wm" else "")
-        self.hint.set_visible(name == "wm")
+        if name == "wm":
+            self.hint.show_all()
+        else:
+            self.hint.hide()
         rb = self.chip.get(name)
         if rb and not rb.get_active():
             rb.set_active(True)
@@ -1253,6 +1327,11 @@ class Window(Gtk.ApplicationWindow):
                                  active=settings.get("only_applicable"))
         only.connect("toggled", self._toggle_applicable)
         menu.append(only)
+        self.window_check_item = Gtk.CheckMenuItem(label="Check open windows on the Window borders tab automatically",
+                                                   active=settings.get("window_check") == "always")
+        self.window_check_item.connect("toggled", lambda it: settings.set(
+            "window_check", "always" if it.get_active() else "ask"))
+        menu.append(self.window_check_item)
         menu.append(Gtk.SeparatorMenuItem())
         heading = Gtk.MenuItem(label="Animate previews", sensitive=False)
         menu.append(heading)
@@ -1296,6 +1375,11 @@ class Window(Gtk.ApplicationWindow):
         self.info_label = Gtk.Label(wrap=True, xalign=0)
         self.infobar.get_content_area().add(self.info_label)
         self.info_label.show()
+        self.info_action = Gtk.Button(no_show_all=True, valign=Gtk.Align.CENTER)
+        self.info_action_cb = None
+        self.info_action.connect("clicked", lambda _b: self.info_action_cb and self.info_action_cb())
+        self.infobar.get_content_area().pack_end(self.info_action, False, False, 0)
+        self._sample = None
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.pack_start(self.infobar, False, False, 0)
@@ -1409,6 +1493,9 @@ class Window(Gtk.ApplicationWindow):
         return False
 
     # ------------------------------------------------------------ helpers
+    def sync_menu(self):
+        self.window_check_item.set_active(settings.get("window_check") == "always")
+
     def _set_animations(self, mode):
         settings.set("animations", mode)
         ANIMATIONS.refresh()
@@ -1430,7 +1517,12 @@ class Window(Gtk.ApplicationWindow):
     def sort(self):
         return self.sort_combo.get_active_id()
 
-    def notify(self, text, kind=Gtk.MessageType.INFO):
+    def notify(self, text, kind=Gtk.MessageType.INFO, action=None):
+        """Show a message in the bar at the top; action=(label, callback) adds a button."""
+        self.info_action.set_visible(action is not None)
+        if action:
+            self.info_action.set_label(action[0])
+            self.info_action_cb = action[1]
         self.info_label.set_text(text)
         self.infobar.set_message_type(kind)
         self.infobar.show()
@@ -1591,9 +1683,12 @@ class Window(Gtk.ApplicationWindow):
             return
         applied = desktop.apply_component(component, only)
         if applied:
-            note = (" Window borders show on apps with a classic title bar, like Files; apps with their own "
-                    "title bar follow your Controls theme.") if "wm" in applied else ""
-            self.notify(f"Now using {component['name']} ({', '.join(applied)}).{note}")
+            if "wm" in applied:
+                self.notify(f"Now using {component['name']} for window borders. They show on apps with a "
+                            "classic title bar, like Files; apps with their own title bar follow your Controls theme.",
+                            action=("Show me", self.show_border_sample))
+            else:
+                self.notify(f"Now using {component['name']} ({', '.join(applied)}).")
         else:
             self.notify("Your desktop doesn't support applying this automatically.", Gtk.MessageType.WARNING)
         self.refresh_item()
@@ -1723,6 +1818,29 @@ class Window(Gtk.ApplicationWindow):
         cmds = login_commands(greeter, kind, component)
         self.run_root(cmds, "Updating the login screen…",
                       lambda: self.notify(f"The login screen now uses {component['name']}."))
+
+    def show_border_sample(self):
+        """A small ordinary window: the window manager draws its title bar with the window border theme."""
+        if self._sample is not None:
+            self._sample.present()
+            return
+        w = Gtk.Window(title="Window border preview", transient_for=None)
+        w.set_default_size(420, 170)
+        w.set_icon_name(APP_ID)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin=18)
+        box.pack_start(Gtk.Label(label="This window's title bar and edges come from your Window borders theme. "
+                                       "Apps with a classic title bar, like Files, look like this.",
+                                 wrap=True, xalign=0), True, True, 0)
+        close = Gtk.Button(label="Close", halign=Gtk.Align.END)
+        close.connect("clicked", lambda _b: w.destroy())
+        box.pack_start(close, False, False, 0)
+        w.add(box)
+
+        def gone(*_):
+            self._sample = None
+        w.connect("destroy", gone)
+        w.show_all()
+        self._sample = w
 
     def go_to(self, target):
         """'Change' on an In use card: that category's installed themes if there are any, else browsing."""
