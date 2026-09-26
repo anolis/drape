@@ -854,7 +854,7 @@ class InstalledPage(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win = window
         self.updates = {}
-        self.tabs = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self.tabs = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hhomogeneous=False)
         self.grids = {}
         for k in kinds + [pling.Kind("other", "Other", "")]:
             flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
@@ -871,16 +871,35 @@ class InstalledPage(Gtk.Box):
             self.grids[k.key] = (k, sw, flow, empty)
 
         bar = Gtk.Box(spacing=6, margin=12, margin_bottom=0)
-        self.note = Gtk.Label(xalign=0)
+        self.note = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
         self.note.get_style_context().add_class("dim-label")
         bar.pack_start(self.note, True, True, 0)
-        switcher = Gtk.StackSwitcher(stack=self.tabs, halign=Gtk.Align.CENTER)
-        bar.set_center_widget(switcher)
         self.updates_btn = Gtk.Button(label="Check for updates")
         self.updates_btn.connect("clicked", self.check_updates)
         bar.pack_end(self.updates_btn, False, False, 0)
         self.pack_start(bar, False, False, 0)
+
+        # category tabs that wrap onto more lines on narrow windows (a Gtk.StackSwitcher can't shrink)
+        self.chips = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=False,
+                                 column_spacing=6, row_spacing=6, margin=12, margin_bottom=0,
+                                 max_children_per_line=len(self.grids))
+        self.chip = {}
+        group = None
+        for key in self.grids:
+            rb = Gtk.RadioButton.new_with_label_from_widget(group, self.grids[key][0].label)
+            rb.set_mode(False)  # looks like a toggle button
+            group = group or rb
+            rb.connect("toggled", lambda b, k=key: b.get_active() and self.tabs.set_visible_child_name(k))
+            self.chips.add(rb)
+            self.chip[key] = rb
+        self.tabs.connect("notify::visible-child", lambda *_: self._sync_chip())
+        self.pack_start(self.chips, False, False, 0)
         self.pack_start(self.tabs, True, True, 0)
+
+    def _sync_chip(self):
+        rb = self.chip.get(self.tabs.get_visible_child_name())
+        if rb and not rb.get_active():
+            rb.set_active(True)
 
     def load(self):
         m = installer.load_manifest()
@@ -907,10 +926,12 @@ class InstalledPage(Gtk.Box):
                     n += 1
             counts[key_name] = n
             self.tabs.child_set_property(sw, "title", f"{k.label} ({n})" if n else k.label)
+            self.chip[key_name].set_label(f"{k.label} ({n})" if n else k.label)
             empty.set_visible(n == 0)
             flow.show_all()
         # "Other" only appears if something didn't fit a category
         self.grids["other"][1].set_visible(counts["other"] > 0)
+        self.chip["other"].get_parent().set_visible(counts["other"] > 0)
         if not m:
             self.note.set_text("Nothing installed yet")
         elif self.updates:
@@ -1029,14 +1050,21 @@ class DetailsDialog(Gtk.Dialog):
 class Window(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="drape")
-        self.set_default_size(1180, 760)
+        # start at a comfortable size that fits the screen's usable area (small laptops too)
+        width, height = 1180, 760
+        display = Gdk.Display.get_default()
+        monitor = display and (display.get_primary_monitor() or display.get_monitor(0))
+        if monitor:
+            area = monitor.get_workarea()
+            width, height = min(width, area.width - 40), min(height, area.height - 40)
+        self.set_default_size(width, height)
         self.set_app_icon()
         self.busy = {}  # item id -> {"bars": [...]}
 
         hb = Gtk.HeaderBar(show_close_button=True, title="drape",
                            subtitle="Themes, icons, cursors & wallpapers from gnome-look.org")
         self.set_titlebar(hb)
-        self.search = Gtk.SearchEntry(placeholder_text="Search", width_chars=28)
+        self.search = Gtk.SearchEntry(placeholder_text="Search", width_chars=18)
         self.search.connect("search-changed", lambda _e: self.reload_current())
         hb.pack_end(self.search)
         self.sort_combo = Gtk.ComboBoxText()
@@ -1067,7 +1095,8 @@ class Window(Gtk.ApplicationWindow):
                                                                                   Gtk.IconSize.BUTTON)))
         hb.pack_end(self.sort_combo)
 
-        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        # each page asks only for its own width, so one wide page can't stop the window shrinking
+        self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hhomogeneous=False)
         self.pages = {}
         for k in pling.KINDS:
             if k.key not in ("wallpapers", "login", "boot") and not desktop.supported(k.key):

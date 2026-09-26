@@ -115,7 +115,6 @@ class LockLoginPage(Gtk.ScrolledWindow):
         self.login_commands = login_commands
         self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin=24)
         clamp = Gtk.Box()
-        self.body.set_size_request(640, -1)
         clamp.set_center_widget(self.body)
         self.add(clamp)
 
