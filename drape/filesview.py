@@ -44,7 +44,9 @@ def scan(path):
     size, names = 0, []
     for root, dirs, files in os.walk(p):
         dirs.sort()
-        for f in sorted(files):
+        # links to folders are listed like files (os.walk doesn't descend into them)
+        links = [d for d in dirs if (Path(root) / d).is_symlink()]
+        for f in sorted(files + links):
             fp = Path(root) / f
             try:
                 size += fp.lstat().st_size
