@@ -20,8 +20,6 @@ from . import desktop, installer, pling  # noqa: E402
 APP_ID = "io.github.anolis.Drape"
 THUMB_DIR = Path(GLib.get_user_cache_dir()) / "drape" / "thumbs"
 CARD_W, CARD_H = 260, 160
-THUMB_W, THUMB_H = 200, 125
-PART_LABELS = {k.key: k.label for k in pling.KINDS} | {"xfwm": "Xfce borders", "wallpapers": "Wallpaper"}
 PAGE_SIZE = 30
 
 _images = ThreadPoolExecutor(max_workers=6)
@@ -246,107 +244,177 @@ class BrowsePage(Gtk.Box):
                 c.refresh()
 
 
+def entry_image(key, entry, image, width, height, wallpaper=None):
+    """Show a picture people recognise: the gnome-look preview, or the wallpaper itself."""
+    walls = [c for c in entry["components"] if c["provides"] == ["wallpapers"]]
+    if wallpaper:
+        load_image(wallpaper["path"], image, width, height)
+    elif entry.get("preview"):
+        load_image(entry["preview"], image, width, height)
+    elif walls:
+        load_image(walls[0]["path"], image, width, height)
+    elif key.isdigit():
+        # installed before previews were recorded: look it up once and remember it
+        def found(item):
+            if item.previews:
+                installer.set_preview(key, item.previews[0])
+                load_image(item.previews[0], image, width, height)
+            else:
+                image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
+        run_async(lambda: pling.get(key), found,
+                  lambda _e: image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG))
+    else:
+        image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
+
+
+class InstalledCard(Gtk.FlowBoxChild):
+    """An installed item in one category's grid; for wallpapers, a single image of a pack."""
+
+    def __init__(self, window, kind, key, entry, update=None, wallpaper=None):
+        super().__init__()
+        self.win, self.kind, self.key, self.entry = window, kind, key, entry
+        comps = [wallpaper] if wallpaper else \
+            [c for c in entry["components"] if kind in c["provides"]] or entry["components"]
+        using = [c for c in comps if in_use(c)]
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
+        frame = Gtk.Frame()
+        frame.get_style_context().add_class("view")
+        image = Gtk.Image.new_from_icon_name("image-loading", Gtk.IconSize.DIALOG)
+        image.set_size_request(CARD_W, CARD_H)
+        ev = Gtk.EventBox()
+        ev.add(image)
+        if wallpaper:
+            ev.set_tooltip_text("Set as wallpaper")
+            ev.connect("button-release-event", lambda *_: window.apply(wallpaper))
+        elif key.isdigit():
+            ev.set_tooltip_text("Details")
+            ev.connect("button-release-event", lambda *_: window.show_details_by_id(kind, key))
+        frame.add(ev)
+        entry_image(key, entry, image, CARD_W, CARD_H, wallpaper)
+        box.pack_start(frame, False, False, 0)
+
+        title_text = Path(wallpaper["path"]).stem if wallpaper else entry["title"]
+        title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=28)
+        title.set_markup(f"<b>{GLib.markup_escape_text(title_text)}</b>")
+        box.pack_start(title, False, False, 0)
+
+        if wallpaper:
+            detail = entry["title"]
+        elif using:
+            detail = using[0]["name"] if len(comps) > 1 else ""
+        else:
+            detail = f"{len(comps)} variants" if len(comps) > 1 else ""
+        meta = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=32)
+        markup = "<b>✓ In use</b>" if using else ""
+        if detail:
+            markup += (" · " if markup else "") + GLib.markup_escape_text(detail)
+        meta.set_markup(f"<small>{markup or ' '}</small>")
+        if not using:
+            meta.get_style_context().add_class("dim-label")
+        box.pack_start(meta, False, False, 0)
+
+        actions = Gtk.Box(spacing=6)
+        if wallpaper:
+            b = Gtk.Button(label="Set wallpaper")
+            b.get_style_context().add_class("suggested-action")
+            b.connect("clicked", lambda _b: window.apply(wallpaper))
+            actions.pack_start(b, False, False, 0)
+        else:
+            actions.pack_start(ApplyButton(window, key, kind), False, False, 0)
+        if update:
+            ub = Gtk.Button(label="Update")
+            ub.connect("clicked", lambda _b: window.install(update))
+            actions.pack_start(ub, False, False, 0)
+        rm = Gtk.Button.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.BUTTON)
+        if wallpaper:
+            rm.set_tooltip_text("Remove this wallpaper")
+            rm.connect("clicked", lambda _b: window.remove_wallpaper(key, wallpaper))
+        else:
+            rm.set_tooltip_text("Remove")
+            rm.connect("clicked", lambda _b: window.remove(key))
+        actions.pack_end(rm, False, False, 0)
+        box.pack_start(actions, False, False, 0)
+        self.add(box)
+
+
 class InstalledPage(Gtk.Box):
-    def __init__(self, window):
+    """Installed items in the same tabs and grid as browsing."""
+
+    def __init__(self, window, kinds):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win = window
-        bar = Gtk.Box(spacing=6, margin=12)
-        self.updates_btn = Gtk.Button(label="Check for updates")
-        self.updates_btn.connect("clicked", self.check_updates)
-        bar.pack_end(self.updates_btn, False, False, 0)
+        self.updates = {}
+        self.tabs = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self.grids = {}
+        for k in kinds + [pling.Kind("other", "Other", "")]:
+            flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+                               valign=Gtk.Align.START, max_children_per_line=8,
+                               margin=12, row_spacing=6, column_spacing=6)
+            empty = Gtk.Label(label=f"No {k.label.lower()} installed yet.", margin=48, no_show_all=True)
+            empty.get_style_context().add_class("dim-label")
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            inner.pack_start(empty, False, False, 0)
+            inner.pack_start(flow, False, False, 0)
+            sw = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+            sw.add(inner)
+            self.tabs.add_titled(sw, k.key, k.label)
+            self.grids[k.key] = (k, sw, flow, empty)
+
+        bar = Gtk.Box(spacing=6, margin=12, margin_bottom=0)
         self.note = Gtk.Label(xalign=0)
         self.note.get_style_context().add_class("dim-label")
         bar.pack_start(self.note, True, True, 0)
+        switcher = Gtk.StackSwitcher(stack=self.tabs, halign=Gtk.Align.CENTER)
+        bar.set_center_widget(switcher)
+        self.updates_btn = Gtk.Button(label="Check for updates")
+        self.updates_btn.connect("clicked", self.check_updates)
+        bar.pack_end(self.updates_btn, False, False, 0)
         self.pack_start(bar, False, False, 0)
-
-        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self.list.set_header_func(lambda row, before: row.set_header(Gtk.Separator() if before else None))
-        frame = Gtk.Frame(margin=12, margin_top=0, valign=Gtk.Align.START)
-        frame.add(self.list)
-        sw = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        sw.add(frame)
-        self.pack_start(sw, True, True, 0)
-        self.updates = {}
+        self.pack_start(self.tabs, True, True, 0)
 
     def load(self):
-        for r in self.list.get_children():
-            r.destroy()
         m = installer.load_manifest()
-        self.note.set_text(f"{len(m)} item(s) installed with drape" if m else
-                           "Nothing installed yet — pick a category on the left.")
-        for key, e in sorted(m.items(), key=lambda kv: kv[1]["title"].lower()):
-            self.list.add(self._row(key, e))
-        self.list.show_all()
-
-    def _thumbnail(self, key, e):
-        """A picture people recognise: the gnome-look preview, or the wallpaper itself."""
-        image = Gtk.Image.new_from_icon_name("image-loading", Gtk.IconSize.DIALOG)
-        image.set_size_request(THUMB_W, THUMB_H)
-        walls = [c for c in e["components"] if c["provides"] == ["wallpapers"]]
-        if e.get("preview"):
-            load_image(e["preview"], image, THUMB_W, THUMB_H)
-        elif walls:
-            load_image(walls[0]["path"], image, THUMB_W, THUMB_H)
-        elif key.isdigit():
-            # installed before previews were recorded: look it up once and remember it
-            def found(item):
-                if item.previews:
-                    installer.set_preview(key, item.previews[0])
-                    load_image(item.previews[0], image, THUMB_W, THUMB_H)
+        placed = set()
+        counts = {}
+        for key_name, (k, sw, flow, empty) in self.grids.items():
+            for c in flow.get_children():
+                c.destroy()
+            n = 0
+            for key, e in sorted(m.items(), key=lambda kv: kv[1]["title"].lower()):
+                provides = {p for c in e["components"] for p in c["provides"]}
+                if key_name == "other":
+                    if key in placed:
+                        continue
+                elif key_name not in provides:
+                    continue
+                placed.add(key)
+                if key_name == "wallpapers":
+                    for c in e["components"]:
+                        if c["provides"] == ["wallpapers"]:
+                            flow.add(InstalledCard(self.win, key_name, key, e, wallpaper=c))
+                            n += 1
                 else:
-                    image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
-            run_async(lambda: pling.get(key), found,
-                      lambda _e: image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG))
+                    flow.add(InstalledCard(self.win, key_name, key, e, self.updates.get(key)))
+                    n += 1
+            counts[key_name] = n
+            self.tabs.child_set_property(sw, "title", f"{k.label} ({n})" if n else k.label)
+            empty.set_visible(n == 0)
+            flow.show_all()
+        # "Other" only appears if something didn't fit a category
+        self.grids["other"][1].set_visible(counts["other"] > 0)
+        if not m:
+            self.note.set_text("Nothing installed yet")
+        elif self.updates:
+            self.note.set_text(f"{len(self.updates)} update(s) available")
         else:
-            image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
-        frame = Gtk.Frame(valign=Gtk.Align.START)
-        frame.get_style_context().add_class("view")
-        frame.add(image)
-        return frame
-
-    def _row(self, key, e):
-        row = Gtk.ListBoxRow(activatable=False)
-        outer = Gtk.Box(spacing=14, margin=10)
-        outer.pack_start(self._thumbnail(key, e), False, False, 0)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        outer.pack_start(box, True, True, 0)
-        top = Gtk.Box(spacing=8)
-        parts = sorted({PART_LABELS.get(p, p) for c in e["components"] for p in c["provides"]})
-        title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        title.set_markup(f"<b>{GLib.markup_escape_text(e['title'])}</b>  "
-                         f"<small>{GLib.markup_escape_text(', '.join(parts))}</small>")
-        top.pack_start(title, True, True, 0)
-        if key in self.updates:
-            ub = Gtk.Button(label="Update")
-            ub.get_style_context().add_class("suggested-action")
-            ub.connect("clicked", lambda _b: self.win.install(self.updates.pop(key)))
-            top.pack_end(ub, False, False, 0)
-        rm = Gtk.Button(label="Remove")
-        rm.connect("clicked", lambda _b: self.win.remove(key))
-        top.pack_end(rm, False, False, 0)
-        box.pack_start(top, False, False, 0)
-
-        wall = [c for c in e["components"] if c["provides"] == ["wallpapers"]]
-        others = [c for c in e["components"] if c["provides"] != ["wallpapers"]]
-        for c in others:
-            line = Gtk.Box(spacing=8, margin_start=12)
-            lab = Gtk.Label(label=c["name"] + ("   ✓ in use" if in_use(c) else ""), xalign=0)
-            line.pack_start(lab, True, True, 0)
-            ab = Gtk.Button(label="Apply")
-            ab.connect("clicked", lambda _b, c=c: self.win.apply(c))
-            line.pack_end(ab, False, False, 0)
-            box.pack_start(line, False, False, 0)
-        if wall:
-            line = Gtk.Box(spacing=8, margin_start=12)
-            line.pack_start(Gtk.Label(label=f"{len(wall)} wallpaper(s) — also listed in Backgrounds settings",
-                                      xalign=0), True, True, 0)
-            ab = Gtk.Button(label="Set wallpaper" if len(wall) == 1 else "Choose…")
-            ab.connect("clicked", lambda _b: self.win.apply(wall[0]) if len(wall) == 1
-                       else self.win.choose_wallpaper(wall))
-            line.pack_end(ab, False, False, 0)
-            box.pack_start(line, False, False, 0)
-        row.add(outer)
-        return row
+            self.note.set_text(f"{len(m)} item(s) installed")
+        # land on a tab that has something in it
+        current = self.tabs.get_visible_child_name()
+        if not counts.get(current):
+            first = next((k for k in self.grids if counts.get(k)), None)
+            if first:
+                self.tabs.set_visible_child_name(first)
 
     def check_updates(self, _btn):
         keys = [k for k in installer.load_manifest() if k.isdigit()]
@@ -366,7 +434,8 @@ class InstalledPage(Gtk.Box):
             self.updates = found
             self.updates_btn.set_sensitive(True)
             self.load()
-            self.note.set_text(f"{len(found)} update(s) available" if found else "Everything is up to date.")
+            if not found:
+                self.note.set_text("Everything is up to date")
 
         def error(e):
             self.updates_btn.set_sensitive(True)
@@ -479,7 +548,7 @@ class Window(Gtk.ApplicationWindow):
             p = BrowsePage(self, k.key)
             self.pages[k.key] = p
             self.stack.add_titled(p, k.key, k.label)
-        self.installed = InstalledPage(self)
+        self.installed = InstalledPage(self, [k for k in pling.KINDS if k.key in self.pages])
         self.stack.add_titled(self.installed, "installed", "Installed")
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
@@ -548,6 +617,15 @@ class Window(Gtk.ApplicationWindow):
     def show_details(self, kind, item):
         DetailsDialog(self, kind, item)
 
+    def show_details_by_id(self, kind, key):
+        run_async(lambda: pling.get(key), lambda item: self.show_details(kind, item),
+                  lambda e: error_dialog(self, "Couldn't load details", e))
+
+    def remove_wallpaper(self, key, component):
+        installer.remove_component(key, component["path"])
+        self.notify(f"Removed {Path(component['path']).name}.")
+        self.refresh_item()
+
     def install(self, item, file_index=None, apply_kind=None):
         if item.id in self.busy:
             return
@@ -581,6 +659,7 @@ class Window(Gtk.ApplicationWindow):
                               done, error)
                 self.refresh_item(item.id)
                 return
+            self.installed.updates.pop(item.id, None)
             self.refresh_item(item.id)
             if apply_kind:
                 comps = [c for c in result["components"] if apply_kind in c["provides"]] or result["components"]

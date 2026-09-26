@@ -202,6 +202,19 @@ class InstallerTest(unittest.TestCase):
         self.assertIn(str(folder), self.p["CINNAMON_BG_FOLDERS"].read_text())
         self.assertEqual(len(e["components"]), 2)
 
+    def test_remove_single_wallpaper_then_last_one_removes_entry(self):
+        a = self.src / "walls.zip"
+        make_zip(a, {"one.jpg": b"x", "two.jpg": b"y"})
+        e = installer.install_file(a, "40", "Two Walls")
+        one, two = (c["path"] for c in e["components"])
+        installer.remove_component("40", one)
+        self.assertFalse(Path(one).exists())
+        self.assertTrue(Path(two).exists())
+        self.assertEqual(len(installer.load_manifest()["40"]["components"]), 1)
+        installer.remove_component("40", two)
+        self.assertNotIn("40", installer.load_manifest())
+        self.assertFalse((self.p["WALLPAPER_DIR"] / "Two Walls").exists())
+
     def test_single_image_download(self):
         img = self.src / "sunset.png"
         img.write_bytes(b"\x89PNG")

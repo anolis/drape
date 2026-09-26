@@ -364,6 +364,24 @@ def _remove_path(p):
         p.unlink()
 
 
+def remove_component(key, path):
+    """Remove one component (e.g. a single wallpaper) of an entry; the entry goes when it's empty."""
+    manifest = load_manifest()
+    entry = manifest.get(key)
+    if entry is None:
+        raise InstallError(f"{key} is not installed")
+    comps = [c for c in entry["components"] if c["path"] != path]
+    if len(comps) == len(entry["components"]):
+        raise InstallError(f"{path} is not part of {entry['title']}")
+    if not comps:
+        return remove(key)
+    _remove_path(Path(path))
+    entry["components"] = comps
+    entry["paths"] = [p for p in entry["paths"] if p != path]
+    save_manifest(manifest)
+    return entry
+
+
 def remove(key):
     manifest = load_manifest()
     entry = manifest.pop(key, None)
