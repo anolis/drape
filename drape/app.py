@@ -957,8 +957,7 @@ class Window(Gtk.ApplicationWindow):
         self.stack.add_titled(self.lockpage, "lock", "Lock & login")
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
-        side = Gtk.StackSidebar(stack=self.stack)
-        side.set_size_request(170, -1)
+        side = self._sidebar()
         paned = Gtk.Box()
         paned.pack_start(side, False, False, 0)
         paned.pack_start(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL), False, False, 0)
@@ -976,6 +975,59 @@ class Window(Gtk.ApplicationWindow):
         self.add(root)
         self.show_all()
         self.on_page()
+
+    # pages below the "Settings" divider in the sidebar; everything above is for finding and applying themes
+    SETTINGS_PAGES = ("lock",)
+
+    def _sidebar(self):
+        """Like Gtk.StackSidebar, plus a labelled divider between theme pages and settings pages."""
+        lb = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE)
+        lb.get_style_context().add_class("sidebar")
+        rows = {}
+        for child in self.stack.get_children():
+            name = self.stack.child_get_property(child, "name")
+            row = Gtk.ListBoxRow()
+            row.page = name
+            row.add(Gtk.Label(label=self.stack.child_get_property(child, "title"), xalign=0,
+                              margin=6, margin_start=10, margin_end=10))
+            lb.add(row)
+            rows[name] = row
+
+        def header(row, before):
+            if row.page in self.SETTINGS_PAGES and (before is None or before.page not in self.SETTINGS_PAGES):
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin_top=10)
+                box.pack_start(Gtk.Separator(), False, False, 0)
+                label = Gtk.Label(xalign=0, margin_start=10, margin_top=4)
+                label.set_markup("<small><b>SETTINGS</b></small>")
+                label.get_style_context().add_class("dim-label")
+                box.pack_start(label, False, False, 0)
+                box.show_all()
+                row.set_header(box)
+            else:
+                row.set_header(None)
+        lb.set_header_func(header)
+
+        syncing = {"on": False}
+
+        def selected(_lb, row):
+            if row and not syncing["on"]:
+                self.stack.set_visible_child_name(row.page)
+        lb.connect("row-selected", selected)
+
+        def follow(*_):
+            # keep the highlight right when a page is opened some other way (e.g. after an install link)
+            row = rows.get(self.stack.get_visible_child_name())
+            if row and lb.get_selected_row() is not row:
+                syncing["on"] = True
+                lb.select_row(row)
+                syncing["on"] = False
+        self.stack.connect("notify::visible-child", follow)
+        follow()
+
+        sw = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        sw.set_size_request(170, -1)
+        sw.add(lb)
+        return sw
 
     # ------------------------------------------------------------ helpers
     def _toggle_applicable(self, item):
