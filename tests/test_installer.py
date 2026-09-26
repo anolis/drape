@@ -429,3 +429,29 @@ class WindowBordersTest(unittest.TestCase):
         self.assertTrue(desktop.classify_window(False, "0x3, 0x3e, 0x7e, 0x0, 0x0"))  # some decorations
         self.assertFalse(desktop.classify_window(False, "0x2, 0x0, 0x0, 0x0, 0x0"))   # asked for none
         self.assertFalse(desktop.classify_window(True, ""))                           # draws its own
+
+
+class PackageManagerBusyTest(unittest.TestCase):
+    def test_held_dpkg_lock_means_busy(self):
+        import fcntl
+        import subprocess
+        import sys as _sys
+        from drape import compiz
+        with tempfile.TemporaryDirectory() as t:
+            lock = Path(t) / "lock-frontend"
+            lock.touch()
+            with mock.patch.object(compiz, "DPKG_LOCKS", (str(lock),)), \
+                    mock.patch.object(compiz, "PACKAGE_TOOLS", set()):
+                self.assertFalse(compiz.package_manager_busy())
+                # another process holds the lock, like apt does while installing
+                holder = subprocess.Popen([_sys.executable, "-c",
+                                           "import fcntl,sys,time; f=open(sys.argv[1],'w'); "
+                                           "fcntl.lockf(f, fcntl.LOCK_EX); print('locked', flush=True); time.sleep(30)",
+                                           str(lock)], stdout=subprocess.PIPE, text=True)
+                try:
+                    holder.stdout.readline()
+                    self.assertTrue(compiz.package_manager_busy())
+                finally:
+                    holder.kill()
+                    holder.wait()
+                self.assertFalse(compiz.package_manager_busy())

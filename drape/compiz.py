@@ -71,8 +71,54 @@ def mate_session_installed():
 
 
 def ccsm_available():
-    """ccsm's Python pieces are importable (python3-compizconfig + compizconfig-settings-manager)."""
-    return importlib.util.find_spec("compizconfig") is not None and importlib.util.find_spec("ccm") is not None
+    """ccsm's Python pieces are on disk (python3-compizconfig + compizconfig-settings-manager). Checks the
+    files themselves, so a removal is noticed even after ccsm was loaded into drape."""
+    importlib.invalidate_caches()
+    for name in ("compizconfig", "ccm"):
+        try:
+            spec = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
+            return False
+        if spec is None or not spec.origin or not os.path.exists(spec.origin):
+            return False
+    return True
+
+
+DPKG_LOCKS = ("/var/lib/dpkg/lock-frontend", "/var/lib/dpkg/lock")
+PACKAGE_TOOLS = {"dpkg", "apt", "apt-get", "aptitude", "unattended-upgr"}
+
+
+def package_manager_busy():
+    """True while software is being installed or removed. apt's lock files aren't readable by users,
+    but the kernel's list of held locks is, and so are process names."""
+    inodes = set()
+    for path in DPKG_LOCKS:
+        try:
+            inodes.add(str(os.stat(path).st_ino))
+        except OSError:
+            pass
+    try:
+        with open("/proc/locks") as f:
+            for line in f:
+                fields = line.split()
+                if len(fields) > 5 and fields[5].rsplit(":", 1)[-1] in inodes:
+                    return True
+    except OSError:
+        pass
+    for pid in os.listdir("/proc"):
+        if pid.isdigit():
+            try:
+                with open(f"/proc/{pid}/comm") as f:
+                    if f.read().strip() in PACKAGE_TOOLS:
+                        return True
+            except OSError:
+                continue
+    return False
+
+
+def install_state():
+    """What's installed right now; the Window manager page redraws when this changes."""
+    return (compiz_installed(), mate_session_installed(), ccsm_available())
 
 
 def packages_to_install():

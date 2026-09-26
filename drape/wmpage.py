@@ -21,19 +21,66 @@ class WindowManagerPage(Gtk.ScrolledWindow):
         self.ccsm = None
         self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin=24)
         self.add(self.body)
+        # notice installs/removals made outside drape (e.g. apt in a terminal) while this page is open
+        self.state = None
+        self.busy_shown = False
+        self.poll = None
+        self.connect("map", lambda *_: self._start_polling())
+        self.connect("unmap", lambda *_: self._stop_polling())
+
+    def _start_polling(self):
+        if self.poll is None:
+            self.poll = GLib.timeout_add_seconds(2, self._check)
+
+    def _stop_polling(self):
+        if self.poll is not None:
+            GLib.source_remove(self.poll)
+            self.poll = None
+
+    def _check(self):
+        busy = compiz.package_manager_busy()
+        if busy != self.busy_shown:
+            self.busy_shown = busy
+            self.busy_row.set_visible(busy)
+            self.busy_spinner.set_property("active", busy)
+        if not busy and compiz.install_state() != self.state:
+            self.load()  # finished installing or removing: show the matching view
+        return True
 
     def load(self):
+        self.state = compiz.install_state()
+        section = self.ccsm_section()
         for c in self.body.get_children():
-            if c is not self.ccsm_section():
+            if c is not section:
                 c.destroy()
+        if section is not None and not self.state[2]:
+            # ccsm was removed: take the hosted copy down
+            section.destroy()
+            self._ccsm_section = None
+            self.ccsm = None
+            self.win.ccsm = None
+        self.body.pack_start(self._busy(), False, False, 0)
         self.body.pack_start(self._current(), False, False, 0)
         self.body.pack_start(self._compiz(), False, False, 0)
-        if compiz.ccsm_available():
+        if self.state[2]:
             section = self.ccsm_section(create=True)
             if section.get_parent() is None:
                 self.body.pack_start(section, True, True, 0)
             self.body.reorder_child(section, -1)
         self.show_all()
+
+    def _busy(self):
+        self.busy_row = Gtk.Box(spacing=10, margin_bottom=12, no_show_all=True)
+        self.busy_spinner = Gtk.Spinner()
+        label = Gtk.Label(label="Software is being installed or removed… this page updates when it's done.",
+                          xalign=0, wrap=True)
+        self.busy_row.pack_start(self.busy_spinner, False, False, 0)
+        self.busy_row.pack_start(label, False, False, 0)
+        self.busy_spinner.show()
+        label.show()
+        self.busy_row.set_visible(self.busy_shown)
+        self.busy_spinner.set_property("active", self.busy_shown)
+        return self.busy_row
 
     # ------------------------------------------------------------ what's running
     def _current(self):
@@ -81,7 +128,7 @@ class WindowManagerPage(Gtk.ScrolledWindow):
         pitch = Gtk.Label(label=COMPIZ_PITCH, xalign=0, wrap=True)
         box.pack_start(pitch, False, False, 0)
         rows = []
-        if not compiz.compiz_installed():
+        if not self.state[0]:  # same snapshot the page was drawn for
             if sess in ("mate", "xfce"):
                 how = "drape installs Compiz and its settings manager; you can switch to it right here."
             else:
@@ -92,7 +139,7 @@ class WindowManagerPage(Gtk.ScrolledWindow):
             b.connect("clicked", lambda _b: self._install())
             rows.append(_row("Compiz, its settings and all the plugins", b, how))
         elif sess not in ("mate", "xfce"):
-            ready = compiz.mate_session_installed()
+            ready = self.state[1]
             if ready:
                 if compiz.mate_wm_setting() != "compiz":
                     compiz.use_compiz_in_mate(True)
