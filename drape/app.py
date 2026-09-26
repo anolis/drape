@@ -1030,7 +1030,7 @@ class Window(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="drape")
         self.set_default_size(1180, 760)
-        self.set_icon_name("preferences-desktop-theme")
+        self.set_app_icon()
         self.busy = {}  # item id -> {"bars": [...]}
 
         hb = Gtk.HeaderBar(show_close_button=True, title="drape",
@@ -1104,6 +1104,19 @@ class Window(Gtk.ApplicationWindow):
         self._closing = threading.Event()
         self.connect("destroy", lambda *_: self._closing.set())
         GLib.timeout_add_seconds(4, self._start_prefetch)
+
+    def set_app_icon(self):
+        """The drape mark: from the icon theme once installed, else straight from the repo."""
+        if Gtk.IconTheme.get_default().has_icon(APP_ID):
+            Gtk.Window.set_default_icon_name(APP_ID)
+            self.set_icon_name(APP_ID)
+            return
+        svg = Path(__file__).resolve().parent.parent / "data" / f"{APP_ID}.svg"
+        try:
+            Gtk.Window.set_default_icon_from_file(str(svg))
+            self.set_icon_from_file(str(svg))
+        except GLib.Error:
+            self.set_icon_name("preferences-desktop-theme")
 
     # pages below the "Settings" divider in the sidebar; everything above is for finding and applying themes
     SETTINGS_PAGES = ("lock",)

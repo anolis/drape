@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- the drape mark from the website, scaled 4x from its 32x32 original -->
+  <path d="M24 16h80v16c-12 0-20 12-20 28v52H44V60c0-16-8-28-20-28z" fill="#d9480f"/>
+</svg>
