@@ -23,6 +23,9 @@ from .installer import system_copies, system_file_name  # noqa: E402,F401
 APP_ID = "io.github.anolis.Drape"
 THUMB_DIR = Path(GLib.get_user_cache_dir()) / "drape" / "thumbs"
 CARD_W, CARD_H = 260, 160
+# Window borders only reach apps that let the window manager draw their title bar
+WM_NOTE = ("Window borders only show on apps with a classic title bar, like Files (Nemo). Apps that draw "
+           "their own title bar, like drape and most GNOME apps, follow your Controls theme instead.")
 CHUNK = 10          # results per request: small batches paint sooner on slow connections
 FIRST_CHUNKS = 3    # batches requested up front when a tab opens
 
@@ -690,6 +693,8 @@ class BrowsePage(Gtk.Box):
             if d and desktop.cinnamon_theme_outdated(d):
                 return None, (f"⚠ Your Desktop theme <b>{GLib.markup_escape_text(current)}</b> was "
                               f"{desktop.OUTDATED_NOTE}. Pick a newer one to fix that.")
+        if self.kind == "wm":
+            return None, WM_NOTE
         if self.kind == "boot" and not system.plymouth_installed():
             return None, ("Plymouth, which draws the boot splash, isn't installed. drape will offer to install "
                           "it when you apply one.")
@@ -1049,10 +1054,17 @@ class InstalledPage(Gtk.Box):
             self.chip[key] = rb
         self.tabs.connect("notify::visible-child", lambda *_: self._sync_chip())
         self.pack_start(self.chips, False, False, 0)
+        # a short explanation for tabs that need one
+        self.hint = Gtk.Label(xalign=0, wrap=True, margin=12, margin_bottom=0, no_show_all=True)
+        self.hint.get_style_context().add_class("dim-label")
+        self.pack_start(self.hint, False, False, 0)
         self.pack_start(self.tabs, True, True, 0)
 
     def _sync_chip(self):
-        rb = self.chip.get(self.tabs.get_visible_child_name())
+        name = self.tabs.get_visible_child_name()
+        self.hint.set_text(WM_NOTE if name == "wm" else "")
+        self.hint.set_visible(name == "wm")
+        rb = self.chip.get(name)
         if rb and not rb.get_active():
             rb.set_active(True)
 
@@ -1579,7 +1591,9 @@ class Window(Gtk.ApplicationWindow):
             return
         applied = desktop.apply_component(component, only)
         if applied:
-            self.notify(f"Now using {component['name']} ({', '.join(applied)}).")
+            note = (" Window borders show on apps with a classic title bar, like Files; apps with their own "
+                    "title bar follow your Controls theme.") if "wm" in applied else ""
+            self.notify(f"Now using {component['name']} ({', '.join(applied)}).{note}")
         else:
             self.notify("Your desktop doesn't support applying this automatically.", Gtk.MessageType.WARNING)
         self.refresh_item()
