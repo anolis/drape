@@ -202,9 +202,11 @@ def _system_kind(d):
     if (meta.is_file() and "SddmGreeterTheme" in _read(meta)) or \
             ((d / "Main.qml").is_file() and ((d / "theme.conf").is_file() or meta.is_file())):
         return "sddm"
-    if (d / "index.html").is_file() and ((d / "index.yml").is_file() or "lightdm" in _read(d / "index.html")
-                                         or any("lightdm" in _read(js) for js in d.glob("*.js"))):
-        return "webgreeter"
+    if (d / "index.html").is_file():
+        markers = any((d / m).is_file() for m in ("index.yml", "index.theme", "theme.json"))
+        scripts = [p for p in d.rglob("*.js") if "node_modules" not in p.parts][:40]
+        if markers or "lightdm" in _read(d / "index.html") or any("lightdm" in _read(js) for js in scripts):
+            return "webgreeter"
     if any(d.glob("*.gresource")) and ("gdm" in d.name.lower() or any("gnome-shell" in p.name for p in d.glob("*.gresource"))):
         return "gdm"
     return None
@@ -252,13 +254,15 @@ def classify(root, fallback_name):
             components.append(Component(("cursors",), d, name.removesuffix(".d"), windows=True))
             return
         for c in sorted(d.iterdir()):
-            if c.is_dir() and not c.is_symlink() and not c.name.startswith("__MACOSX"):
+            if c.is_dir() and not c.is_symlink() and c.name != ".git" and not c.name.startswith("__MACOSX"):
                 walk(c)
 
     walk(root)
     if not components:
+        # images inside a web page's assets (fonts, css, ...) aren't wallpapers
+        skip = {"__MACOSX", ".git", "css", "fonts", "font", "js", "node_modules"}
         images = [p for p in sorted(root.rglob("*"))
-                  if p.is_file() and p.suffix.lower() in IMAGE_EXTS and "__MACOSX" not in p.parts]
+                  if p.is_file() and p.suffix.lower() in IMAGE_EXTS and not skip & set(p.relative_to(root).parts[:-1])]
         if images:
             components = [Component(("wallpapers",), p, p.name) for p in images]
     return components
@@ -327,7 +331,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                     shutil.rmtree(dest, ignore_errors=True)
                     raise InstallError(str(e)) from e
             elif c.path.is_dir():
-                shutil.copytree(c.path, dest, symlinks=True)
+                shutil.copytree(c.path, dest, symlinks=True, ignore=shutil.ignore_patterns(".git"))
             else:
                 shutil.copy2(c.path, dest)
             installed.append(str(dest))
