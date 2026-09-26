@@ -43,7 +43,10 @@ INITRD_TOOLS = [
     ("dracut", ["dracut", "--regenerate-all", "--force"]),
 ]
 # only these packages can be installed through the helper
-PACKAGES = {"plymouth", "plymouth-themes", "lightdm-gtk-greeter", "slick-greeter", "sddm", "lightdm"}
+PACKAGES = {"plymouth", "plymouth-themes", "lightdm-gtk-greeter", "slick-greeter", "sddm", "lightdm",
+            # Compiz, and a minimal MATE session for it on desktops that can't host it (Cinnamon)
+            "compiz", "compiz-mate", "compizconfig-settings-manager", "compiz-plugins", "compiz-plugins-extra",
+            "emerald", "mate-session-manager", "mate-panel", "mate-settings-daemon", "caja", "marco"}
 DISPLAY_MANAGERS = {"lightdm": "/usr/sbin/lightdm", "sddm": "/usr/bin/sddm"}
 GREETER_CONF = {
     "slick-greeter": (Path("/etc/lightdm/slick-greeter.conf"), "Greeter"),

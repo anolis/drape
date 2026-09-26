@@ -1365,6 +1365,10 @@ class Window(Gtk.ApplicationWindow):
         from .lockpage import LockLoginPage
         self.lockpage = LockLoginPage(self, login_commands)
         self.stack.add_titled(self.lockpage, "lock", "Lock & login")
+        from .wmpage import WindowManagerPage
+        self.ccsm = None  # ccsm hosted on the Window manager page, once loaded
+        self.wmpage = WindowManagerPage(self)
+        self.stack.add_titled(self.wmpage, "windowmanager", "Window manager")
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
         side = self._sidebar()
@@ -1409,7 +1413,16 @@ class Window(Gtk.ApplicationWindow):
             self.set_icon_name("preferences-desktop-theme")
 
     # pages below the "Settings" divider in the sidebar; everything above is for finding and applying themes
-    SETTINGS_PAGES = ("lock",)
+    SETTINGS_PAGES = ("lock", "windowmanager")
+
+    def __getattr__(self, name):
+        """ccsm's pages call their window (widget.get_toplevel()) to switch pages; pass those to the
+        ccsm hosted on the Window manager page."""
+        from .compiz import FORWARDED
+        ccsm = self.__dict__.get("ccsm")
+        if name in FORWARDED and ccsm is not None:
+            return getattr(ccsm, name)
+        raise AttributeError(name)
 
     def _sidebar(self):
         """Like Gtk.StackSidebar, plus a labelled divider between theme pages and settings pages."""
@@ -1532,11 +1545,13 @@ class Window(Gtk.ApplicationWindow):
 
     def on_page(self):
         child = self.stack.get_visible_child()
-        searchable = child not in (self.installed, self.lockpage)
+        searchable = child not in (self.installed, self.lockpage, self.wmpage)
         self.search.set_sensitive(searchable)
         self.sort_combo.set_sensitive(searchable)
         if child is self.lockpage:
             self.lockpage.load()
+        elif child is self.wmpage:
+            self.wmpage.load()
         elif child is self.installed:
             self.installed.load()
         elif not child.loaded:
