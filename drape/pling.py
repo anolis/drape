@@ -110,7 +110,8 @@ class PlingError(Exception):
 def _get(path, params=None):
     params = dict(params or {}, format="json")
     try:
-        r = requests.get(f"{API}/{path}", params=params, timeout=20,
+        # slow connections can take a while to deliver a page; only give up if nothing arrives at all
+        r = requests.get(f"{API}/{path}", params=params, timeout=(15, 90),
                          headers={"User-Agent": USER_AGENT})
         r.raise_for_status()
         data = r.json()
@@ -119,6 +120,12 @@ def _get(path, params=None):
     if data.get("status") != "ok":
         raise PlingError(data.get("message") or "gnome-look.org returned an error")
     return data
+
+
+def thumb_url(url):
+    """gnome-look serves every preview at several sizes; cards only need the small one
+    (about a quarter of the download)."""
+    return url.replace("/cache/770x540-4/", "/cache/280x171-2/") if url else url
 
 
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "search"

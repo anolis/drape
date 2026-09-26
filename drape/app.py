@@ -21,7 +21,8 @@ from . import helper as root_helper  # noqa: E402
 APP_ID = "io.github.anolis.Drape"
 THUMB_DIR = Path(GLib.get_user_cache_dir()) / "drape" / "thumbs"
 CARD_W, CARD_H = 260, 160
-PAGE_SIZE = 30
+CHUNK = 10          # results per request: small batches paint sooner on slow connections
+FIRST_CHUNKS = 3    # batches requested up front when a tab opens
 
 _images = ThreadPoolExecutor(max_workers=6)
 
@@ -191,6 +192,29 @@ def _show(image, result):
         image.set_from_pixbuf(result)
 
 
+_foreground = {"pending": 0}  # previews the user is waiting to see; background prefetch waits for these
+_fg_lock = threading.Lock()
+
+
+def _fetch_thumb(url, width, height):
+    """Download a preview and keep a card-sized copy on disk (no GTK objects touched)."""
+    THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1(url.encode()).hexdigest()
+    small = THUMB_DIR / f"{digest}-{width}x{height}.png"
+    original = THUMB_DIR / digest
+    if small.exists() or original.exists():
+        return
+    r = requests.get(url, timeout=(15, 90), headers={"User-Agent": pling.USER_AGENT})
+    r.raise_for_status()
+    tmp = original.with_suffix(".part")
+    tmp.write_bytes(r.content)
+    tmp.replace(original)
+    if url.lower().split("?")[0].endswith(".gif"):
+        return  # possibly animated: played from the original
+    _decode(original, width, height).savev(str(small), "png", [], [])
+    original.unlink(missing_ok=True)
+
+
 def load_image(url, image, width, height, on_done=None):
     """Show a preview in `image`, scaled to fit. Downloads once, keeps a card-sized copy on disk and
     decoded images in memory, so revisiting a tab is instant. Local paths work too."""
@@ -215,7 +239,7 @@ def load_image(url, image, width, height, on_done=None):
         else:
             path = Path(url) if local else THUMB_DIR / digest
             if not path.exists():
-                r = requests.get(url, timeout=20, headers={"User-Agent": pling.USER_AGENT})
+                r = requests.get(url, timeout=(15, 90), headers={"User-Agent": pling.USER_AGENT})
                 r.raise_for_status()
                 tmp = path.with_suffix(".part")
                 tmp.write_bytes(r.content)
@@ -240,6 +264,11 @@ def load_image(url, image, width, height, on_done=None):
             GLib.idle_add(image.set_from_icon_name, "image-missing", Gtk.IconSize.DIALOG)
             if on_done:
                 GLib.idle_add(on_done, False)
+        finally:
+            with _fg_lock:
+                _foreground["pending"] -= 1
+    with _fg_lock:
+        _foreground["pending"] += 1
     _images.submit(safe)
 
 
@@ -435,14 +464,22 @@ class Card(Gtk.FlowBoxChild):
         frame.get_style_context().add_class("view")
         box.pack_start(frame, False, False, 0)
 
-        self.image = Gtk.Image.new_from_icon_name("image-loading", Gtk.IconSize.DIALOG)
+        self.image = Gtk.Image()
         self.image.set_size_request(CARD_W, CARD_H)
+        overlay = Gtk.Overlay()
+        overlay.add(self.image)
         ev = Gtk.EventBox()
-        ev.add(self.image)
+        ev.add(overlay)
         ev.connect("button-release-event", lambda *_: window.show_details(kind, item))
         frame.add(ev)
         if item.previews:
-            load_image(item.previews[0], self.image, CARD_W, CARD_H)
+            spinner = Gtk.Spinner(active=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+            spinner.set_size_request(32, 32)
+            overlay.add_overlay(spinner)
+            load_image(pling.thumb_url(item.previews[0]), self.image, CARD_W, CARD_H,
+                       on_done=lambda _ok: spinner.destroy())
+        else:
+            self.image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
 
         title = Gtk.Label(label=item.name, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=28)
         title.set_markup(f"<b>{GLib.markup_escape_text(item.name)}</b>")
@@ -489,20 +526,36 @@ class Card(Gtk.FlowBoxChild):
 
 
 class BrowsePage(Gtk.Box):
+    """One category's results: first batch as soon as it arrives, the rest behind it, more on scroll."""
+
     def __init__(self, window, kind):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win, self.kind = window, kind
-        self.page = 0
         self.generation = 0
         self.total = 0
+        self.next_chunk = 0
+        self.fetching = False
+        self.loaded = False
 
         self.flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                                 valign=Gtk.Align.START, max_children_per_line=8,
                                 margin=12, row_spacing=6, column_spacing=6)
-        self.more = Gtk.Button(label="Load more", halign=Gtk.Align.CENTER, margin=12, no_show_all=True)
-        self.more.connect("clicked", lambda _b: self.load(append=True))
-        self.status = Gtk.Label(margin=24, no_show_all=True, wrap=True)
-        self.status.get_style_context().add_class("dim-label")
+        # "Asking gnome-look.org…" with a spinner, or a message
+        self.status = Gtk.Box(spacing=10, margin=24, halign=Gtk.Align.CENTER, no_show_all=True)
+        self.status_spinner = Gtk.Spinner()
+        self.status_label = Gtk.Label(wrap=True)
+        self.status_label.get_style_context().add_class("dim-label")
+        self.status.pack_start(self.status_spinner, False, False, 0)
+        self.status.pack_start(self.status_label, False, False, 0)
+        # spinner at the bottom while the next batch loads
+        self.more = Gtk.Box(spacing=8, margin=16, halign=Gtk.Align.CENTER, no_show_all=True)
+        more_spinner = Gtk.Spinner(active=True)
+        more_label = Gtk.Label(label="Loading more…")
+        more_label.get_style_context().add_class("dim-label")
+        self.more.pack_start(more_spinner, False, False, 0)
+        self.more.pack_start(more_label, False, False, 0)
+        more_spinner.show()
+        more_label.show()
 
         # explains what this tab shows on this computer (login screens, boot splash)
         self.banner = Gtk.Label(xalign=0, wrap=True, margin=12, margin_bottom=0, no_show_all=True, use_markup=True)
@@ -513,75 +566,133 @@ class BrowsePage(Gtk.Box):
         inner.pack_start(self.status, False, False, 0)
         inner.pack_start(self.flow, False, False, 0)
         inner.pack_start(self.more, False, False, 0)
-        sw = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
-        sw.add(inner)
-        self.pack_start(sw, True, True, 0)
-        self.loaded = False
+        self.scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.scroller.add(inner)
+        self.scroller.get_vadjustment().connect("value-changed", lambda *_: self._maybe_more())
+        self.scroller.get_vadjustment().connect("changed", lambda *_: self._maybe_more())
+        self.pack_start(self.scroller, True, True, 0)
 
     def cards(self):
         return self.flow.get_children()
 
-    def _set_status(self, text):
-        self.status.set_text(text or "")
+    def _set_status(self, text, busy=False):
+        self.status_label.set_text(text or "")
+        self.status_spinner.set_visible(busy)
+        self.status_spinner.set_property("active", busy)
         self.status.set_visible(bool(text))
+        self.status_label.show()
 
-    def load(self, append=False):
+    def _params(self):
+        return self.win.query(), self.win.sort()
+
+    def _add(self, items):
+        for it in items:
+            self.flow.add(Card(self.win, self.kind, it))
+        self.flow.show_all()
+
+    def load(self):
         self.loaded = True
         self.generation += 1
         gen = self.generation
-        if not append:
-            self.page = 0
-            for c in self.cards():
-                c.destroy()
-        self._set_status("Loading…" if not append else "")
+        for c in self.cards():
+            c.destroy()
+        self.next_chunk, self.total, self.fetching = 0, 0, False
         self.more.hide()
-        query, sort, page = self.win.query(), self.win.sort(), self.page
         categories, banner = self._scope()
         self.banner.set_markup(banner)
         self.banner.set_visible(bool(banner))
+        self.categories = categories
         if categories == "":
             self._set_status("")
             return
+        query, sort = self._params()
+
+        # results from last time show instantly, then get refreshed
+        shown = []
+        for i in range(FIRST_CHUNKS):
+            cached = pling.cached_search(self.kind, query, sort, i, CHUNK, categories)
+            if not cached or not cached[0]:
+                break
+            self._add(cached[0])
+            shown += [it.id for it in cached[0]]
+            self.total = cached[1]
+        if shown:
+            self._set_status("")
+        else:
+            self._set_status("Asking gnome-look.org…", busy=True)
+
+        def slow():
+            if gen == self.generation and not self.cards() and self.status.get_visible():
+                self._set_status("Still waiting for gnome-look.org - the connection seems slow. "
+                                 "Results will show as soon as they arrive.", busy=True)
+            return False
+        GLib.timeout_add_seconds(6, slow)
+
+        # the first few batches in parallel; shown in order as they arrive
+        results, fresh = {}, []
+        state = {"next": 0, "replaced": not shown}
+
+        def arrived(i, result):
+            if gen != self.generation:
+                return
+            results[i] = result
+            while state["next"] in results:
+                items, total = results.pop(state["next"])
+                state["next"] += 1
+                self.total = total
+                fresh.extend(items)
+                if state["replaced"]:
+                    self._add(items)
+                elif [it.id for it in fresh] != shown[:len(fresh)]:
+                    # gnome-look changed since last time: swap in the fresh results
+                    for c in self.cards():
+                        c.destroy()
+                    self._add(fresh)
+                    state["replaced"] = True
+            if state["next"]:
+                self._set_status("" if self.cards() else "Nothing found.")
+            self._maybe_more()
+
+        def failed(e):
+            if gen == self.generation and not self.cards():
+                self._set_status(f"Couldn't reach gnome-look.org: {e}")
+
+        for i in range(FIRST_CHUNKS):
+            run_async(lambda i=i: pling.search(self.kind, query, sort, i, CHUNK, categories),
+                      lambda r, i=i: arrived(i, r), failed)
+        self.next_chunk = FIRST_CHUNKS
+
+    def _has_more(self, chunks):
+        return chunks * CHUNK < self.total
+
+    def _maybe_more(self):
+        """Infinite scroll: start the next batch when the bottom is within a couple of rows."""
+        if self.fetching or not self.loaded or not self.cards() or not self._has_more(self.next_chunk):
+            return
+        adj = self.scroller.get_vadjustment()
+        if adj.get_value() + adj.get_page_size() < adj.get_upper() - 2 * (CARD_H + 120):
+            return
+        self.fetching = True
+        self.more.show()
+        gen, chunk = self.generation, self.next_chunk
+        query, sort = self._params()
 
         def done(result):
             if gen != self.generation:
                 return
-            items, total = result
-            self.total = total
-            self._set_status("" if items or append else "Nothing found.")
-            for it in items:
-                self.flow.add(Card(self.win, self.kind, it))
-            self.flow.show_all()
-            self.page += 1
-            self.more.set_visible(len(self.cards()) < total)
+            self.fetching = False
+            self.more.hide()
+            self.next_chunk = chunk + 1
+            self.total = result[1]
+            known = {c.item.id for c in self.cards()}
+            self._add([it for it in result[0] if it.id not in known])
+            GLib.idle_add(self._maybe_more)  # still near the bottom (tall window)? keep going
 
-        def error(e):
+        def failed(_e):
             if gen == self.generation:
-                self._set_status(str(e))
-
-        shown = None
-        if not append:
-            cached = pling.cached_search(self.kind, query, sort, page, PAGE_SIZE, categories)
-            if cached and cached[0]:
-                done(cached)
-                shown = [it.id for it in cached[0]]
-
-        def fresh(result):
-            if gen != self.generation:
-                return
-            if shown is not None:
-                if [it.id for it in result[0]] == shown:
-                    return  # nothing changed since last time
-                for c in self.cards():
-                    c.destroy()
-                self.page = 0
-            done(result)
-
-        def fresh_error(e):
-            if shown is None:
-                error(e)  # with remembered results on screen, stay quiet when offline
-
-        run_async(lambda: pling.search(self.kind, query, sort, page, PAGE_SIZE, categories), fresh, fresh_error)
+                self.fetching = False
+                self.more.hide()
+        run_async(lambda: pling.search(self.kind, query, sort, chunk, CHUNK, self.categories), done, failed)
 
     def _scope(self):
         """(categories to search or None for the default, explanation) for this computer."""
@@ -623,7 +734,7 @@ def entry_image(key, entry, image, width, height, wallpaper=None):
     if wallpaper:
         load_image(wallpaper["path"], image, width, height)
     elif entry.get("preview"):
-        load_image(entry["preview"], image, width, height)
+        load_image(pling.thumb_url(entry["preview"]) if width <= 300 else entry["preview"], image, width, height)
     elif walls:
         load_image(walls[0]["path"], image, width, height)
     elif key.isdigit():
@@ -975,6 +1086,9 @@ class Window(Gtk.ApplicationWindow):
         self.add(root)
         self.show_all()
         self.on_page()
+        self._closing = threading.Event()
+        self.connect("destroy", lambda *_: self._closing.set())
+        GLib.timeout_add_seconds(4, self._start_prefetch)
 
     # pages below the "Settings" divider in the sidebar; everything above is for finding and applying themes
     SETTINGS_PAGES = ("lock",)
@@ -1028,6 +1142,40 @@ class Window(Gtk.ApplicationWindow):
         sw.set_size_request(170, -1)
         sw.add(lb)
         return sw
+
+    def _start_prefetch(self):
+        """Quietly cache the first results and previews of every tab, so opening one is instant.
+        One download at a time, and paused whenever previews on screen are still loading."""
+        sort = self.sort()
+        plan = []
+        for kind, page in self.pages.items():
+            categories, _ = page._scope()
+            if categories != "":
+                plan.append((kind, categories))
+
+        def idle_wait():
+            while _foreground["pending"] > 0 and not self._closing.is_set():
+                self._closing.wait(0.5)
+            return not self._closing.is_set()
+
+        def run():
+            for kind, categories in plan:
+                for chunk in range(FIRST_CHUNKS):
+                    if not idle_wait():
+                        return
+                    cached = pling.cached_search(kind, "", sort, chunk, CHUNK, categories, max_age=6 * 3600)
+                    try:
+                        items = cached[0] if cached else pling.search(kind, "", sort, chunk, CHUNK, categories)[0]
+                    except pling.PlingError:
+                        return  # offline: try again next launch
+                    for it in items:
+                        if it.previews and idle_wait():
+                            try:
+                                _fetch_thumb(pling.thumb_url(it.previews[0]), CARD_W, CARD_H)
+                            except Exception:  # noqa: BLE001 - best effort
+                                pass
+        threading.Thread(target=run, daemon=True).start()
+        return False
 
     # ------------------------------------------------------------ helpers
     def _toggle_applicable(self, item):
