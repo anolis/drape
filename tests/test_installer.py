@@ -343,3 +343,42 @@ class CinnamonCompatTest(unittest.TestCase):
             old.mkdir(parents=True)
             (old / "cinnamon.css").write_text(".modal-dialog {}\n")
             self.assertFalse(desktop.cinnamon_theme_outdated(old.parent))  # fine on Cinnamon < 5.4
+
+
+class CacheTest(unittest.TestCase):
+    def test_search_results_are_remembered(self):
+        from drape import pling
+        data = {"status": "ok", "totalitems": 1, "data": [{"id": 7, "name": "Seven", "downloadlink1": "u",
+                                                           "downloadname1": "s.tar.gz"}]}
+        with tempfile.TemporaryDirectory() as t, mock.patch.object(pling, "CACHE", Path(t)), \
+                mock.patch.object(pling, "_get", lambda path, params: data):
+            self.assertIsNone(pling.cached_search("icons", "seven"))
+            pling.search("icons", "seven")
+            items, total = pling.cached_search("icons", "seven")
+            self.assertEqual((items[0].name, total), ("Seven", 1))
+            self.assertIsNone(pling.cached_search("icons", "other"))
+            self.assertIsNone(pling.cached_search("icons", "seven", max_age=-1))
+
+    def test_animated_gif_previews_decode(self):
+        from drape import app
+        with tempfile.TemporaryDirectory() as t:
+            gif = Path(t) / "anim.gif"
+            frames = [Image.new("RGB", (300, 200), c) for c in ("red", "blue", "green")]
+            frames[0].save(gif, save_all=True, append_images=frames[1:], duration=100, loop=0)
+            pb = app._decode(gif, 150, 150)
+            self.assertEqual((pb.get_width(), pb.get_height()), (150, 100))
+
+
+class AnimationTest(unittest.TestCase):
+    def test_gif_frames_keep_their_delays(self):
+        from drape import app
+        with tempfile.TemporaryDirectory() as t:
+            gif = Path(t) / "anim.gif"
+            frames = [Image.new("RGB", (400, 200), c) for c in ("red", "blue", "green")]
+            frames[0].save(gif, save_all=True, append_images=frames[1:], duration=[50, 200, 80], loop=0)
+            out = app._frames(gif, 200, 200)
+            self.assertEqual([d for _pb, d in out], [50, 200, 80])
+            self.assertEqual((out[0][0].get_width(), out[0][0].get_height()), (200, 100))
+            still = Path(t) / "still.png"
+            Image.new("RGB", (10, 10)).save(still)
+            self.assertIsNone(app._frames(still, 50, 50))

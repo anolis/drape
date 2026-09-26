@@ -1,7 +1,12 @@
 """Minimal client for the Pling / gnome-look.org OCS API."""
 
+import hashlib
+import json
+import os
 import re
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import requests
 
@@ -116,17 +121,46 @@ def _get(path, params=None):
     return data
 
 
+CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "search"
+
+
+def _search_params(kind, query, sort, page, pagesize, categories):
+    return {"categories": categories or KINDS_BY_KEY[kind].categories, "search": query,
+            "sortmode": SORT_MODES.get(sort, "top"), "page": page, "pagesize": pagesize}
+
+
+def _cache_file(params):
+    return CACHE / (hashlib.sha1(json.dumps(params, sort_keys=True).encode()).hexdigest() + ".json")
+
+
+def _parse(data):
+    return [Item.from_ocs(d) for d in data.get("data") or []], int(data.get("totalitems") or 0)
+
+
 def search(kind, query="", sort="top", page=0, pagesize=30, categories=None):
-    """Return (items, total) for one kind of content."""
-    data = _get("content/data", {
-        "categories": categories or KINDS_BY_KEY[kind].categories,
-        "search": query,
-        "sortmode": SORT_MODES.get(sort, "top"),
-        "page": page,
-        "pagesize": pagesize,
-    })
-    items = [Item.from_ocs(d) for d in data.get("data") or []]
-    return items, int(data.get("totalitems") or 0)
+    """Return (items, total) for one kind of content, fresh from gnome-look (and remembered)."""
+    params = _search_params(kind, query, sort, page, pagesize, categories)
+    data = _get("content/data", params)
+    try:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        tmp = _cache_file(params).with_suffix(".tmp")
+        tmp.write_text(json.dumps(data))
+        tmp.replace(_cache_file(params))
+    except OSError:
+        pass
+    return _parse(data)
+
+
+def cached_search(kind, query="", sort="top", page=0, pagesize=30, categories=None, max_age=7 * 86400):
+    """The last results for this search, if we have them - shown instantly while fresh ones load.
+    Download links inside may have expired; installs always re-fetch the item."""
+    f = _cache_file(_search_params(kind, query, sort, page, pagesize, categories))
+    try:
+        if time.time() - f.stat().st_mtime > max_age:
+            return None
+        return _parse(json.loads(f.read_text()))
+    except (OSError, ValueError):
+        return None
 
 
 def get(item_id):

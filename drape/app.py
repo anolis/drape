@@ -102,25 +102,144 @@ def run_async(work, done, error=None):
     threading.Thread(target=target, daemon=True).start()
 
 
-def load_image(url, image, width, height):
-    """Fetch (with a disk cache) and show a preview in `image`, scaled to fit. Local paths work too."""
+_pixbufs = {}  # (source, width, height) -> Pixbuf, for this session
+_PIXBUF_LIMIT = 600
+
+
+def _decode(path, width, height):
+    """Scale an image to fit; animated GIFs use their first frame (the plain loader rejects them)."""
+    try:
+        return GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), width, height, True)
+    except GLib.Error:
+        pb = GdkPixbuf.PixbufAnimation.new_from_file(str(path)).get_static_image()
+        scale = min(width / pb.get_width(), height / pb.get_height(), 1)
+        return pb.scale_simple(max(1, round(pb.get_width() * scale)), max(1, round(pb.get_height() * scale)),
+                               GdkPixbuf.InterpType.BILINEAR)
+
+
+MAX_FRAMES = 150
+
+
+def _frames(path, width, height):
+    """[(Pixbuf, delay_ms)] for an animated image scaled to fit, or None if it isn't animated."""
+    from PIL import Image, ImageSequence
+    with Image.open(path) as im:
+        if not getattr(im, "is_animated", False):
+            return None
+        scale = min(width / im.width, height / im.height, 1)
+        size = (max(1, round(im.width * scale)), max(1, round(im.height * scale)))
+        frames = []
+        for frame in ImageSequence.Iterator(im):
+            delay = frame.info.get("duration") or 100
+            rgba = frame.convert("RGBA").resize(size, Image.BILINEAR)
+            pb = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(rgba.tobytes()), GdkPixbuf.Colorspace.RGB,
+                                                 True, 8, size[0], size[1], size[0] * 4)
+            frames.append((pb, max(20, int(delay))))
+            if len(frames) >= MAX_FRAMES:
+                break
+    return frames if len(frames) > 1 else None
+
+
+def _play(image, frames):
+    """Cycle `image` through frames with their own delays; pauses while the image isn't on screen."""
+    state = {"i": 0, "timer": None}
+
+    def step():
+        state["timer"] = None
+        if not image.get_mapped():
+            return False
+        state["i"] = (state["i"] + 1) % len(frames)
+        pb, delay = frames[state["i"]]
+        image.set_from_pixbuf(pb)
+        state["timer"] = GLib.timeout_add(delay, step)
+        return False
+
+    def start(*_):
+        if state["timer"] is None:
+            state["timer"] = GLib.timeout_add(frames[state["i"]][1], step)
+
+    def stop(*_):
+        if state["timer"] is not None:
+            GLib.source_remove(state["timer"])
+            state["timer"] = None
+
+    # a newer image replacing this one ends the animation
+    old = getattr(image, "_drape_anim", None)
+    if old:
+        old()
+    handlers = [image.connect("map", start), image.connect("unmap", stop)]
+
+    def cancel():
+        stop()
+        for h in handlers:
+            if image.handler_is_connected(h):
+                image.disconnect(h)
+        image._drape_anim = None
+    image._drape_anim = cancel
+    image.set_from_pixbuf(frames[0][0])
+    if image.get_mapped():
+        start()
+
+
+def _show(image, result):
+    old = getattr(image, "_drape_anim", None)
+    if old:
+        old()
+    if isinstance(result, list):
+        _play(image, result)
+    else:
+        image.set_from_pixbuf(result)
+
+
+def load_image(url, image, width, height, on_done=None):
+    """Show a preview in `image`, scaled to fit. Downloads once, keeps a card-sized copy on disk and
+    decoded images in memory, so revisiting a tab is instant. Local paths work too."""
+    key = (url, width, height)
+    cached = _pixbufs.get(key)
+    if cached is not None:
+        _show(image, cached)
+        if on_done:
+            on_done(True)
+        return
+
     def work():
         THUMB_DIR.mkdir(parents=True, exist_ok=True)
-        path = Path(url) if url.startswith("/") else THUMB_DIR / hashlib.sha1(url.encode()).hexdigest()
-        if not path.exists():
-            r = requests.get(url, timeout=20, headers={"User-Agent": pling.USER_AGENT})
-            r.raise_for_status()
-            tmp = path.with_suffix(".part")
-            tmp.write_bytes(r.content)
-            tmp.replace(path)
-        pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), width, height, True)
-        GLib.idle_add(image.set_from_pixbuf, pb)
+        local = url.startswith("/")
+        digest = hashlib.sha1(url.encode()).hexdigest()
+        small = THUMB_DIR / f"{digest}-{width}x{height}.png"
+        original = Path(url) if local else THUMB_DIR / digest
+        # GIFs may be animated, so they're always played from the original
+        maybe_animated = url.lower().split("?")[0].endswith(".gif")
+        if not local and small.exists() and not maybe_animated:
+            pb = GdkPixbuf.Pixbuf.new_from_file(str(small))
+        else:
+            path = Path(url) if local else THUMB_DIR / digest
+            if not path.exists():
+                r = requests.get(url, timeout=20, headers={"User-Agent": pling.USER_AGENT})
+                r.raise_for_status()
+                tmp = path.with_suffix(".part")
+                tmp.write_bytes(r.content)
+                tmp.replace(path)
+            pb = _frames(path, width, height)  # animations keep their original to replay from
+            if pb is None:
+                pb = _decode(path, width, height)
+                if not local:
+                    pb.savev(str(small), "png", [], [])
+                    path.unlink(missing_ok=True)  # the card-sized copy is all we need
+        if len(_pixbufs) > _PIXBUF_LIMIT:
+            _pixbufs.clear()
+        _pixbufs[key] = pb
+        GLib.idle_add(_show, image, pb)
+        if on_done:
+            GLib.idle_add(on_done, True)
 
     def safe():
         try:
             work()
         except Exception:  # noqa: BLE001 - a missing preview is not worth an error dialog
             GLib.idle_add(image.set_from_icon_name, "image-missing", Gtk.IconSize.DIALOG)
+            if on_done:
+                GLib.idle_add(on_done, False)
     _images.submit(safe)
 
 
@@ -440,7 +559,29 @@ class BrowsePage(Gtk.Box):
             if gen == self.generation:
                 self._set_status(str(e))
 
-        run_async(lambda: pling.search(self.kind, query, sort, page, PAGE_SIZE, categories), done, error)
+        shown = None
+        if not append:
+            cached = pling.cached_search(self.kind, query, sort, page, PAGE_SIZE, categories)
+            if cached and cached[0]:
+                done(cached)
+                shown = [it.id for it in cached[0]]
+
+        def fresh(result):
+            if gen != self.generation:
+                return
+            if shown is not None:
+                if [it.id for it in result[0]] == shown:
+                    return  # nothing changed since last time
+                for c in self.cards():
+                    c.destroy()
+                self.page = 0
+            done(result)
+
+        def fresh_error(e):
+            if shown is None:
+                error(e)  # with remembered results on screen, stay quiet when offline
+
+        run_async(lambda: pling.search(self.kind, query, sort, page, PAGE_SIZE, categories), fresh, fresh_error)
 
     def _scope(self):
         """(categories to search or None for the default, explanation) for this computer."""
