@@ -15,7 +15,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import requests  # noqa: E402
 
-from . import desktop, installer, pling  # noqa: E402
+from . import desktop, installer, pling, previews  # noqa: E402
 
 APP_ID = "io.github.anolis.Drape"
 THUMB_DIR = Path(GLib.get_user_cache_dir()) / "drape" / "thumbs"
@@ -79,14 +79,130 @@ def error_dialog(parent, title, err):
     d.destroy()
 
 
-class ApplyButton(Gtk.Button):
-    """'Apply' for a single component, or a menu of variants when a download installed several."""
+_renders = ThreadPoolExecutor(max_workers=2)  # theme previews each start a GTK process
 
-    def __init__(self, window, key, kind=None):
-        super().__init__(label="Apply")
+
+class VariantPicker(Gtk.Popover):
+    """Variants on the left; hovering (or arrowing through) one shows its preview on the right."""
+
+    def __init__(self, window, key, kind, comps, relative_to):
+        super().__init__(relative_to=relative_to, position=Gtk.PositionType.BOTTOM)
         self.win, self.key, self.kind = window, key, kind
-        self.get_style_context().add_class("suggested-action")
-        self.connect("clicked", self._on_clicked)
+        self.cache = {}  # path -> Pixbuf, or None while rendering
+        self.showing = None
+
+        box = Gtk.Box(spacing=12, margin=10)
+        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE, activate_on_single_click=True)
+        self.list.connect("row-selected", lambda _l, row: row and self.show(row.comp))
+        self.list.connect("row-activated", lambda _l, row: self.choose(row.comp))
+        for c in comps:
+            row = Gtk.ListBoxRow()
+            row.comp = c
+            ev = Gtk.EventBox(above_child=False)
+            ev.connect("enter-notify-event", lambda _e, _ev, row=row: self.list.select_row(row))
+            line = Gtk.Box(spacing=8, margin=6, margin_end=12)
+            mark = Gtk.Image.new_from_icon_name("object-select-symbolic" if in_use(c) else "", Gtk.IconSize.MENU)
+            mark.set_size_request(16, -1)
+            line.pack_start(mark, False, False, 0)
+            line.pack_start(Gtk.Label(label=c["name"], xalign=0), True, True, 0)
+            ev.add(line)
+            row.add(ev)
+            self.list.add(row)
+        sw = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, propagate_natural_height=True,
+                                max_content_height=previews.H + 40, min_content_width=220)
+        sw.add(self.list)
+        box.pack_start(sw, False, False, 0)
+
+        right = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        frame = Gtk.Frame()
+        frame.get_style_context().add_class("view")
+        self.image = Gtk.Image()
+        self.image.set_size_request(previews.W, previews.H)
+        frame.add(self.image)
+        right.pack_start(frame, False, False, 0)
+        self.caption = Gtk.Label(xalign=0)
+        right.pack_start(self.caption, False, False, 0)
+        hint = Gtk.Label(label="Click a variant to apply it", xalign=0)
+        hint.get_style_context().add_class("dim-label")
+        right.pack_start(hint, False, False, 0)
+        box.pack_start(right, True, True, 0)
+        self.add(box)
+        box.show_all()
+
+        # start on the variant in use, or the first one
+        rows = self.list.get_children()
+        self.list.select_row(next((r for r in rows if in_use(r.comp)), rows[0]))
+        # warm up the rest in the background so hovering feels instant
+        for c in comps:
+            self._ensure(c)
+
+    def _ensure(self, c):
+        path = c["path"]
+        if path in self.cache:
+            return
+        pb = previews.preview(c, self.kind)
+        if pb is not None:
+            self.cache[path] = pb
+            return
+        self.cache[path] = None
+
+        def work():
+            out = previews.theme_preview_path(Path(path), self.kind)
+            if out:
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(out), previews.W, previews.H, True)
+            else:
+                pb = Gtk.IconTheme.get_default().load_icon("image-missing", 64, 0)
+            GLib.idle_add(self._rendered, path, pb)
+        _renders.submit(lambda: _safe(work))
+
+    def _rendered(self, path, pb):
+        self.cache[path] = pb
+        if self.showing == path:
+            self.image.set_from_pixbuf(pb)
+
+    def show(self, c):
+        self.showing = c["path"]
+        self.caption.set_markup(f"<b>{GLib.markup_escape_text(c['name'])}</b>"
+                                + ("  <small>✓ in use</small>" if in_use(c) else ""))
+        self._ensure(c)
+        pb = self.cache.get(c["path"])
+        if pb is None:
+            self.image.set_from_icon_name("image-loading", Gtk.IconSize.DIALOG)
+        else:
+            self.image.set_from_pixbuf(pb)
+
+    def choose(self, c):
+        self.popdown()
+        installer.set_chosen(self.key, self.kind, c["name"])
+        self.win.apply(c, self.kind)
+
+
+def _safe(fn):
+    try:
+        fn()
+    except Exception as e:  # noqa: BLE001
+        print(f"drape: preview failed: {e}", file=sys.stderr)
+
+
+class ApplyControl(Gtk.Box):
+    """[Apply | ▾]: Apply uses the variant in use or last picked; ▾ lists variants with previews."""
+
+    def __init__(self, window, key, kind):
+        super().__init__()
+        self.win, self.key, self.kind = window, key, kind
+        self.get_style_context().add_class("linked")
+        apply = Gtk.Button(label="Apply")
+        apply.get_style_context().add_class("suggested-action")
+        apply.connect("clicked", self._apply)
+        self.pack_start(apply, False, False, 0)
+        comps = self._components()
+        if len(comps) > 1:
+            more = Gtk.Button(image=Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON))
+            more.get_style_context().add_class("suggested-action")
+            more.set_tooltip_text(f"Choose from {len(comps)} variants")
+            more.connect("clicked", self._pick)
+            self.pack_start(more, False, False, 0)
+            apply.set_tooltip_text(f"Apply {self._target(comps)['name']}")
 
     def _components(self):
         entry = installer.load_manifest().get(self.key)
@@ -97,20 +213,26 @@ class ApplyButton(Gtk.Button):
             comps = [c for c in comps if self.kind in c["provides"]] or comps
         return comps
 
-    def _on_clicked(self, _btn):
+    def _target(self, comps):
+        using = [c for c in comps if in_use(c)]
+        if using:
+            return using[0]
+        chosen = installer.load_manifest().get(self.key, {}).get("chosen", {}).get(self.kind)
+        return next((c for c in comps if c["name"] == chosen), comps[0])
+
+    def _apply(self, _btn):
         comps = self._components()
         if self.kind == "wallpapers" and len(comps) > 1:
             self.win.choose_wallpaper(comps)
-        elif len(comps) == 1:
-            self.win.apply(comps[0], self.kind)
         elif comps:
-            self.menu = Gtk.Menu()  # keep a reference so it isn't collected while open
-            for c in comps:
-                mi = Gtk.MenuItem(label=c["name"] + ("  (in use)" if in_use(c) else ""))
-                mi.connect("activate", lambda _m, c=c: self.win.apply(c, self.kind))
-                self.menu.append(mi)
-            self.menu.show_all()
-            self.menu.popup_at_widget(self, Gdk.Gravity.SOUTH_WEST, Gdk.Gravity.NORTH_WEST, None)
+            self.win.apply(self._target(comps), self.kind)
+
+    def _pick(self, btn):
+        comps = self._components()
+        if self.kind == "wallpapers":
+            self.win.choose_wallpaper(comps)
+            return
+        VariantPicker(self.win, self.key, self.kind, comps, btn).popup()
 
 
 class Card(Gtk.FlowBoxChild):
@@ -156,7 +278,7 @@ class Card(Gtk.FlowBoxChild):
             self.win.busy[self.item.id]["bars"].append(bar)
             self.actions.pack_start(bar, True, True, 0)
         elif installed:
-            self.actions.pack_start(ApplyButton(self.win, self.item.id, self.kind), False, False, 0)
+            self.actions.pack_start(ApplyControl(self.win, self.item.id, self.kind), False, False, 0)
             rm = Gtk.Button.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.BUTTON)
             rm.set_tooltip_text("Remove")
             rm.connect("clicked", lambda _b: self.win.remove(self.item.id))
@@ -321,7 +443,7 @@ class InstalledCard(Gtk.FlowBoxChild):
             b.connect("clicked", lambda _b: window.apply(wallpaper))
             actions.pack_start(b, False, False, 0)
         else:
-            actions.pack_start(ApplyButton(window, key, kind), False, False, 0)
+            actions.pack_start(ApplyControl(window, key, kind), False, False, 0)
         if update:
             ub = Gtk.Button(label="Update")
             ub.connect("clicked", lambda _b: window.install(update))

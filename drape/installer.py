@@ -345,6 +345,14 @@ def install_url(url, progress=None, replace_foreign=False):
                                  replace_foreign=replace_foreign, file=path.name)
 
 
+def set_chosen(key, kind, name):
+    """Remember the variant last picked for a category, so plain "Apply" re-uses it."""
+    m = load_manifest()
+    if key in m:
+        m[key].setdefault("chosen", {})[kind] = name
+        save_manifest(m)
+
+
 def set_preview(key, url):
     """Record a preview image for an entry installed before previews were tracked."""
     m = load_manifest()
