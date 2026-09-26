@@ -215,7 +215,7 @@ def _fetch_thumb(url, width, height):
     original.unlink(missing_ok=True)
 
 
-def load_image(url, image, width, height, on_done=None):
+def load_image(url, image, width, height, on_done=None, alive=None):
     """Show a preview in `image`, scaled to fit. Downloads once, keeps a card-sized copy on disk and
     decoded images in memory, so revisiting a tab is instant. Local paths work too."""
     key = (url, width, height)
@@ -259,6 +259,8 @@ def load_image(url, image, width, height, on_done=None):
 
     def safe():
         try:
+            if alive is not None and not alive():
+                return  # the card was thrown away before its turn came
             work()
         except Exception:  # noqa: BLE001 - a missing preview is not worth an error dialog
             GLib.idle_add(image.set_from_icon_name, "image-missing", Gtk.IconSize.DIALOG)
@@ -476,8 +478,17 @@ class Card(Gtk.FlowBoxChild):
             spinner = Gtk.Spinner(active=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
             spinner.set_size_request(32, 32)
             overlay.add_overlay(spinner)
-            load_image(pling.thumb_url(item.previews[0]), self.image, CARD_W, CARD_H,
-                       on_done=lambda _ok: spinner.destroy())
+            alive = threading.Event()
+            alive.set()
+            self.connect("destroy", lambda *_: alive.clear())
+
+            def first_draw(*_):
+                # GTK only draws what's on screen, so off-screen cards and hidden tabs wait their turn
+                self.image.disconnect(handler[0])
+                load_image(pling.thumb_url(item.previews[0]), self.image, CARD_W, CARD_H,
+                           on_done=lambda _ok: spinner.destroy(), alive=alive.is_set)
+                return False
+            handler = [self.image.connect("draw", first_draw)]
         else:
             self.image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
 
@@ -570,6 +581,7 @@ class BrowsePage(Gtk.Box):
         self.scroller.add(inner)
         self.scroller.get_vadjustment().connect("value-changed", lambda *_: self._maybe_more())
         self.scroller.get_vadjustment().connect("changed", lambda *_: self._maybe_more())
+        self.connect("map", lambda *_: GLib.idle_add(self._maybe_more))
         self.pack_start(self.scroller, True, True, 0)
 
     def cards(self):
@@ -669,7 +681,12 @@ class BrowsePage(Gtk.Box):
         """Infinite scroll: start the next batch when the bottom is within a couple of rows."""
         if self.fetching or not self.loaded or not self.cards() or not self._has_more(self.next_chunk):
             return
+        # a hidden tab has no height, so it would always look "at the bottom" and load forever
+        if self.win.stack.get_visible_child() is not self or not self.get_mapped():
+            return
         adj = self.scroller.get_vadjustment()
+        if adj.get_page_size() <= 0:
+            return
         if adj.get_value() + adj.get_page_size() < adj.get_upper() - 2 * (CARD_H + 120):
             return
         self.fetching = True
