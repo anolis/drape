@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=drape
+GenericName=Theme Manager
+Comment=Install icons, cursors, themes and wallpapers from gnome-look.org
+Exec=drape %u
+Icon=preferences-desktop-theme
+Terminal=false
+Categories=Settings;DesktopSettings;GTK;
+Keywords=theme;icons;cursor;wallpaper;background;gtk;cinnamon;gnome-look;pling;
+MimeType=x-scheme-handler/ocs;x-scheme-handler/ocss;
+StartupNotify=true
