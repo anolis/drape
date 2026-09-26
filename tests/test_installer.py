@@ -234,6 +234,44 @@ class InstallerTest(unittest.TestCase):
         self.assertFalse((self.p["THEMES_DIR"] / "T").exists())
         self.assertEqual(installer.load_manifest(), {})
 
+    def test_name_clash_reports_owner_and_installs_nothing(self):
+        old = self.src / "old.zip"
+        make_zip(old, {"Nordic/gtk-3.0/gtk.css": b"old", "Nordic-Dark/gtk-3.0/gtk.css": b"old"})
+        installer.install_file(old, "60", "Nordic pack")
+        new = self.src / "new.zip"
+        # the first variant is new, the second clashes: nothing may be copied
+        make_zip(new, {"Aurora/gtk-3.0/gtk.css": b"new", "Nordic/gtk-3.0/gtk.css": b"new"})
+        with self.assertRaises(installer.ConflictError) as cm:
+            installer.install_file(new, "61", "Other Nordic")
+        self.assertEqual(cm.exception.owners, {"60": {"title": "Nordic pack", "names": ["Nordic"]}})
+        self.assertFalse((self.p["THEMES_DIR"] / "Aurora").exists())
+        self.assertNotIn("61", installer.load_manifest())
+
+    def test_replace_uninstalls_the_other_item_completely(self):
+        old = self.src / "old.zip"
+        make_zip(old, {"Nordic/gtk-3.0/gtk.css": b"old", "Nordic-Dark/gtk-3.0/gtk.css": b"old"})
+        installer.install_file(old, "60", "Nordic pack")
+        new = self.src / "new.zip"
+        make_zip(new, {"Nordic/gtk-3.0/gtk.css": b"new"})
+        installer.install_file(new, "61", "Other Nordic", replace_items=True)
+        m = installer.load_manifest()
+        self.assertNotIn("60", m)
+        self.assertIn("61", m)
+        self.assertEqual((self.p["THEMES_DIR"] / "Nordic/gtk-3.0/gtk.css").read_bytes(), b"new")
+        self.assertFalse((self.p["THEMES_DIR"] / "Nordic-Dark").exists())  # the rest of the old pack went too
+
+    def test_replace_refused_while_other_item_has_system_copies(self):
+        old = self.src / "old.zip"
+        make_zip(old, {"Nordic/gtk-3.0/gtk.css": b"old"})
+        installer.install_file(old, "60", "Nordic pack")
+        new = self.src / "new.zip"
+        make_zip(new, {"Nordic/gtk-3.0/gtk.css": b"new"})
+        with mock.patch.object(installer, "system_copies", lambda e: [("gtk", "Nordic", Path("/x"), "copy")]):
+            with self.assertRaises(installer.InstallError) as cm:
+                installer.install_file(new, "61", "Other Nordic", replace_items=True)
+        self.assertIn("drape remove 60", str(cm.exception))
+        self.assertIn("60", installer.load_manifest())  # nothing was removed
+
     def test_refuses_to_overwrite_foreign_theme(self):
         (self.p["THEMES_DIR"] / "T").mkdir(parents=True)
         a = self.src / "t.zip"

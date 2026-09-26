@@ -18,6 +18,7 @@ import requests  # noqa: E402
 
 from . import animation, desktop, installer, pling, previews, settings, system  # noqa: E402
 from . import helper as root_helper  # noqa: E402
+from .installer import system_copies, system_file_name  # noqa: E402,F401
 
 APP_ID = "io.github.anolis.Drape"
 THUMB_DIR = Path(GLib.get_user_cache_dir()) / "drape" / "thumbs"
@@ -36,14 +37,6 @@ LOGIN_KEYS = {"gtk": ("gtk", "theme-name"), "icons": ("icons", "icon-theme-name"
               "cursors": ("icons", "cursor-theme-name")}
 
 
-def system_file_name(component):
-    """File name for a wallpaper copied to /usr/share/backgrounds/drape; includes the pack name,
-    since packs often use generic names like 1920x1080.png."""
-    p = Path(component["path"])
-    stem = f"{p.parent.name} - {p.stem}" if p.parent.parent == installer.WALLPAPER_DIR else p.stem
-    return installer._system_name(stem) + p.suffix.lower()
-
-
 def login_commands(greeter, kind, component):
     """Helper commands that copy an installed item into /usr/share and point the greeter at it
     (the login screen runs as its own user and can't read your home folder)."""
@@ -60,29 +53,6 @@ def login_commands(greeter, kind, component):
         cmds.append(["install", target, component["path"], "--name", name])
     cmds.append(["greeter-set", greeter, f"{key}={name}"])
     return cmds
-
-
-def system_copies(entry):
-    """(helper kind, name, path, label) for every copy drape put in a system directory for this
-    entry: boot splash / login themes, and things used for the login screen."""
-    found = []
-    for c in entry["components"]:
-        if c.get("system"):
-            path = root_helper.DIRS[c["system"]] / c["name"]
-            if (path / root_helper.MARKER).exists():
-                label = {"plymouth": "Boot splash", "sddm": "SDDM login theme",
-                         "webgreeter": "Web greeter login theme"}[c["system"]]
-                found.append((c["system"], c["name"], path, label + " (system copy)"))
-            continue
-        for kind in ("gtk", "icons", "background"):
-            if kind == "background" and c["provides"] != ["wallpapers"]:
-                continue
-            name = system_file_name(c) if kind == "background" else c["name"]
-            path = root_helper.DIRS[kind] / name
-            marker = Path(str(path) + root_helper.MARKER) if kind == "background" else path / root_helper.MARKER
-            if marker.exists():
-                found.append((kind, name, path, "Login screen copy"))
-    return found
 
 
 def matches(kind, component):
@@ -1320,23 +1290,35 @@ class Window(Gtk.ApplicationWindow):
                         bar.pulse()
             GLib.idle_add(update)
 
+        flags = {"foreign": False, "items": False}  # what the user agreed to replace
+
         def work():
             fresh = pling.get(item.id)  # download links are signed and expire
             try:
-                return installer.install_item(fresh, file_index, progress)
+                return installer.install_item(fresh, file_index, progress, flags["foreign"], flags["items"])
+            except installer.ConflictError as e:
+                return e  # ask the user on the main thread
             except installer.InstallError as e:
                 if "wasn't installed by drape" not in str(e):
                     raise
-                return e  # ask the user on the main thread
+                return e
+
+        def retry():
+            self.busy[item.id] = {"bars": []}
+            self.refresh_item(item.id)
+            run_async(work, done, error)
 
         def done(result):
             self.busy.pop(item.id, None)
-            if isinstance(result, installer.InstallError):
-                if self.confirm_overwrite(str(result)):
-                    self.busy[item.id] = {"bars": []}
-                    run_async(lambda: installer.install_item(pling.get(item.id), file_index, progress, True),
-                              done, error)
+            if isinstance(result, installer.ConflictError):
                 self.refresh_item(item.id)
+                self.resolve_conflict(result, lambda: (flags.update(items=True), retry()))
+                return
+            if isinstance(result, installer.InstallError):
+                self.refresh_item(item.id)
+                if self.confirm_overwrite(str(result)):
+                    flags["foreign"] = True
+                    retry()
                 return
             self.installed.updates.pop(item.id, None)
             self.refresh_item(item.id)
@@ -1359,6 +1341,29 @@ class Window(Gtk.ApplicationWindow):
             error_dialog(self, f"Couldn't install {item.name}", e)
 
         run_async(work, done, error)
+
+    def resolve_conflict(self, err, then):
+        """Another installed item has a theme with the same name: offer to uninstall it and go ahead."""
+        esc = GLib.markup_escape_text
+        m = installer.load_manifest()
+        owners = [(k, o) for k, o in err.owners.items() if k in m]
+        names = sorted({n for _k, o in owners for n in o["names"]})
+        olds = " and ".join(f"<b>{esc(o['title'])}</b>" for _k, o in owners)
+        text = (f"<b>{esc(err.title)}</b> installs a theme called <b>{esc(', '.join(names))}</b>, but {olds} "
+                f"already has one with that name, and only one can be installed.\n\n"
+                f"Replacing uninstalls {olds} (everything it installed) and installs <b>{esc(err.title)}</b>.")
+        if any(in_use(c) for k, _o in owners for c in m[k]["components"]):
+            text += "\n\nIt's in use right now; the new theme takes its place."
+        copies = [c for k, _o in owners for c in system_copies(m[k])]
+        if copies:
+            text += "\n\nIt also has copies for the login screen or boot splash, so you'll be asked for your password."
+        if not self.ask(f"Replace {', '.join(o['title'] for _k, o in owners)}?", text, "Replace", destructive=True):
+            return
+        if copies:
+            self.run_root([["uninstall", kind, name] for kind, name, _p, _l in copies],
+                          "Removing the old theme's system copies…", then)
+        else:
+            then()
 
     def confirm_overwrite(self, msg):
         d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
@@ -1551,8 +1556,14 @@ class Window(Gtk.ApplicationWindow):
             self.installed.load()
             self.notify(f"Installed {entry['title']}. Pick Apply to use it.")
 
-        run_async(lambda: installer.install_url(url), done,
-                  lambda e: error_dialog(self, "Couldn't install from link", e))
+        def attempt(replace=False):
+            def failed(e):
+                if isinstance(e, installer.ConflictError):
+                    self.resolve_conflict(e, lambda: attempt(replace=True))
+                else:
+                    error_dialog(self, "Couldn't install from link", e)
+            run_async(lambda: installer.install_url(url, replace_items=replace), done, failed)
+        attempt()
 
 
 class App(Gtk.Application):

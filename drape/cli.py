@@ -44,7 +44,7 @@ def cmd_show(a):
 def cmd_install(a):
     it = pling.get(a.id)
     print(f"Installing {it.name}...", file=sys.stderr)
-    e = installer.install_item(it, a.file, _progress, a.force)
+    e = installer.install_item(it, a.file, _progress, a.force, _replace(a))
     print(file=sys.stderr)
     _print_entry(it.id, e)
     if a.apply:
@@ -52,17 +52,28 @@ def cmd_install(a):
 
 
 def cmd_install_url(a):
-    key, e = installer.install_url(a.url, _progress, a.force)
+    key, e = installer.install_url(a.url, _progress, a.force, _replace(a))
     print(file=sys.stderr)
     _print_entry(key, e)
     if a.apply:
         _apply(e)
 
 
+def _replace(a):
+    """--replace: uninstall items whose theme names clash (the installer refuses if they still have
+    system copies, which need root to remove - `drape remove <id>` does that)."""
+    return a.replace
+
+
+def _conflict_hint(e):
+    ids = ", ".join(e.owners)
+    return f"{e}\nTo uninstall {ids} and install this instead, add --replace."
+
+
 def cmd_file(a):
     p = Path(a.path)
     e = installer.install_file(p, f"file:{p.name}", p.name.split(".")[0], source=str(p.resolve()),
-                               replace_foreign=a.force, file=p.name)
+                               replace_foreign=a.force, file=p.name, replace_items=_replace(a))
     _print_entry(f"file:{p.name}", e)
 
 
@@ -156,6 +167,8 @@ def main(argv=None):
     s.set_defaults(func=cmd_show)
 
     s = sub.add_parser("install", help="install an item by id")
+    s.add_argument("--replace", action="store_true",
+                   help="if a theme name clashes with another installed item, uninstall that item")
     s.add_argument("id")
     s.add_argument("--file", type=int, help="download number (see `show`), default first")
     s.add_argument("--apply", action="store_true", help="apply after installing")
@@ -163,12 +176,16 @@ def main(argv=None):
     s.set_defaults(func=cmd_install)
 
     s = sub.add_parser("install-url", help="install from an ocs:// link or direct URL")
+    s.add_argument("--replace", action="store_true",
+                   help="if a theme name clashes with another installed item, uninstall that item")
     s.add_argument("url")
     s.add_argument("--apply", action="store_true")
     s.add_argument("--force", action="store_true")
     s.set_defaults(func=cmd_install_url)
 
     s = sub.add_parser("install-file", help="install from a local archive")
+    s.add_argument("--replace", action="store_true",
+                   help="if a theme name clashes with another installed item, uninstall that item")
     s.add_argument("path")
     s.add_argument("--force", action="store_true")
     s.set_defaults(func=cmd_file)
@@ -189,6 +206,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     try:
         a.func(a)
+    except installer.ConflictError as e:
+        sys.exit(f"error: {_conflict_hint(e)}")
     except (pling.PlingError, installer.InstallError) as e:
         sys.exit(f"error: {e}")
 

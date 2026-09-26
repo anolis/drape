@@ -17,7 +17,7 @@ from pathlib import Path
 
 import requests
 
-from . import wincursors
+from . import helper, wincursors
 from .pling import USER_AGENT
 
 HOME = Path.home()
@@ -45,6 +45,16 @@ MAX_NESTING = 2
 
 class InstallError(Exception):
     pass
+
+
+class ConflictError(InstallError):
+    """Something being installed has the same name as part of another installed item."""
+
+    def __init__(self, owners, title):
+        self.owners = owners  # {manifest key: {"title": ..., "names": [clashing names]}}
+        self.title = title
+        clash = "; ".join(f"{', '.join(o['names'])} (from {o['title']})" for o in owners.values())
+        super().__init__(f"{title} has the same name as something already installed: {clash}.")
 
 
 @dataclass
@@ -300,7 +310,8 @@ def _register_wallpaper_folder(folder):
         pass
 
 
-def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview=""):
+def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview="",
+                 replace_items=False):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
@@ -314,14 +325,31 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
         if any(c.provides == ("gdm",) for c in comps):
             raise InstallError("This is a GDM login theme. Those work by replacing a core GNOME Shell file, which "
                                "breaks when GNOME updates, so drape doesn't install them yet.")
+        # check every name before copying anything, so a clash can't leave a half-installed pack
+        conflicts, foreign = {}, []
         for c in comps:
             dest = _dest_for(c, wall_dir)
             if dest.exists() or dest.is_symlink():
                 owner = _owner_of(dest, manifest)
                 if owner not in (None, key):
-                    raise InstallError(f"'{dest.name}' is already installed by another item ({manifest[owner]['title']}).")
-                if owner is None and not replace_foreign:
-                    raise InstallError(f"'{dest}' already exists and wasn't installed by drape.")
+                    conflicts.setdefault(owner, {"title": manifest[owner]["title"], "names": []})["names"].append(dest.name)
+                elif owner is None and not replace_foreign:
+                    foreign.append(dest)
+        if conflicts and not replace_items:
+            raise ConflictError(conflicts, title)
+        if foreign:
+            raise InstallError(f"'{foreign[0]}' already exists and wasn't installed by drape.")
+        for owner in conflicts:
+            if system_copies(manifest[owner]):
+                raise InstallError(f"{manifest[owner]['title']} has copies for the login screen or boot splash, "
+                                   f"which need your password to remove: run `drape remove {owner}` first.")
+        for owner in conflicts:  # the user chose to replace these
+            remove(owner)
+        manifest = load_manifest()
+
+        for c in comps:
+            dest = _dest_for(c, wall_dir)
+            if dest.exists() or dest.is_symlink():
                 shutil.rmtree(dest) if dest.is_dir() and not dest.is_symlink() else dest.unlink()
             dest.parent.mkdir(parents=True, exist_ok=True)
             if c.windows:
@@ -367,7 +395,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
     return manifest[key]
 
 
-def install_item(item, file_index=None, progress=None, replace_foreign=False):
+def install_item(item, file_index=None, progress=None, replace_foreign=False, replace_items=False):
     """Install a pling.Item. The item should be freshly fetched (download links expire)."""
     if not item.files:
         raise InstallError("This item has no direct downloads (it may link to an external site).")
@@ -376,10 +404,10 @@ def install_item(item, file_index=None, progress=None, replace_foreign=False):
         path = download(f.url, tmp, f.name, f.md5, progress)
         return install_file(path, item.id, item.name, item.changed, item.page,
                             replace_foreign, file=f.name,
-                            preview=item.previews[0] if item.previews else "")
+                            preview=item.previews[0] if item.previews else "", replace_items=replace_items)
 
 
-def install_url(url, progress=None, replace_foreign=False):
+def install_url(url, progress=None, replace_foreign=False, replace_items=False):
     """Install from an ocs://install?url=...&filename=... link (gnome-look "Install" buttons) or a
     plain download URL. Returns (manifest key, entry)."""
     u = urllib.parse.urlparse(url)
@@ -394,7 +422,7 @@ def install_url(url, progress=None, replace_foreign=False):
         key = f"url:{path.name}"
         title = re.sub(r"(\.(tar|zip|tgz|gz|xz|bz2|zst|7z))+$", "", path.name, flags=re.I)
         return key, install_file(path, key, title, source=url,
-                                 replace_foreign=replace_foreign, file=path.name)
+                                 replace_foreign=replace_foreign, file=path.name, replace_items=replace_items)
 
 
 def set_chosen(key, kind, name):
@@ -451,3 +479,36 @@ def remove(key):
         _remove_path(Path(p))
     save_manifest(manifest)
     return entry
+
+
+# ---------------------------------------------------------------- copies in system directories
+
+def system_file_name(component):
+    """File name for a wallpaper copied to /usr/share/backgrounds/drape; includes the pack name,
+    since packs often use generic names like 1920x1080.png."""
+    p = Path(component["path"])
+    stem = f"{p.parent.name} - {p.stem}" if p.parent.parent == WALLPAPER_DIR else p.stem
+    return _system_name(stem) + p.suffix.lower()
+
+
+def system_copies(entry):
+    """(helper kind, name, path, label) for every copy drape put in a system directory for this
+    entry: boot splash / login themes, and things used for the login screen."""
+    found = []
+    for c in entry["components"]:
+        if c.get("system"):
+            path = helper.DIRS[c["system"]] / c["name"]
+            if (path / helper.MARKER).exists():
+                label = {"plymouth": "Boot splash", "sddm": "SDDM login theme",
+                         "webgreeter": "Web greeter login theme"}[c["system"]]
+                found.append((c["system"], c["name"], path, label + " (system copy)"))
+            continue
+        for kind in ("gtk", "icons", "background"):
+            if kind == "background" and c["provides"] != ["wallpapers"]:
+                continue
+            name = system_file_name(c) if kind == "background" else c["name"]
+            path = helper.DIRS[kind] / name
+            marker = Path(str(path) + helper.MARKER) if kind == "background" else path / helper.MARKER
+            if marker.exists():
+                found.append((kind, name, path, "Login screen copy"))
+    return found
