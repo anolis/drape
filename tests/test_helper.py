@@ -119,6 +119,20 @@ class HelperTest(unittest.TestCase):
         with self.assertRaises(helper.HelperError):
             helper.cmd_apt_install(ns(packages=["sddm", "openssh-server"]))
 
+    def test_batch_runs_commands_in_order_under_one_lock(self):
+        src = self.theme("sugar", {"Main.qml": ""})
+        with mock.patch.object(helper.os, "geteuid", lambda: 0), \
+                mock.patch.object(helper, "LOCK", self.sys / "lock"):
+            rc = helper.main(["batch", "install", "sddm", str(src), ";;", "sddm-theme", "sugar"])
+        self.assertEqual(rc, 0)
+        self.assertIn("Current=sugar", (self.sys / "sddm.conf.d/90-drape.conf").read_text())
+
+    def test_batch_stops_at_first_failure(self):
+        with mock.patch.object(helper.os, "geteuid", lambda: 0), \
+                mock.patch.object(helper, "LOCK", self.sys / "lock"):
+            rc = helper.main(["batch", "sddm-theme", "missing", ";;", "apt-install", "sddm"])
+        self.assertEqual(rc, 1)
+
     def test_background_file_install_and_remove(self):
         img = self.src / "sky.jpg"
         img.write_bytes(b"jpg")

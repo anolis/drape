@@ -30,6 +30,8 @@ CURSORS_DIR = HOME / ".icons"
 THEMES_DIR = HOME / ".themes"
 WALLPAPER_DIR = DATA_HOME / "backgrounds" / "drape"
 MANIFEST = DATA_HOME / "drape" / "installed.json"
+# boot splash / login themes are kept here and copied into /usr/share by the root helper
+STAGING_DIR = DATA_HOME / "drape" / "system"
 CINNAMON_BG_FOLDERS = CONFIG_HOME / "cinnamon" / "backgrounds" / "user-folders.lst"
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".svg", ".bmp", ".jxl", ".avif"}
@@ -180,8 +182,39 @@ def _icon_theme_section(d):
     return cp["Icon Theme"] if cp.has_section("Icon Theme") else None
 
 
+# themes that live in system directories and are installed by the root helper
+SYSTEM_KINDS = ("plymouth", "sddm", "webgreeter", "gdm")
+
+
+def _read(p, limit=200_000):
+    try:
+        with open(p, "rb") as f:
+            return f.read(limit).decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
+def _system_kind(d):
+    """Boot splash or login screen theme types, recognised by their contents."""
+    if any("[Plymouth Theme]" in _read(p) for p in d.glob("*.plymouth")):
+        return "plymouth"
+    meta = d / "metadata.desktop"
+    if (meta.is_file() and "SddmGreeterTheme" in _read(meta)) or \
+            ((d / "Main.qml").is_file() and ((d / "theme.conf").is_file() or meta.is_file())):
+        return "sddm"
+    if (d / "index.html").is_file() and ((d / "index.yml").is_file() or "lightdm" in _read(d / "index.html")
+                                         or any("lightdm" in _read(js) for js in d.glob("*.js"))):
+        return "webgreeter"
+    if any(d.glob("*.gresource")) and ("gdm" in d.name.lower() or any("gnome-shell" in p.name for p in d.glob("*.gresource"))):
+        return "gdm"
+    return None
+
+
 def _classify_dir(d):
     """Return a tuple of what directory `d` provides, or None if it is not a theme root."""
+    kind = _system_kind(d)
+    if kind:
+        return (kind,)
     # [Icon Theme] is checked first: some icon packs ship extra gtk-3.0/ tweaks inside
     section = _icon_theme_section(d)
     # only real Xcursor files count - Windows packs also ship a cursors/ folder
@@ -233,7 +266,15 @@ def classify(root, fallback_name):
 
 # ---------------------------------------------------------------- install / remove
 
+def _system_name(name):
+    """Names the root helper accepts: ASCII, starting with a letter or digit."""
+    name = re.sub(r"[^A-Za-z0-9 ._+-]", "_", name).strip(" ._-+")
+    return name if name and name[0].isalnum() else f"theme{name}"
+
+
 def _dest_for(comp, wallpaper_dir):
+    if comp.provides[0] in SYSTEM_KINDS:
+        return STAGING_DIR / comp.provides[0] / _system_name(comp.name)
     if comp.provides == ("wallpapers",):
         return wallpaper_dir / comp.name
     if "icons" in comp.provides:
@@ -266,6 +307,9 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
 
         wall_dir = WALLPAPER_DIR / _sanitize(title)
         installed, provides = [], []
+        if any(c.provides == ("gdm",) for c in comps):
+            raise InstallError("This is a GDM login theme. Those work by replacing a core GNOME Shell file, which "
+                               "breaks when GNOME updates, so drape doesn't install them yet.")
         for c in comps:
             dest = _dest_for(c, wall_dir)
             if dest.exists() or dest.is_symlink():
@@ -287,7 +331,11 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             else:
                 shutil.copy2(c.path, dest)
             installed.append(str(dest))
-            provides.append({"provides": list(c.provides), "name": c.name, "path": str(dest)})
+            comp = {"provides": list(c.provides), "name": c.name, "path": str(dest)}
+            if c.provides[0] in SYSTEM_KINDS:
+                comp["name"] = dest.name
+                comp["system"] = c.provides[0]  # still needs copying into /usr/share by the helper
+            provides.append(comp)
             if "icons" in c.provides and shutil.which("gtk-update-icon-cache"):
                 subprocess.run(["gtk-update-icon-cache", "-q", "-f", "-t", str(dest)],
                                capture_output=True)
@@ -363,7 +411,7 @@ def set_preview(key, url):
 
 def _remove_path(p):
     # only ever delete inside the directories we install into
-    allowed = (ICONS_DIR, CURSORS_DIR, THEMES_DIR, WALLPAPER_DIR)
+    allowed = (ICONS_DIR, CURSORS_DIR, THEMES_DIR, WALLPAPER_DIR, STAGING_DIR)
     if not any(p.is_relative_to(a) and p != a for a in allowed):
         return
     if p.is_dir() and not p.is_symlink():

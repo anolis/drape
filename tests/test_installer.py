@@ -258,6 +258,31 @@ class InstallerTest(unittest.TestCase):
         item = Item("1", "x", "a", "", "cursors", "", 0, 0, "", files=files)
         self.assertEqual(item.best_file().index, 3)
 
+    def test_system_theme_types_are_recognised_and_staged(self):
+        staging = Path(self.tmp.name) / "staging"
+        with mock.patch.object(installer, "STAGING_DIR", staging):
+            a = self.src / "splash.tar.gz"
+            make_tar(a, {"glow/glow.plymouth": b"[Plymouth Theme]\nName=glow\n", "glow/glow.script": b""})
+            e = installer.install_file(a, "50", "Glow splash")
+            self.assertEqual(e["components"][0]["system"], "plymouth")
+            self.assertTrue((staging / "plymouth/glow/glow.plymouth").is_file())
+
+            a = self.src / "sddm.zip"
+            make_zip(a, {"sugar-candy/metadata.desktop": b"[SddmGreeterTheme]\nName=Sugar\n",
+                         "sugar-candy/Main.qml": b"", "sugar-candy/theme.conf": b""})
+            self.assertEqual(installer.install_file(a, "51", "Sugar")["components"][0]["system"], "sddm")
+
+            a = self.src / "web.zip"
+            make_zip(a, {"Neon Glow!/index.html": b"<script src=js/app.js></script>",
+                         "Neon Glow!/index.yml": b"name: neon", "Neon Glow!/app.js": b"lightdm.login()"})
+            c = installer.install_file(a, "52", "Neon")["components"][0]
+            self.assertEqual((c["system"], c["name"]), ("webgreeter", "Neon Glow"))
+
+            a = self.src / "gdm.zip"
+            make_zip(a, {"gdm-dark/gnome-shell-theme.gresource": b""})
+            with self.assertRaises(installer.InstallError):
+                installer.install_file(a, "53", "GDM dark")
+
     def test_path_traversal_rejected(self):
         a = self.src / "evil.tar.gz"
         make_tar(a, {"../../escape.txt": b"x", "T/gtk-3.0/gtk.css": b""})

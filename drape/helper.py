@@ -504,14 +504,26 @@ def main(argv=None):
     p.add_argument("packages", nargs="+")
     p.set_defaults(func=cmd_apt_install)
 
-    args = ap.parse_args(argv)
+    argv = sys.argv[1:] if argv is None else argv
+    # "batch a ... ;; b ..." runs several commands under one password prompt
+    batches = [[]]
+    if argv[:1] == ["batch"]:
+        for a in argv[1:]:
+            if a == ";;":
+                batches.append([])
+            else:
+                batches[-1].append(a)
+    else:
+        batches = [argv]
+    parsed = [ap.parse_args(b) for b in batches]
     if os.geteuid() != 0:
         print("This helper must run as root (drape launches it with pkexec).", file=sys.stderr)
         return 2
     try:
         with LOCK.open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            args.func(args)
+            for args in parsed:
+                args.func(args)
     except (HelperError, OSError, ValueError, configparser.Error, subprocess.SubprocessError) as exc:
         print(f"Error: {exc}", file=sys.stderr, flush=True)
         return 1
