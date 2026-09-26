@@ -232,7 +232,7 @@ def _register_wallpaper_folder(folder):
         pass
 
 
-def install_file(path, key, title, changed="", source="", replace_foreign=False, file=""):
+def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview=""):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
@@ -277,6 +277,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
         "changed": changed,
         "source": source,
         "file": file,
+        "preview": preview,
         "installed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "paths": installed,
         "components": provides,
@@ -293,7 +294,8 @@ def install_item(item, file_index=None, progress=None, replace_foreign=False):
     with tempfile.TemporaryDirectory(prefix="drape-dl-") as tmp:
         path = download(f.url, tmp, f.name, f.md5, progress)
         return install_file(path, item.id, item.name, item.changed, item.page,
-                            replace_foreign, file=f.name)
+                            replace_foreign, file=f.name,
+                            preview=item.previews[0] if item.previews else "")
 
 
 def install_url(url, progress=None, replace_foreign=False):
@@ -312,6 +314,14 @@ def install_url(url, progress=None, replace_foreign=False):
         title = re.sub(r"(\.(tar|zip|tgz|gz|xz|bz2|zst|7z))+$", "", path.name, flags=re.I)
         return key, install_file(path, key, title, source=url,
                                  replace_foreign=replace_foreign, file=path.name)
+
+
+def set_preview(key, url):
+    """Record a preview image for an entry installed before previews were tracked."""
+    m = load_manifest()
+    if key in m:
+        m[key]["preview"] = url
+        save_manifest(m)
 
 
 def _remove_path(p):

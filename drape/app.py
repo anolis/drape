@@ -20,6 +20,8 @@ from . import desktop, installer, pling  # noqa: E402
 APP_ID = "io.github.anolis.Drape"
 THUMB_DIR = Path(GLib.get_user_cache_dir()) / "drape" / "thumbs"
 CARD_W, CARD_H = 260, 160
+THUMB_W, THUMB_H = 200, 125
+PART_LABELS = {k.key: k.label for k in pling.KINDS} | {"xfwm": "Xfce borders", "wallpapers": "Wallpaper"}
 PAGE_SIZE = 30
 
 _images = ThreadPoolExecutor(max_workers=6)
@@ -41,10 +43,10 @@ def run_async(work, done, error=None):
 
 
 def load_image(url, image, width, height):
-    """Fetch (with a disk cache) and show a preview in `image`, scaled to fit."""
+    """Fetch (with a disk cache) and show a preview in `image`, scaled to fit. Local paths work too."""
     def work():
         THUMB_DIR.mkdir(parents=True, exist_ok=True)
-        path = THUMB_DIR / hashlib.sha1(url.encode()).hexdigest()
+        path = Path(url) if url.startswith("/") else THUMB_DIR / hashlib.sha1(url.encode()).hexdigest()
         if not path.exists():
             r = requests.get(url, timeout=20, headers={"User-Agent": pling.USER_AGENT})
             r.raise_for_status()
@@ -276,11 +278,40 @@ class InstalledPage(Gtk.Box):
             self.list.add(self._row(key, e))
         self.list.show_all()
 
+    def _thumbnail(self, key, e):
+        """A picture people recognise: the gnome-look preview, or the wallpaper itself."""
+        image = Gtk.Image.new_from_icon_name("image-loading", Gtk.IconSize.DIALOG)
+        image.set_size_request(THUMB_W, THUMB_H)
+        walls = [c for c in e["components"] if c["provides"] == ["wallpapers"]]
+        if e.get("preview"):
+            load_image(e["preview"], image, THUMB_W, THUMB_H)
+        elif walls:
+            load_image(walls[0]["path"], image, THUMB_W, THUMB_H)
+        elif key.isdigit():
+            # installed before previews were recorded: look it up once and remember it
+            def found(item):
+                if item.previews:
+                    installer.set_preview(key, item.previews[0])
+                    load_image(item.previews[0], image, THUMB_W, THUMB_H)
+                else:
+                    image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
+            run_async(lambda: pling.get(key), found,
+                      lambda _e: image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG))
+        else:
+            image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
+        frame = Gtk.Frame(valign=Gtk.Align.START)
+        frame.get_style_context().add_class("view")
+        frame.add(image)
+        return frame
+
     def _row(self, key, e):
         row = Gtk.ListBoxRow(activatable=False)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4, margin=10)
+        outer = Gtk.Box(spacing=14, margin=10)
+        outer.pack_start(self._thumbnail(key, e), False, False, 0)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        outer.pack_start(box, True, True, 0)
         top = Gtk.Box(spacing=8)
-        parts = sorted({p for c in e["components"] for p in c["provides"]})
+        parts = sorted({PART_LABELS.get(p, p) for c in e["components"] for p in c["provides"]})
         title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
         title.set_markup(f"<b>{GLib.markup_escape_text(e['title'])}</b>  "
                          f"<small>{GLib.markup_escape_text(', '.join(parts))}</small>")
@@ -314,7 +345,7 @@ class InstalledPage(Gtk.Box):
                        else self.win.choose_wallpaper(wall))
             line.pack_end(ab, False, False, 0)
             box.pack_start(line, False, False, 0)
-        row.add(box)
+        row.add(outer)
         return row
 
     def check_updates(self, _btn):

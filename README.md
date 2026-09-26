@@ -5,6 +5,10 @@ A theme manager for Linux desktops that treats each part of your look separately
 window borders, desktop (Cinnamon) themes and wallpapers** — and install or apply any of them in one
 click. No hunting for archives, no guessing which folder things go in.
 
+![drape browsing cursor themes](docs/img/shot-cursors.png)
+
+**Website:** https://anolis.github.io/drape/
+
 ## What it handles for you
 
 - **Finds what's actually in a download.** Archives are unpacked (including archives inside archives)
@@ -44,6 +48,11 @@ drape apply <id> [variant-name]
 drape remove <id>
 drape updates
 ```
+
+## License
+
+GPL-3.0. Themes and wallpapers belong to their creators on gnome-look.org; drape isn't affiliated
+with Pling or gnome-look.org.
 
 ## Development
 

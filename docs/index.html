@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>drape — theme manager for Linux</title>
+<meta name="description" content="Browse and install icons, cursors, GTK themes, window borders and wallpapers from gnome-look.org one piece at a time. One click to install, one click to apply.">
+<meta property="og:title" content="drape — theme manager for Linux">
+<meta property="og:description" content="Icons, cursors, themes and wallpapers from gnome-look.org. One click to install, one click to apply.">
+<meta property="og:image" content="img/shot-icons.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 4h20v4c-3 0-5 3-5 7v13H11V15c0-4-2-7-5-7z' fill='%23d9480f'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #faf8f5;
+    --surface: #ffffff;
+    --text: #1f1d1a;
+    --muted: #6b665e;
+    --line: #e7e2da;
+    --accent: #d9480f;
+    --accent-soft: #fdeee6;
+    --code-bg: #f1ede6;
+    --shadow: 0 12px 40px rgba(40, 30, 20, .12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161513;
+      --surface: #201f1c;
+      --text: #efece6;
+      --muted: #a39d93;
+      --line: #34312c;
+      --accent: #ff8a4c;
+      --accent-soft: #3a2518;
+      --code-bg: #2a2824;
+      --shadow: 0 12px 40px rgba(0, 0, 0, .45);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Cantarell, "Noto Sans", Ubuntu, sans-serif;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 0;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; color: var(--text); text-decoration: none; }
+  .logo svg { width: 28px; height: 28px; }
+  nav a { color: var(--muted); text-decoration: none; margin-left: 20px; font-size: 15px; }
+  nav a:hover { color: var(--text); }
+
+  .hero { padding: 48px 0 32px; text-align: center; }
+  .hero h1 {
+    font-size: clamp(34px, 6vw, 60px); line-height: 1.08; letter-spacing: -.02em;
+    margin: 0 auto 18px; max-width: 16ch;
+  }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { color: var(--muted); font-size: clamp(17px, 2.2vw, 20px); max-width: 44ch; margin: 0 auto 28px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 600;
+    text-decoration: none; border: 1px solid var(--line); color: var(--text); background: var(--surface);
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) { .btn.primary { color: #1a0d05; } }
+
+  .shot { margin: 44px auto 0; max-width: 1000px; }
+  .shot img { width: 100%; height: auto; display: block; border-radius: 12px; box-shadow: var(--shadow); }
+
+  section { padding: 64px 0 8px; }
+  h2 { font-size: clamp(26px, 3.4vw, 34px); letter-spacing: -.01em; margin: 0 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 32px; max-width: 60ch; }
+
+  .pieces { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 36px; }
+  .pieces span {
+    background: var(--accent-soft); color: var(--accent); border-radius: 999px;
+    padding: 6px 14px; font-weight: 600; font-size: 15px;
+  }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+  .card h3 { margin: 0 0 6px; font-size: 18px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15.5px; }
+
+  .compare { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .compare th, .compare td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 15.5px; vertical-align: top; }
+  .compare tr:last-child td { border-bottom: 0; }
+  .compare th { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .compare td:last-child { color: var(--text); font-weight: 500; }
+  .compare td:nth-child(2) { color: var(--muted); }
+  .table-scroll { overflow-x: auto; }
+
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+  .gallery figure { margin: 0; }
+  .gallery img { width: 100%; height: auto; border-radius: 10px; box-shadow: var(--shadow); display: block; }
+  .gallery figcaption { color: var(--muted); font-size: 14.5px; margin-top: 10px; }
+
+  pre {
+    background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-size: 14.5px; line-height: 1.55; margin: 0 0 16px;
+  }
+  code { font-family: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace; }
+  pre .c { color: var(--muted); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; }
+  .two h3 { margin: 0 0 10px; font-size: 18px; }
+  .note { color: var(--muted); font-size: 15px; }
+
+  footer { padding: 64px 0 40px; color: var(--muted); font-size: 14.5px; text-align: center; }
+  @media (max-width: 560px) {
+    nav a { margin-left: 14px; }
+    nav a.hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="logo" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 4h20v4c-3 0-5 3-5 7v13H11V15c0-4-2-7-5-7z" fill="var(--accent)"/></svg>
+      drape
+    </a>
+    <nav>
+      <a class="hide-sm" href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/anolis/drape">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="hero">
+    <h1>Theme your Linux desktop <em>one piece at a time.</em></h1>
+    <p>Icons, cursors, themes and wallpapers from gnome-look.org. One click to install, one click to apply. No archives, no hidden folders.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">Install drape</a>
+      <a class="btn" href="https://github.com/anolis/drape">View source</a>
+    </div>
+    <div class="shot"><img src="img/shot-cursors.png" alt="drape showing the Cursors category with WhiteSur, Sweet and Layan cursor themes, each with Install and Install &amp; apply buttons" width="1232" height="780"></div>
+  </div>
+
+  <section id="features">
+    <h2>Mix and match, the way theming should work</h2>
+    <p class="lede">Most theme tools only hand you whole theme packages. drape gives every part of your desktop its own catalog, so you can pair Papirus icons with Bibata cursors and a mountain wallpaper without touching a terminal.</p>
+    <div class="pieces">
+      <span>Icons</span><span>Cursors</span><span>Controls (GTK)</span><span>Window borders</span><span>Desktop themes</span><span>Wallpapers</span>
+    </div>
+    <div class="grid">
+      <div class="card"><h3>Knows what's in the box</h3><p>Downloads are unpacked, including archives inside archives, and each folder is identified by its contents, not by the category someone uploaded it to.</p></div>
+      <div class="card"><h3>Puts it in the right place</h3><p>Icons, cursors, themes and wallpapers each land where your desktop looks for them. Wallpapers also show up in Backgrounds settings.</p></div>
+      <div class="card"><h3>Applies in one click</h3><p>Sets the right setting for Cinnamon or GNOME. Packs with Dark, Light or Compact variants let you pick one from a menu.</p></div>
+      <div class="card"><h3>Removes cleanly</h3><p>Every install is tracked, so Remove deletes exactly what drape added, and <em>Check for updates</em> knows what's new.</p></div>
+      <div class="card"><h3>Works with gnome-look.org</h3><p>Prefer browsing the website? Its <em>Install</em> buttons open straight in drape.</p></div>
+      <div class="card"><h3>Careful with your files</h3><p>Downloads are checksum-verified, archives can't write outside their folder, and drape asks before replacing a theme it didn't install.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Before and after</h2>
+    <p class="lede">What it takes to install one cursor theme from gnome-look.org.</p>
+    <div class="table-scroll">
+    <table class="compare">
+      <tr><th>Step</th><th>By hand</th><th>With drape</th></tr>
+      <tr><td>Find it</td><td>Browse the site, pick among several downloads</td><td>Open Cursors, pick one</td></tr>
+      <tr><td>Install it</td><td>Download, extract, figure out which folder is the theme, copy it to <code>~/.icons</code></td><td>Click <b>Install &amp; apply</b></td></tr>
+      <tr><td>Use it</td><td>Open settings, find the right dropdown</td><td>Already done</td></tr>
+      <tr><td>Remove it</td><td>Remember where you put it, delete the right folder</td><td>Click <b>Remove</b></td></tr>
+    </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Screenshots</h2>
+    <p class="lede">drape uses your own GTK theme, so it always matches the look you've picked.</p>
+    <div class="gallery">
+      <figure><img src="img/shot-icons.png" alt="The Icons category showing Candy, Papirus and Tela icon themes" loading="lazy" width="1232" height="780"><figcaption>Browse icon themes by popularity, rating or date.</figcaption></figure>
+      <figure><img src="img/shot-details.png" alt="Details dialog for WhiteSur cursors with a large preview, variant picker and Install buttons" loading="lazy" width="940" height="739"><figcaption>Details with previews and a choice of variants.</figcaption></figure>
+      <figure><img src="img/shot-wallpapers.png" alt="The Wallpapers category with landscape and abstract wallpapers" loading="lazy" width="1232" height="780"><figcaption>Wallpapers go straight into Backgrounds settings.</figcaption></figure>
+      <figure><img src="img/shot-installed.png" alt="The Installed page listing themes with Apply and Remove buttons for each variant" loading="lazy" width="1232" height="780"><figcaption>Everything you've installed, with a picture of each, so you can find the one to switch or remove.</figcaption></figure>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p class="lede">Needs Python 3.12+, GTK 3 with PyGObject, and python3-requests. Cinnamon and GNOME desktops already have all three. No root required.</p>
+    <div class="two">
+      <div>
+        <h3>Get it</h3>
+<pre><code>git clone https://github.com/anolis/drape
+cd drape
+./install.sh
+<span class="c"># adds drape to your menu and handles
+# gnome-look.org Install buttons</span></code></pre>
+        <p class="note">Uninstall with <code>./install.sh --uninstall</code>. Themes you installed stay put.</p>
+      </div>
+      <div>
+        <h3>Or use the command line</h3>
+<pre><code>drape search icons papirus
+drape install 1166289 --apply
+drape list
+drape remove 1166289
+drape updates</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    drape is free software under the GPL-3.0 license. Content comes from
+    <a href="https://www.gnome-look.org">gnome-look.org</a> and belongs to its creators;
+    drape isn't affiliated with Pling or gnome-look.org.
+  </footer>
+</div>
+</body>
+</html>
