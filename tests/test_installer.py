@@ -323,3 +323,23 @@ class FilesViewTest(unittest.TestCase):
             self.assertIn("a/x.png", names)
             self.assertLess(size, 1000)  # /usr wasn't walked
             self.assertIsNone(filesview.scan(Path(t) / "gone"))
+
+
+class CinnamonCompatTest(unittest.TestCase):
+    def test_outdated_detection(self):
+        from drape import desktop
+        with tempfile.TemporaryDirectory() as t, mock.patch.object(desktop, "cinnamon_version", lambda: (6, 4)):
+            old = Path(t) / "old/cinnamon"
+            new = Path(t) / "new/cinnamon"
+            old.mkdir(parents=True)
+            new.mkdir(parents=True)
+            (old / "cinnamon.css").write_text(".modal-dialog { color: #fff; }\n.modal-dialog-button {}\n")
+            (new / "cinnamon.css").write_text(".modal-dialog {}\n.dialog, .prompt-dialog { background: #222; }\n")
+            self.assertTrue(desktop.cinnamon_theme_outdated(old.parent))
+            self.assertFalse(desktop.cinnamon_theme_outdated(new.parent))
+            self.assertFalse(desktop.cinnamon_theme_outdated(Path(t) / "gtk-only"))
+        with tempfile.TemporaryDirectory() as t, mock.patch.object(desktop, "cinnamon_version", lambda: (5, 2)):
+            old = Path(t) / "old/cinnamon"
+            old.mkdir(parents=True)
+            (old / "cinnamon.css").write_text(".modal-dialog {}\n")
+            self.assertFalse(desktop.cinnamon_theme_outdated(old.parent))  # fine on Cinnamon < 5.4

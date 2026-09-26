@@ -232,7 +232,9 @@ class VariantPicker(Gtk.Popover):
     def show(self, c):
         self.showing = c["path"]
         self.caption.set_markup(f"<b>{GLib.markup_escape_text(c['name'])}</b>"
-                                + ("  <small>✓ in use</small>" if in_use(c) else ""))
+                                + ("  <small>✓ in use</small>" if in_use(c) else "")
+                                + ("  <small>⚠ for older Cinnamon: password prompts won't be styled</small>"
+                                   if self.kind == "desktop" and desktop.cinnamon_theme_outdated(c["path"]) else ""))
         self._ensure(c)
         pb = self.cache.get(c["path"])
         if pb is None:
@@ -457,6 +459,12 @@ class BrowsePage(Gtk.Box):
             if not only:
                 note += " Showing themes for every login screen - drape tells you if one needs something installed."
             return cats, note
+        if self.kind == "desktop":
+            current = desktop.get("desktop")
+            d = desktop.find_theme_dir(current) if current else None
+            if d and desktop.cinnamon_theme_outdated(d):
+                return None, (f"⚠ Your Desktop theme <b>{GLib.markup_escape_text(current)}</b> was "
+                              f"{desktop.OUTDATED_NOTE}. Pick a newer one to fix that.")
         if self.kind == "boot" and not system.plymouth_installed():
             return None, ("Plymouth, which draws the boot splash, isn't installed. drape will offer to install "
                           "it when you apply one.")
@@ -531,6 +539,10 @@ class InstalledCard(Gtk.FlowBoxChild):
             detail = f"{len(comps)} variants" if len(comps) > 1 else ""
         meta = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=32)
         markup = "<b>✓ In use</b>" if using else ""
+        outdated = kind == "desktop" and any(desktop.cinnamon_theme_outdated(c["path"]) for c in comps)
+        if outdated:
+            markup += (" · " if markup else "") + "⚠ For older Cinnamon"
+            meta.set_tooltip_text("This theme was " + desktop.OUTDATED_NOTE + ".")
         if detail:
             markup += (" · " if markup else "") + GLib.markup_escape_text(detail)
         meta.set_markup(f"<small>{markup or ' '}</small>")
@@ -956,6 +968,12 @@ class Window(Gtk.ApplicationWindow):
             self.apply_system(component)
             return
         only = [kind] if kind and kind in component["provides"] else None
+        parts = only or component["provides"]
+        if "desktop" in parts and desktop.cinnamon_theme_outdated(component["path"]) and not self.ask(
+                f"{component['name']} was made for an older Cinnamon",
+                f"It'll work, but it was {desktop.OUTDATED_NOTE}: they'll look see-through and unstyled.",
+                "Apply anyway"):
+            return
         applied = desktop.apply_component(component, only)
         if applied:
             self.notify(f"Now using {component['name']} ({', '.join(applied)}).")

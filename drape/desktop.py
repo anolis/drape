@@ -1,6 +1,9 @@
 """Apply installed components to the running desktop via GSettings."""
 
+import functools
 import os
+import re
+import subprocess
 from pathlib import Path
 
 from gi.repository import Gio
@@ -98,3 +101,41 @@ def apply_component(component, only=None):
             if part == "cursors":
                 _set_default_cursor(value)
     return applied
+
+
+# ---------------------------------------------------------------- Cinnamon theme compatibility
+
+@functools.lru_cache(maxsize=1)
+def cinnamon_version():
+    try:
+        out = subprocess.run(["cinnamon", "--version"], capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"(\d+)\.(\d+)", out)
+        return (int(m.group(1)), int(m.group(2))) if m else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def find_theme_dir(name):
+    for base in (Path.home() / ".themes", Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "themes",
+                 Path("/usr/share/themes")):
+        if (base / name).is_dir():
+            return base / name
+    return None
+
+
+# Cinnamon 5.4 moved its dialogs (password prompts, logout, ...) from .modal-dialog to .dialog /
+# .prompt-dialog. Themes that only style the old names leave those dialogs without a background.
+NEW_DIALOG_RE = re.compile(r"(^|[\s,}>])\.(dialog|prompt-dialog)\b", re.M)
+
+
+def cinnamon_theme_outdated(theme_dir):
+    """True if a Desktop theme predates Cinnamon 5.4's dialog styling and this Cinnamon is newer."""
+    css = Path(theme_dir) / "cinnamon" / "cinnamon.css"
+    version = cinnamon_version()
+    if not css.is_file() or version is None or version < (5, 4):
+        return False
+    return not NEW_DIALOG_RE.search(css.read_text(errors="replace"))
+
+
+OUTDATED_NOTE = ("made for an older Cinnamon: system dialogs such as password prompts and the logout "
+                 "dialog won't have a background")
