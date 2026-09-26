@@ -17,6 +17,8 @@ click. No hunting for archives, no guessing which folder things go in.
 - **Puts things in the right place.** Icons → `~/.local/share/icons`, cursors → `~/.icons`,
   themes → `~/.themes`, wallpapers → `~/.local/share/backgrounds/drape` (and added to Cinnamon's
   Backgrounds settings).
+- **Converts Windows cursor packs.** Lots of cursor uploads are Windows `.cur`/`.ani` packs; drape
+  converts them to Linux cursors automatically, using the pack's `Install.inf` to map each cursor.
 - **Applies them.** Sets the matching setting for Cinnamon or GNOME. Packs with several variants
   (Dark, Compact, …) let you pick which one.
 - **Cleans up.** Everything is tracked in `~/.local/share/drape/installed.json`, so Remove deletes

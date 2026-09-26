@@ -17,6 +17,7 @@ from pathlib import Path
 
 import requests
 
+from . import wincursors
 from .pling import USER_AGENT
 
 HOME = Path.home()
@@ -50,6 +51,7 @@ class Component:
     provides: tuple  # e.g. ("icons",), ("gtk", "wm", "desktop"), ("wallpapers",)
     path: Path       # directory (or image file) in the extraction area
     name: str        # name it is installed and applied under
+    windows: bool = False  # a Windows .cur/.ani pack that needs converting
 
 
 # ---------------------------------------------------------------- manifest
@@ -105,6 +107,11 @@ def download(url, dest_dir, filename=None, md5=None, progress=None):
         raise InstallError(f"Download failed (HTTP {e.response.status_code if e.response is not None else '?'}).") from e
     except requests.RequestException as e:
         raise InstallError(f"Download failed: {e.__class__.__name__}. Check your connection.") from e
+    with open(out, "rb") as f:
+        head = f.read(512).lstrip().lower()
+    if head.startswith((b"<!doctype html", b"<html")):
+        raise InstallError("This download is a web page, not a theme file - the upload is probably broken. "
+                           "Try another variant of this item.")
     if md5 and h.hexdigest() != md5:
         raise InstallError("Downloaded file is corrupt (checksum mismatch). Try again.")
     return out
@@ -116,6 +123,15 @@ def _is_archive(p):
     return p.is_file() and (tarfile.is_tarfile(p) or zipfile.is_zipfile(p) or p.suffix.lower() in (".7z", ".rar"))
 
 
+def _safe_member(member, path):
+    """tarfile's 'data' filter, except a bad member (e.g. a symlink to the author's own
+    /home/...) is skipped instead of failing the whole install."""
+    try:
+        return tarfile.data_filter(member, path)
+    except (tarfile.AbsoluteLinkError, tarfile.LinkOutsideDestinationError):
+        return None
+
+
 def extract(archive, dest):
     dest.mkdir(parents=True, exist_ok=True)
     if zipfile.is_zipfile(archive):
@@ -123,7 +139,7 @@ def extract(archive, dest):
             z.extractall(dest)  # zipfile strips absolute paths and '..'
     elif tarfile.is_tarfile(archive):
         with tarfile.open(archive) as t:
-            t.extractall(dest, filter="data")  # rejects traversal, devices, unsafe links
+            t.extractall(dest, filter=_safe_member)
     elif archive.suffix.lower() in (".7z", ".rar") and shutil.which("7z"):
         subprocess.run(["7z", "x", "-y", f"-o{dest}", str(archive)],
                        check=True, capture_output=True)
@@ -168,7 +184,8 @@ def _classify_dir(d):
     """Return a tuple of what directory `d` provides, or None if it is not a theme root."""
     # [Icon Theme] is checked first: some icon packs ship extra gtk-3.0/ tweaks inside
     section = _icon_theme_section(d)
-    has_cursors = (d / "cursors").is_dir()
+    # only real Xcursor files count - Windows packs also ship a cursors/ folder
+    has_cursors = (d / "cursors").is_dir() and any(wincursors.is_xcursor(p) for p in (d / "cursors").iterdir())
     if section is not None:
         # a cursor theme is an icon theme whose only content is cursors/
         other = [c for c in d.iterdir() if c.is_dir() and c.name != "cursors"]
@@ -194,6 +211,12 @@ def classify(root, fallback_name):
         if kind:
             name = d.name if d != root else _sanitize(fallback_name)
             components.append(Component(kind, d, name.removesuffix(".d")))
+            return
+        if sum(1 for p in d.iterdir() if wincursors.is_windows_cursor(p)) >= 3:
+            # name a bare "cursors" folder after the pack that contains it
+            named = d.parent if d.name.lower() in ("cursors", "cursor") and d != root else d
+            name = named.name if named != root else _sanitize(fallback_name)
+            components.append(Component(("cursors",), d, name.removesuffix(".d"), windows=True))
             return
         for c in sorted(d.iterdir()):
             if c.is_dir() and not c.is_symlink() and not c.name.startswith("__MACOSX"):
@@ -253,7 +276,13 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                     raise InstallError(f"'{dest}' already exists and wasn't installed by drape.")
                 shutil.rmtree(dest) if dest.is_dir() and not dest.is_symlink() else dest.unlink()
             dest.parent.mkdir(parents=True, exist_ok=True)
-            if c.path.is_dir():
+            if c.windows:
+                try:
+                    wincursors.convert_theme(c.path, dest, c.name)
+                except wincursors.ConversionError as e:
+                    shutil.rmtree(dest, ignore_errors=True)
+                    raise InstallError(str(e)) from e
+            elif c.path.is_dir():
                 shutil.copytree(c.path, dest, symlinks=True)
             else:
                 shutil.copy2(c.path, dest)
@@ -290,7 +319,7 @@ def install_item(item, file_index=None, progress=None, replace_foreign=False):
     """Install a pling.Item. The item should be freshly fetched (download links expire)."""
     if not item.files:
         raise InstallError("This item has no direct downloads (it may link to an external site).")
-    f = next((f for f in item.files if f.index == file_index), item.files[0])
+    f = next((f for f in item.files if f.index == file_index), None) or item.best_file()
     with tempfile.TemporaryDirectory(prefix="drape-dl-") as tmp:
         path = download(f.url, tmp, f.name, f.md5, progress)
         return install_file(path, item.id, item.name, item.changed, item.page,

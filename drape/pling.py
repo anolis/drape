@@ -1,5 +1,6 @@
 """Minimal client for the Pling / gnome-look.org OCS API."""
 
+import re
 from dataclasses import dataclass, field
 
 import requests
@@ -51,6 +52,18 @@ class Item:
     page: str
     previews: list = field(default_factory=list)
     files: list = field(default_factory=list)
+
+    def best_file(self):
+        """The download most likely to be the installable theme: an archive or image, not the
+        author's drafts/sources. Uploads are often ordered arbitrarily."""
+        def rank(f):
+            n = f.name.lower()
+            return (
+                bool(re.search(r"draft|source|src|psd|\bxcf\b|wip|template|for.?modif", n)),
+                not re.search(r"\.(tar|tgz|zip|7z|xz|gz|bz2|zst|png|jpe?g|webp|svg)(\.|$)", n),
+                f.index,
+            )
+        return min(self.files, key=rank) if self.files else None
 
     @classmethod
     def from_ocs(cls, d):

@@ -1,4 +1,5 @@
 import io
+import struct
 import tarfile
 import tempfile
 import unittest
@@ -6,7 +7,9 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from drape import installer
+from PIL import Image
+
+from drape import installer, wincursors
 
 
 def make_tar(path, files, links=()):
@@ -29,6 +32,42 @@ def make_zip(path, files):
 
 
 ICON_INDEX = b"[Icon Theme]\nName=Test\nDirectories=48x48/apps\n"
+XCURSOR = b"Xcur" + bytes(12)
+
+
+def make_cur(color, hot=(3, 5), size=32):
+    """A real Windows .cur: Pillow writes an .ico, which differs only in type and hotspot fields."""
+    buf = io.BytesIO()
+    Image.new("RGBA", (size, size), color).save(buf, "ICO", sizes=[(size, size)])
+    data = bytearray(buf.getvalue())
+    struct.pack_into("<H", data, 2, 2)
+    struct.pack_into("<HH", data, 10, *hot)
+    return bytes(data)
+
+
+def make_ani(frames, rate=10):
+    def chunk(cid, body):
+        return cid + struct.pack("<I", len(body)) + body + (b"\0" if len(body) % 2 else b"")
+    anih = struct.pack("<9I", 36, len(frames), len(frames), 0, 0, 0, 0, rate, 1)
+    fram = b"fram" + b"".join(chunk(b"icon", f) for f in frames)
+    body = b"ACON" + chunk(b"anih", anih) + chunk(b"LIST", fram)
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
+INF = rb"""[Scheme.Reg]
+HKCU,"Control Panel\Cursors\Schemes","%SCHEME_NAME%",,"%10%\%CUR_DIR%\%pointer%,%10%\%CUR_DIR%\%help%"
+
+[Wreg]
+HKCU,"Control Panel\Cursors",Wait,0x00020000,"%10%\%CUR_DIR%\%busy%"
+HKCU,"Control Panel\Cursors",Hand,0x00020000,"%10%\%CUR_DIR%\%link%"
+
+[Strings]
+CUR_DIR = "Cursors\Fox"
+pointer = "a1.cur"
+help    = "a2.cur"
+busy    = "a3.ani"
+link    = "a4.cur"
+"""
 
 
 class InstallerTest(unittest.TestCase):
@@ -74,10 +113,64 @@ class InstallerTest(unittest.TestCase):
 
     def test_cursor_theme_goes_to_dot_icons(self):
         a = self.src / "cur.tar.gz"
-        make_tar(a, {"Cur/index.theme": b"[Icon Theme]\nName=Cur\n", "Cur/cursors/left_ptr": b"x"})
+        make_tar(a, {"Cur/index.theme": b"[Icon Theme]\nName=Cur\n", "Cur/cursors/left_ptr": XCURSOR})
         e = installer.install_file(a, "2", "Cur")
         self.assertTrue((self.p["CURSORS_DIR"] / "Cur/cursors/left_ptr").is_file())
         self.assertEqual(e["components"][0]["provides"], ["cursors"])
+
+    def _load_xcursor(self, path):
+        data = path.read_bytes()
+        self.assertEqual(data[:4], b"Xcur")
+        n = struct.unpack_from("<I", data, 12)[0]
+        images = []
+        for i in range(n):
+            _t, _s, pos = struct.unpack_from("<III", data, 16 + 12 * i)
+            _h, _t, _s, _v, w, h, xhot, yhot, delay = struct.unpack_from("<9I", data, pos)
+            argb = struct.unpack_from("<I", data, pos + 36)[0]
+            images.append((w, h, xhot, yhot, delay, argb))
+        return images
+
+    def test_windows_cursor_pack_is_converted_using_install_inf(self):
+        # names deliberately meaningless so only Install.inf can map them
+        a = self.src / "fox.zip"
+        make_zip(a, {"Fox/cursors/Install.inf": INF,
+                     "Fox/cursors/a1.cur": make_cur((255, 0, 0, 255), hot=(3, 5)),
+                     "Fox/cursors/a2.cur": make_cur((0, 255, 0, 255)),
+                     "Fox/cursors/a3.ani": make_ani([make_cur((0, 0, 255, 255)), make_cur((0, 0, 128, 255))]),
+                     "Fox/cursors/a4.cur": make_cur((255, 255, 0, 255), hot=(10, 2))})
+        e = installer.install_file(a, "20", "Fox pack")
+        self.assertEqual(e["components"][0]["name"], "Fox")
+        self.assertEqual(e["components"][0]["provides"], ["cursors"])
+        cur = self.p["CURSORS_DIR"] / "Fox" / "cursors"
+
+        arrow = self._load_xcursor(cur / "left_ptr")
+        self.assertEqual(arrow[0][:4], (32, 32, 3, 5))
+        self.assertEqual(arrow[0][5], 0xFFFF0000)  # opaque red, premultiplied ARGB
+        self.assertEqual(self._load_xcursor(cur / "pointer")[0][2:4], (10, 2))
+        self.assertEqual(self._load_xcursor(cur / "help")[0][5], 0xFF00FF00)
+        wait = self._load_xcursor(cur / "watch")  # alias symlink
+        self.assertEqual(len(wait), 2)
+        self.assertEqual(wait[0][4], 167)  # 10 jiffies = 167 ms
+        self.assertTrue((cur / "default").is_symlink())
+        self.assertIn("Inherits=Adwaita", (self.p["CURSORS_DIR"] / "Fox/index.theme").read_text())
+
+    def test_windows_cursor_pack_without_inf_uses_filenames(self):
+        a = self.src / "plain.zip"
+        make_zip(a, {"Normal Select.cur": make_cur((1, 2, 3, 255)), "Busy.ani": make_ani([make_cur((9, 9, 9, 255))]),
+                     "Text Select.cur": make_cur((4, 5, 6, 255)), "Link Select.cur": make_cur((7, 8, 9, 255))})
+        e = installer.install_file(a, "21", "Plain Pack")
+        cur = self.p["CURSORS_DIR"] / "Plain Pack" / "cursors"
+        self.assertEqual(e["components"][0]["name"], "Plain Pack")
+        for name in ("left_ptr", "wait", "text", "pointer"):
+            self.assertTrue((cur / name).exists(), name)
+
+    def test_windows_pack_without_a_pointer_fails_cleanly(self):
+        a = self.src / "odd.zip"
+        make_zip(a, {"x/zzz1.cur": make_cur((0, 0, 0, 255)), "x/zzz2.cur": make_cur((0, 0, 0, 255)),
+                     "x/zzz3.cur": make_cur((0, 0, 0, 255))})
+        with self.assertRaises(installer.InstallError):
+            installer.install_file(a, "22", "Odd")
+        self.assertFalse((self.p["CURSORS_DIR"] / "x").exists())
 
     def test_full_theme_with_variants_and_nested_archive(self):
         inner = self.src / "inner.zip"
@@ -135,6 +228,22 @@ class InstallerTest(unittest.TestCase):
         with self.assertRaises(installer.InstallError):
             installer.install_file(a, "9", "T")
         installer.install_file(a, "9", "T", replace_foreign=True)
+
+    def test_absolute_symlink_is_skipped_not_fatal(self):
+        a = self.src / "abs.tar.gz"
+        make_tar(a, {"C/index.theme": b"[Icon Theme]\nName=C\n", "C/cursors/left_ptr": XCURSOR},
+                 links=[("C/cursors/pointer", "/home/author/cursors/left_ptr")])
+        installer.install_file(a, "30", "C")
+        self.assertTrue((self.p["CURSORS_DIR"] / "C/cursors/left_ptr").is_file())
+        self.assertFalse((self.p["CURSORS_DIR"] / "C/cursors/pointer").is_symlink())
+
+    def test_best_file_skips_drafts_and_non_archives(self):
+        from drape.pling import Download, Item
+        files = [Download(1, "full-drafts-FOR-MODIFICATION.tar.gz", "u", 1, ""),
+                 Download(2, "phainon", "u", 1, ""),
+                 Download(3, "theme-v1.tar.gz", "u", 1, "")]
+        item = Item("1", "x", "a", "", "cursors", "", 0, 0, "", files=files)
+        self.assertEqual(item.best_file().index, 3)
 
     def test_path_traversal_rejected(self):
         a = self.src / "evil.tar.gz"

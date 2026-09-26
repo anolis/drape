@@ -25,6 +25,9 @@ KEYS = {
 }
 
 
+FALLBACK = {"icons": "Adwaita", "cursors": "Adwaita", "gtk": "Adwaita", "wm": "Adwaita", "desktop": ""}
+
+
 def _schema_exists(schema):
     src = Gio.SettingsSchemaSource.get_default()
     return src is not None and src.lookup(schema, True) is not None
@@ -61,11 +64,26 @@ def set_(part, value):
     if sk is None:
         return False
     s = Gio.Settings.new(sk[0])
+    if part != "wallpapers" and s.get_string(sk[1]) == value:
+        # same name as before (e.g. a reinstalled theme): nothing would notice the change,
+        # so switch away for a moment to make the desktop reload it
+        s.set_string(sk[1], FALLBACK.get(part, "Adwaita"))
+        Gio.Settings.sync()
     s.set_string(sk[1], value)
     if part == "wallpapers" and current_desktop() == "gnome":
         s.set_string("picture-uri-dark", value)
     Gio.Settings.sync()
     return True
+
+
+def _set_default_cursor(name):
+    """Point ~/.icons/default at the theme, for apps that don't follow the desktop's live setting."""
+    index = Path.home() / ".icons" / "default" / "index.theme"
+    try:
+        index.parent.mkdir(parents=True, exist_ok=True)
+        index.write_text(f"[Icon Theme]\nName=Default\nComment=Set by drape\nInherits={name}\n")
+    except OSError:
+        pass
 
 
 def apply_component(component, only=None):
@@ -77,4 +95,6 @@ def apply_component(component, only=None):
         value = Path(component["path"]).as_uri() if part == "wallpapers" else component["name"]
         if set_(part, value):
             applied.append(part)
+            if part == "cursors":
+                _set_default_cursor(value)
     return applied

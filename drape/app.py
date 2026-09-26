@@ -415,7 +415,7 @@ class DetailsDialog(Gtk.Dialog):
         for f in item.files:
             self.files.append(str(f.index), f"{f.name}  ({f.size_kb / 1024:.1f} MB)")
         if item.files:
-            self.files.set_active(0)
+            self.files.set_active_id(str(item.best_file().index))
             row.pack_start(Gtk.Label(label="Variant:"), False, False, 0)
             row.pack_start(self.files, True, True, 0)
         area.pack_start(row, False, False, 0)
