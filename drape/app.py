@@ -3,6 +3,7 @@
 import hashlib
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import requests  # noqa: E402
 
-from . import desktop, installer, pling, previews, settings, system  # noqa: E402
+from . import animation, desktop, installer, pling, previews, settings, system  # noqa: E402
 from . import helper as root_helper  # noqa: E402
 
 APP_ID = "io.github.anolis.Drape"
@@ -141,45 +142,27 @@ def _frames(path, width, height):
     return frames if len(frames) > 1 else None
 
 
+_ui_busy_until = [0.0]  # cards being added right now also cost CPU; don't blame the animations
+
+
+def _ui_busy():
+    return _foreground["pending"] > 0 or time.monotonic() < _ui_busy_until[0]
+
+
+ANIMATIONS = animation.Governor(lambda: settings.get("animations"), busy=_ui_busy)
+
+
 def _play(image, frames):
-    """Cycle `image` through frames with their own delays; pauses while the image isn't on screen."""
-    state = {"i": 0, "timer": None}
-
-    def step():
-        state["timer"] = None
-        if not image.get_mapped():
-            return False
-        state["i"] = (state["i"] + 1) % len(frames)
-        pb, delay = frames[state["i"]]
-        image.set_from_pixbuf(pb)
-        state["timer"] = GLib.timeout_add(delay, step)
-        return False
-
-    def start(*_):
-        if state["timer"] is None:
-            state["timer"] = GLib.timeout_add(frames[state["i"]][1], step)
-
-    def stop(*_):
-        if state["timer"] is not None:
-            GLib.source_remove(state["timer"])
-            state["timer"] = None
-
-    # a newer image replacing this one ends the animation
+    """Animate `image`; see animation.Player for when it plays."""
     old = getattr(image, "_drape_anim", None)
     if old:
         old()
-    handlers = [image.connect("map", start), image.connect("unmap", stop)]
+    player = animation.Player(image, frames, ANIMATIONS)
 
     def cancel():
-        stop()
-        for h in handlers:
-            if image.handler_is_connected(h):
-                image.disconnect(h)
+        player.cancel()
         image._drape_anim = None
     image._drape_anim = cancel
-    image.set_from_pixbuf(frames[0][0])
-    if image.get_mapped():
-        start()
 
 
 def _show(image, result):
@@ -475,7 +458,8 @@ class Card(Gtk.FlowBoxChild):
         ev.connect("button-release-event", lambda *_: window.show_details(kind, item))
         frame.add(ev)
         if item.previews:
-            spinner = Gtk.Spinner(active=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+            # starts when the card is first drawn: a running spinner redraws 60 times a second even off screen
+            spinner = Gtk.Spinner(active=False, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
             spinner.set_size_request(32, 32)
             overlay.add_overlay(spinner)
             alive = threading.Event()
@@ -485,6 +469,7 @@ class Card(Gtk.FlowBoxChild):
             def first_draw(*_):
                 # GTK only draws what's on screen, so off-screen cards and hidden tabs wait their turn
                 self.image.disconnect(handler[0])
+                spinner.start()
                 load_image(pling.thumb_url(item.previews[0]), self.image, CARD_W, CARD_H,
                            on_done=lambda _ok: spinner.destroy(), alive=alive.is_set)
                 return False
@@ -598,6 +583,7 @@ class BrowsePage(Gtk.Box):
         return self.win.query(), self.win.sort()
 
     def _add(self, items):
+        _ui_busy_until[0] = time.monotonic() + 2
         for it in items:
             self.flow.add(Card(self.win, self.kind, it))
         self.flow.show_all()
@@ -1065,6 +1051,17 @@ class Window(Gtk.ApplicationWindow):
                                  active=settings.get("only_applicable"))
         only.connect("toggled", self._toggle_applicable)
         menu.append(only)
+        menu.append(Gtk.SeparatorMenuItem())
+        heading = Gtk.MenuItem(label="Animate previews", sensitive=False)
+        menu.append(heading)
+        group = None
+        for mode, label in (("auto", "Automatically (on hover if it gets heavy)"), ("always", "Always"),
+                            ("hover", "Only on hover")):
+            item = Gtk.RadioMenuItem.new_with_label_from_widget(group, label)
+            group = group or item
+            item.set_active(settings.get("animations") == mode)
+            item.connect("toggled", lambda it, m=mode: it.get_active() and self._set_animations(m))
+            menu.append(item)
         menu.show_all()
         hb.pack_end(Gtk.MenuButton(popup=menu, image=Gtk.Image.new_from_icon_name("open-menu-symbolic",
                                                                                   Gtk.IconSize.BUTTON)))
@@ -1103,6 +1100,7 @@ class Window(Gtk.ApplicationWindow):
         self.add(root)
         self.show_all()
         self.on_page()
+        ANIMATIONS.on_switch = self._animations_switched
         self._closing = threading.Event()
         self.connect("destroy", lambda *_: self._closing.set())
         GLib.timeout_add_seconds(4, self._start_prefetch)
@@ -1195,6 +1193,14 @@ class Window(Gtk.ApplicationWindow):
         return False
 
     # ------------------------------------------------------------ helpers
+    def _set_animations(self, mode):
+        settings.set("animations", mode)
+        ANIMATIONS.refresh()
+
+    def _animations_switched(self, pct):
+        self.notify(f"Animated previews were using about {pct:.0f}% CPU, so they now play when you hover "
+                    "over them. Change this in the ☰ menu.")
+
     def _toggle_applicable(self, item):
         settings.set("only_applicable", item.get_active())
         for key in ("login", "boot"):
