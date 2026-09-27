@@ -272,6 +272,25 @@ class InstallerTest(unittest.TestCase):
         self.assertIn("drape remove 60", str(cm.exception))
         self.assertIn("60", installer.load_manifest())  # nothing was removed
 
+    def test_replacing_a_same_named_boot_splash_in_use_is_allowed(self):
+        staging = Path(self.tmp.name) / "staging"
+        with mock.patch.object(installer, "STAGING_DIR", staging):
+            old = self.src / "old.tar.gz"
+            make_tar(old, {"glow/glow.plymouth": b"[Plymouth Theme]\nName=glow\n"})
+            installer.install_file(old, "70", "Glow")
+            new = self.src / "new.tar.gz"
+            make_tar(new, {"glow/glow.plymouth": b"[Plymouth Theme]\nName=glow v2\n"})
+            same = lambda e: [("plymouth", "glow", Path("/usr/share/plymouth/themes/glow"), "Boot splash")]
+            with mock.patch.object(installer, "system_copies", same):
+                e = installer.install_file(new, "71", "Glow 2", replace_items=True)
+            self.assertEqual(e["components"][0]["name"], "glow")
+            self.assertNotIn("70", installer.load_manifest())
+            other = lambda e: [("plymouth", "spinner", Path("/usr/share/plymouth/themes/spinner"), "Boot splash")]
+            installer.install_file(old, "72", "Glow again", replace_items=True)  # takes it back
+            with mock.patch.object(installer, "system_copies", other):
+                with self.assertRaises(installer.InstallError):
+                    installer.install_file(new, "73", "Glow 3", replace_items=True)
+
     def test_refuses_to_overwrite_foreign_theme(self):
         (self.p["THEMES_DIR"] / "T").mkdir(parents=True)
         a = self.src / "t.zip"

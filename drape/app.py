@@ -179,6 +179,16 @@ def login_commands(greeter, kind, component):
     return cmds
 
 
+def system_theme_active(kind, name):
+    if kind == "plymouth":
+        return system.current_plymouth() == name
+    if kind == "sddm":
+        return system.display_manager() == "sddm" and system.current_sddm_theme() == name
+    if kind == "webgreeter":
+        return system.current_web_greeter_theme() == name
+    return False
+
+
 def matches(kind, component):
     return bool(TAB_PARTS.get(kind, {kind}) & set(component["provides"]))
 
@@ -1715,7 +1725,7 @@ class Window(Gtk.ApplicationWindow):
             self.busy.pop(item.id, None)
             if isinstance(result, installer.ConflictError):
                 self.refresh_item(item.id)
-                self.resolve_conflict(result, lambda: (flags.update(items=True), retry()))
+                self.resolve_conflict(result, lambda reapply: (flags.update(items=True, reapply=reapply), retry()))
                 return
             if isinstance(result, installer.InstallError):
                 self.refresh_item(item.id)
@@ -1725,6 +1735,8 @@ class Window(Gtk.ApplicationWindow):
                 return
             self.installed.updates.pop(item.id, None)
             self.refresh_item(item.id)
+            if self.reapply_replaced(result, flags.get("reapply")):
+                return
             if any(c.get("system") for c in result["components"]) and not apply_kind:
                 self.notify(f"Downloaded {item.name}. Apply it to install it for the whole system "
                             "(you'll be asked for your password).")
@@ -1753,6 +1765,13 @@ class Window(Gtk.ApplicationWindow):
 
         run_async(work, done, error)
 
+    def reapply_replaced(self, entry, names):
+        """After replacing the boot splash / login theme in use, put the new one's files in place."""
+        comps = [c for c in entry["components"] if c.get("system") and c["name"] in (names or [])]
+        for c in comps:
+            self.apply_system(c)
+        return bool(comps)
+
     def resolve_conflict(self, err, then):
         """Another installed item has a theme with the same name: offer to uninstall it and go ahead."""
         esc = GLib.markup_escape_text
@@ -1766,15 +1785,24 @@ class Window(Gtk.ApplicationWindow):
         if any(in_use(c) for k, _o in owners for c in m[k]["components"]):
             text += "\n\nIt's in use right now; the new theme takes its place."
         copies = [c for k, _o in owners for c in system_copies(m[k])]
-        if copies:
+        # a boot splash / login theme with the same name is swapped in place when the new one is applied,
+        # so it isn't removed first (the helper won't delete the one in use, and needn't)
+        carried = [c for c in copies if c[0] in installer.SYSTEM_KINDS and c[1] in names]
+        remove = [c for c in copies if c not in carried]
+        reapply = [name for kind, name, _p, _l in carried if system_theme_active(kind, name)]
+        if reapply:
+            what = "boot splash" if any(k == "plymouth" for k, n, _p, _l in carried if n in reapply) else "login screen"
+            text += (f"\n\nIt's your current {what}, so drape will switch it over to the new one "
+                     "(you'll be asked for your password).")
+        elif remove:
             text += "\n\nIt also has copies for the login screen or boot splash, so you'll be asked for your password."
         if not self.ask(f"Replace {', '.join(o['title'] for _k, o in owners)}?", text, "Replace", destructive=True):
             return
-        if copies:
-            self.run_root([["uninstall", kind, name] for kind, name, _p, _l in copies],
-                          "Removing the old theme's system copies…", then)
+        if remove:
+            self.run_root([["uninstall", kind, name] for kind, name, _p, _l in remove],
+                          "Removing the old theme's system copies…", lambda: then(reapply))
         else:
-            then()
+            then(reapply)
 
     def confirm_overwrite(self, msg):
         d = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
@@ -2036,8 +2064,12 @@ class Window(Gtk.ApplicationWindow):
     def install_link(self, url):
         self.notify("Installing from gnome-look.org link…")
 
+        reapply = []
+
         def done(result):
             key, entry = result
+            if self.reapply_replaced(entry, reapply):
+                return
             self.stack.set_visible_child(self.installed)
             self.installed.load()
             self.notify(f"Installed {entry['title']}. Pick Apply to use it.")
@@ -2045,7 +2077,7 @@ class Window(Gtk.ApplicationWindow):
         def attempt(replace=False):
             def failed(e):
                 if isinstance(e, installer.ConflictError):
-                    self.resolve_conflict(e, lambda: attempt(replace=True))
+                    self.resolve_conflict(e, lambda names: (reapply.extend(names), attempt(replace=True)))
                 else:
                     error_dialog(self, "Couldn't install from link", e)
             run_async(lambda: installer.install_url(url, replace_items=replace), done, failed)

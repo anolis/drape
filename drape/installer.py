@@ -339,8 +339,12 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             raise ConflictError(conflicts, title)
         if foreign:
             raise InstallError(f"'{foreign[0]}' already exists and wasn't installed by drape.")
+        # system copies with the same name as something this item installs are simply replaced when
+        # it's applied (even the active boot splash); any others must be removed first, which needs root
+        taking_over = {(c.provides[0], _system_name(c.name)) for c in comps if c.provides[0] in SYSTEM_KINDS}
         for owner in conflicts:
-            if system_copies(manifest[owner]):
+            leftover = [cp for cp in system_copies(manifest[owner]) if (cp[0], cp[1]) not in taking_over]
+            if leftover:
                 raise InstallError(f"{manifest[owner]['title']} has copies for the login screen or boot splash, "
                                    f"which need your password to remove: run `drape remove {owner}` first.")
         for owner in conflicts:  # the user chose to replace these
