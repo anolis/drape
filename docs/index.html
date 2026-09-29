@@ -148,7 +148,8 @@
       <span>Icons</span><span>Cursors</span><span>Controls (GTK)</span><span>Window borders</span><span>Desktop styles</span><span>KDE global themes</span><span>Color schemes</span><span>Wallpapers</span><span>Login screen</span><span>Boot splash</span>
     </div>
     <div class="grid">
-      <div class="card"><h3>Knows what's in the box</h3><p>Downloads are unpacked, including archives inside archives, and each folder is identified by its contents, not by the category someone uploaded it to.</p></div>
+      <div class="card"><h3>Knows what's in the box, before you download</h3><p>drape reads each download's file list without fetching it and shows glyphs for what's really inside. If an "icon theme" is only wallpapers, the card says so in red.</p></div>
+      <div class="card"><h3>Your whole look, in one view</h3><p>The <em>In use</em> tab previews every active part of your desktop, from controls to boot splash, and where each came from. It works for themes drape didn't install too.</p></div>
       <div class="card"><h3>Puts it in the right place</h3><p>Icons, cursors, themes and wallpapers each land where your desktop looks for them. On Cinnamon, wallpapers also show up in Backgrounds settings.</p></div>
       <div class="card"><h3>Applies in one click</h3><p>Uses the matching settings for Cinnamon, MATE, GNOME, Xfce or KDE Plasma. Theme formats are checked against your desktop and running window manager.</p></div>
       <div class="card"><h3>See each variant before you pick</h3><p>Packs with Dark, Light or Compact variants get a picker with a live preview drawn from the variant itself: its real icons, cursors, or a sample window in that theme.</p></div>
@@ -156,6 +157,8 @@
       <div class="card"><h3>Your themes, at a glance</h3><p>Installed themes sit in the same tabs and picture grid you browse, marked when in use, with Update and Remove on each.</p></div>
       <div class="card"><h3>Removes cleanly</h3><p>Every install is tracked, so Remove deletes exactly what drape added, and <em>Show installed files</em> tells you where everything went.</p></div>
       <div class="card"><h3>Three catalogs, one app</h3><p>Browse GNOME-Look, KDE-Look and Xfce-Look through their shared Pling catalog. Website <em>Install</em> links open in drape.</p></div>
+      <div class="card"><h3>Handles name clashes</h3><p>If a new theme shares a name with one you have, drape explains and offers <em>Replace</em>, even for the boot splash or login theme in use.</p></div>
+      <div class="card"><h3>Fast on slow connections</h3><p>Tabs open instantly from cached results, previews load in small batches with infinite scroll, and animated previews keep an eye on their CPU cost.</p></div>
       <div class="card"><h3>Careful with your files</h3><p>Downloads are checked against available checksums, archives can't write outside their folder, and drape asks before replacing a theme it didn't install.</p></div>
     </div>
   </section>
@@ -176,6 +179,18 @@
     <p class="note">For Cinnamon's taskbar, choose a <strong>Desktop</strong> theme. For KDE's panel, choose a <strong>Plasma style</strong>. Global themes apply without requesting a panel layout reset. KDE categories follow your Plasma version, and KWin detection supports X11 and Wayland.</p>
     <p class="note">Compiz decorators, GNOME Shell themes, compiled Qt/KWin plugins, Kvantum engines and Xfce wallpaper settings are not supported yet. Unknown downloads stay visible until their contents can be checked. <a href="https://github.com/anolis/drape/blob/main/docs/compatibility.md">Read the compatibility guide</a>.</p>
     <p class="note">Temporary catalog and download server errors are retried twice. Persistent failures identify the download host so you can try later or use an archive from the author.</p>
+  </section>
+
+  <section id="wm">
+    <h2>Window borders, explained. Compiz, built in.</h2>
+    <p class="lede">Window border themes only reach apps whose title bar the window manager draws, so drape tells you which apps they affect instead of leaving you wondering why nothing changed.</p>
+    <div class="grid two-up">
+      <div class="card"><h3>See the difference</h3><p><em>Show a sample window</em> opens a window with a classic title bar in your new borders. <em>Check my open windows</em> sorts your open apps into ones that will change and ones that draw their own title bar. It asks first and keeps nothing.</p></div>
+      <div class="card"><h3>Compiz, when you want more</h3><p>The Window manager page installs Compiz and its settings manager with one password prompt and a real progress bar. On Cinnamon it adds a separate Compiz login session and leaves Cinnamon untouched; on MATE and Xfce it switches live.</p></div>
+      <div class="card"><h3>Settings without another app</h3><p>CompizConfig Settings Manager runs inside drape, so you can set up effects before you even log into the Compiz session.</p></div>
+      <div class="card"><h3>Removes what it added</h3><p>Uninstalling Compiz takes out exactly the packages drape installed. Anything you installed yourself, or that other software needs, stays.</p></div>
+    </div>
+    <p class="note">Desktop themes made for Cinnamon before 5.4 leave password and logout dialogs see-through; drape flags them and asks before applying one.</p>
   </section>
 
   <section id="system">
