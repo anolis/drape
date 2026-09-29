@@ -12,9 +12,12 @@ click. No hunting for archives, no guessing which folder things go in.
 
 ## What it handles for you
 
-- **Finds what's actually in a download.** Archives are unpacked (including archives inside archives)
-  and scanned: icon themes, cursor themes, GTK/window/Cinnamon themes and images are each detected
-  from their contents, not from the category the uploader picked.
+- **Finds what's actually in a download, before you download it.** drape reads each download's
+  file list without fetching the whole thing (a zip's table of contents over HTTP range requests,
+  or the start of a tar) and shows small glyphs on every card for what's really inside. When an
+  item doesn't contain what its tab is for, the card says so in red ("Only pictures inside, not
+  Icons"). On install, archives are unpacked (including archives inside archives) and each part is
+  detected from its contents, not from the category the uploader picked.
 - **Puts things in the right place.** Icons → `~/.local/share/icons`, cursors → `~/.icons`,
   GTK/Cinnamon/Xfwm themes → `~/.themes`, wallpapers → `~/.local/share/backgrounds/drape` (and added to Cinnamon's
   Backgrounds settings when running Cinnamon).
@@ -62,6 +65,27 @@ click. No hunting for archives, no guessing which folder things go in.
   Controls theme, icons and cursor can be used for the LightDM login screen too, and the
   **Lock & login** page sets up the Cinnamon lock screen's clock and fonts. The compatibility
   filter also limits login themes to installed login managers.
+- **Shows your whole look.** Installed → **In use** breaks down everything active right now
+  (controls, window borders, desktop, icons, cursors, wallpaper, login screen, boot splash) with a
+  preview of each, where it came from, and buttons to change it. It works for themes drape didn't
+  install too.
+- **Compiz, built in.** The **Window manager** page shows what manages your windows and offers
+  Compiz. On Cinnamon it installs Compiz with a small MATE session you pick at the login screen,
+  leaving Cinnamon untouched; on MATE and Xfce it switches window managers live. CompizConfig
+  Settings Manager runs inside drape, installs show a real progress bar, and removal takes out
+  exactly the packages drape added.
+- **Explains window borders.** Border themes only reach apps whose title bar the window manager
+  draws, so drape says which apps they affect, can open a sample window, and (only if you allow
+  it) checks your open windows to show which ones will change.
+- **Handles name clashes.** If a new theme shares a name with one you have, drape explains and
+  offers **Replace**, even for the boot splash or login theme currently in use (`--replace` on
+  the command line).
+- **Flags outdated Cinnamon themes.** Desktop themes made before Cinnamon 5.4 leave password and
+  logout dialogs see-through; drape marks them and asks before applying one.
+- **Fast on slow connections.** Tabs show cached results instantly and refresh in the
+  background, cards load small previews in batches with infinite scroll, and animated previews
+  watch their own CPU cost (idle CPU dropped from 21% to 4%). The window fits screens down to
+  about 600 px wide.
 - **Shows where everything went.** ⋯ → *Show installed files* lists every folder an item
   installed (including system copies), with sizes, file lists and a button to open each one.
 - **Cleans up.** Everything is tracked in `~/.local/share/drape/installed.json`, so Remove deletes
@@ -78,7 +102,7 @@ with `drape install-file /path/to/theme.zip`; external installation scripts are 
 
 ## Root access
 
-Boot splash and login screen changes need root. They go through a small helper
+Boot splash and login screen changes, and installing or removing Compiz, need root. They go through a small helper
 (`drape/helper.py`) run with `pkexec`, so you get the normal password prompt and only those
 specific actions run as root. The helper copies files without following links swapped in along
 the way, marks everything it installs, and never replaces or removes system themes it didn't
@@ -107,6 +131,7 @@ drape search colors arc              # KDE color schemes
 drape search lookandfeel             # global themes for your Plasma version
 drape show 1166289                   # details and download variants
 drape install 1166289 --apply        # --file N picks a variant
+drape install 1166289 --replace      # replace an installed item whose theme names clash
 drape install-url 'ocs://install?url=…'
 drape list
 drape apply <id> [variant-name]
