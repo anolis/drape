@@ -210,9 +210,93 @@ def _button_strip(metacity):
     return _grid(pbs, 64, 3, background=(0.85, 0.85, 0.86)) if pbs else None
 
 
+def xfwm_preview(theme_dir):
+    """Illustrate active/inactive title bars using Xfwm artwork (not a live WM render)."""
+    directory = theme_dir / "xfwm4"
+    surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, W, H)
+    cr = cairo.Context(surface)
+    cr.set_source_rgb(0.55, 0.56, 0.58)
+    cr.paint()
+    found = False
+
+    def asset(stem):
+        for suffix in (".png", ".xpm", ".svg"):
+            path = directory / (stem + suffix)
+            if path.is_file():
+                try:
+                    return GdkPixbuf.Pixbuf.new_from_file_at_scale(str(path), 96, 40, True)
+                except GLib.Error:
+                    pass
+        return None
+
+    def paint(pb, x, y):
+        Gdk.cairo_set_source_pixbuf(cr, pb, x, y)
+        cr.paint()
+
+    colors = {}
+    try:
+        for line in (directory / "themerc").read_text(errors="replace").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                colors[key.strip()] = value.strip()
+    except OSError:
+        pass
+    for state, y, label in (("active", 38, "Active window"), ("inactive", 136, "Inactive window")):
+        cr.set_source_rgb(0.9, 0.9, 0.91)
+        cr.rectangle(22, y, W - 44, 70)
+        cr.fill()
+        tile = asset(f"title-3-{state}") or asset(f"title-1-{state}")
+        height = max(28, tile.get_height() if tile else 28)
+        if tile:
+            found = True
+            cr.save()
+            cr.rectangle(22, y, W - 44, height)
+            cr.clip()
+            for x in range(22, W - 22, max(1, tile.get_width())):
+                paint(tile, x, y)
+            cr.restore()
+        x = W - 30
+        for button in ("close", "maximize", "hide"):
+            pb = asset(f"{button}-{state}")
+            if pb:
+                found = True
+                x -= pb.get_width()
+                paint(pb, x, y + (height - pb.get_height()) / 2)
+                x -= 5
+        color = Gdk.RGBA()
+        color.parse("#222222")
+        color.parse(colors.get(f"{state}_text_color", "#222222"))
+        cr.set_source_rgb(color.red, color.green, color.blue)
+        cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        cr.set_font_size(13)
+        cr.move_to(32, y + height / 2 + 5)
+        cr.show_text(label)
+    cr.set_source_rgb(1, 1, 1)
+    cr.set_font_size(11)
+    cr.move_to(22, H - 16)
+    cr.show_text("Xfwm theme artwork preview")
+    return _surface_to_pixbuf(surface) if found else None
+
+
 def theme_preview_path(theme_dir, kind):
     """Path of a PNG preview for a GTK / window border / desktop theme, rendering it if needed.
     Blocking - call from a worker thread."""
+    if kind == "xfwm" and (theme_dir / "xfwm4").is_dir():
+        directory = theme_dir / "xfwm4"
+        for name in ("thumbnail.png", "preview.png"):
+            if (directory / name).is_file():
+                return directory / name
+        stamps = "|".join(f"{p.name}:{p.stat().st_mtime_ns}:{p.stat().st_size}"
+                          for p in sorted(directory.iterdir()) if p.is_file())
+        digest = hashlib.sha1(f"xfwm-v1|{theme_dir}|{stamps}".encode()).hexdigest()[:16]
+        out = CACHE / f"xfwm-{digest}.png"
+        if not out.exists():
+            pb = xfwm_preview(theme_dir)
+            if pb:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                pb.savev(str(out), "png", [], [])
+        if out.exists():
+            return out
     for name in ("contents/previews/fullscreenpreview.jpg", "contents/previews/preview.png",
                  "contents/screenshot.png", "screenshot.png", "preview.png"):
         if (theme_dir / name).is_file():
@@ -221,6 +305,8 @@ def theme_preview_path(theme_dir, kind):
         return theme_dir / "cinnamon" / "thumbnail.png"
     if kind == "wm" and (theme_dir / "metacity-1" / "thumbnail.png").is_file():
         return theme_dir / "metacity-1" / "thumbnail.png"
+    if kind == "xfwm":
+        return None
     if (theme_dir / "gtk-3.0").is_dir():
         out = _cache_path(theme_dir, "gtk", "gtk-3.0/gtk.css")
         if not out.exists():

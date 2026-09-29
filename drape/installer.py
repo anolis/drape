@@ -509,12 +509,33 @@ def _remove_path(p):
     # only ever delete inside the directories we install into
     allowed = (ICONS_DIR, CURSORS_DIR, THEMES_DIR, WALLPAPER_DIR, STAGING_DIR,
                *(kde.DATA_HOME / folder for folder in kde.DIRECTORIES.values()))
-    if not any(p.is_relative_to(a) and p != a for a in allowed):
-        return
+    if not any(p.is_relative_to(a) and p != a and p.parent.resolve().is_relative_to(a.resolve())
+               for a in allowed):
+        raise InstallError(f"Refusing to delete outside drape's install folders: {p}")
     if p.is_dir() and not p.is_symlink():
-        shutil.rmtree(p, ignore_errors=True)
+        shutil.rmtree(p)
     elif p.exists() or p.is_symlink():
         p.unlink()
+
+
+def removal_plan(selection, manifest):
+    """Resolve card selections; a whole-pack selection supersedes its individual images."""
+    selected = set(selection)
+    whole = {key for key, path in selected if path is None}
+    plan = []
+    for key, path in sorted(selected, key=lambda item: (item[0], item[1] or "")):
+        if path is not None and key in whole:
+            continue
+        entry = manifest.get(key)
+        if entry is None:
+            raise InstallError(f"{key} is no longer installed. Refresh your installed items.")
+        if path is not None:
+            comps = [c for c in entry["components"] if c["path"] == path]
+            if not comps or any(c["provides"] != ["wallpapers"] for c in comps):
+                raise InstallError("The selected wallpaper is no longer installed. Refresh your installed items.")
+            entry = dict(entry, components=comps, paths=[path])
+        plan.append((key, path, entry))
+    return plan
 
 
 def remove_component(key, path):

@@ -417,8 +417,10 @@ class InstallerTest(unittest.TestCase):
         outside.mkdir()
         m = {"x": {"title": "x", "paths": [str(outside)], "components": []}}
         installer.save_manifest(m)
-        installer.remove("x")
+        with self.assertRaises(installer.InstallError):
+            installer.remove("x")
         self.assertTrue(outside.exists())
+        self.assertIn("x", installer.load_manifest())
 
 
 if __name__ == "__main__":

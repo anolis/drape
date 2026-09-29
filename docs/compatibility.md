@@ -26,6 +26,39 @@ files, and Apply checks compatibility again. Source-only compiled plugins are no
 as decorations. A catalog match is not a guarantee that a theme's CSS, QML, or external
 dependencies work on every release.
 
+## Xfce wallpaper, panel and border support
+
+Xfce uses `xfconf-query` for GTK controls, icons, cursors, Xfwm borders and wallpapers.
+Wallpaper application discovers existing monitor/workspace entries and, on X11, active
+display connectors and workspaces. It creates missing entries for fresh Xfce sessions
+instead of writing obsolete monitor-level settings. It applies the image to all targets, stops cycling and
+preserves the placement mode unless backgrounds were disabled (then it uses Zoomed).
+If display discovery is unavailable (including Wayland) and no workspace entries exist,
+open Xfce Desktop Settings and choose an image once. Drape's current-wallpaper card displays
+the first active monitor's configured image when backgrounds differ.
+
+The **Xfce panel** settings page appears only in Xfce. It offers panel size, length,
+autohide, position locking and the GTK theme background. Choose a Controls theme to change
+panel styling; Cinnamon desktop and Plasma styles do not style an Xfce panel.
+Presets (bottom taskbar, top bar, bottom dock, left bar) reshape one selected panel,
+keeping its widgets, launchers and output selection. They do not create/remove panels or
+install plugins. Other panel settings remain available in Xfce's own Panel Preferences.
+**Undo last panel change** restores the preceding settings during the current drape session.
+Failed multi-setting applications attempt to roll back; any restore failures are reported.
+
+Xfwm previews use a bundled thumbnail or an illustration of active/inactive title bars from
+the theme's artwork. These are approximate previews, not live Xfwm window renders.
+
+References: [Xfce Desktop Settings](https://docs.xfce.org/xfce/xfdesktop/preferences),
+[Xfce Panel Preferences](https://docs.xfce.org/xfce/xfce4-panel/preferences).
+
+Run `python3 -m unittest -q` for the unit suite. The opt-in
+`python3 -m tests.xfce_integration` checks the real Xfconf service and GTK panel page
+on a temporary D-Bus/Broadway display (requires `dbus-run-session`, `xfconf-query`
+and `broadwayd`). It verifies wallpaper writes, panel presets, legacy value types
+and Undo, and checks that real user configuration files remain unchanged.
+Visual application in a running Xfce desktop still needs verification.
+
 ## KDE installation and application
 
 All paths honor `XDG_DATA_HOME` (normally `~/.local/share`).

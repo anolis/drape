@@ -450,14 +450,15 @@ class VariantPicker(Gtk.Popover):
         path = c["path"]
         if path in self.cache:
             return
-        pb = previews.preview(c, self.kind)
+        preview_kind = desktop.theme_part(self.kind) or self.kind
+        pb = previews.preview(c, preview_kind)
         if pb is not None:
             self.cache[path] = pb
             return
         self.cache[path] = None
 
         def work():
-            out = previews.theme_preview_path(Path(path), self.kind)
+            out = previews.theme_preview_path(Path(path), preview_kind)
             if out:
                 pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(out), previews.W, previews.H, True)
             else:
@@ -951,6 +952,11 @@ class InstalledCard(Gtk.FlowBoxChild):
         using = [c for c in comps if in_use(c)]
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
+        self.selection_id = (key, wallpaper["path"] if wallpaper else None)
+        self.select_check = Gtk.CheckButton(label="Select wallpaper" if wallpaper else "Select pack")
+        self.select_check.set_active(self.selection_id in window.installed.selected)
+        self.select_check.connect("toggled", lambda b: window.installed.select_card(self.selection_id, b.get_active()))
+        box.pack_start(self.select_check, False, False, 0)
         frame = Gtk.Frame()
         frame.get_style_context().add_class("view")
         image = Gtk.Image.new_from_icon_name("image-loading", Gtk.IconSize.DIALOG)
@@ -1139,13 +1145,14 @@ class ActiveCard(Gtk.FlowBoxChild):
     def _preview_theme(self, part, path):
         """Draw the exact theme in use from its own files (works for themes drape didn't install)."""
         comp = {"path": str(path), "provides": [part]}
-        pb = previews.preview(comp, part)
+        preview_kind = desktop.theme_part(part) or part
+        pb = previews.preview(comp, preview_kind)
         if pb is not None:
             self._show_pixbuf(pb)
             return
 
         def work():
-            out = previews.theme_preview_path(path, part)
+            out = previews.theme_preview_path(path, preview_kind)
             pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(out), CARD_W, CARD_H, True) if out else None
             GLib.idle_add(self._show_pixbuf, pb)
         _renders.submit(lambda: _safe(work))
@@ -1233,6 +1240,7 @@ class InstalledPage(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win = window
         self.updates = {}
+        self.selected = set()
         self.tabs = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hhomogeneous=False)
         self.grids = {}
         for k in [pling.Kind("active", "In use", "")] + kinds + [pling.Kind("other", "Other", "")]:
@@ -1261,6 +1269,20 @@ class InstalledPage(Gtk.Box):
         bar.pack_end(self.updates_btn, False, False, 0)
         self.pack_start(bar, False, False, 0)
 
+        selection_bar = Gtk.Box(spacing=8, margin=12, margin_bottom=0)
+        self.select_all_btn = Gtk.Button(label="Select all in category")
+        self.select_all_btn.connect("clicked", self.select_all)
+        selection_bar.pack_start(self.select_all_btn, False, False, 0)
+        self.clear_btn = Gtk.Button(label="Clear selection")
+        self.clear_btn.connect("clicked", lambda *_: self.clear_selection())
+        selection_bar.pack_start(self.clear_btn, False, False, 0)
+        self.delete_btn = Gtk.Button(label="Delete selected (0)")
+        self.delete_btn.get_style_context().add_class("destructive-action")
+        self.delete_btn.connect("clicked", lambda *_: self.win.remove_selected(set(self.selected)))
+        selection_bar.pack_end(self.delete_btn, False, False, 0)
+        self.pack_start(selection_bar, False, False, 0)
+        self._selection_changed()
+
         # category tabs that wrap onto more lines on narrow windows (a Gtk.StackSwitcher can't shrink)
         self.chips = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=False,
                                  column_spacing=6, row_spacing=6, margin=12, margin_bottom=0,
@@ -1282,8 +1304,44 @@ class InstalledPage(Gtk.Box):
         self.pack_start(self.hint, False, False, 0)
         self.pack_start(self.tabs, True, True, 0)
 
+    def select_card(self, identity, active):
+        if active:
+            self.selected.add(identity)
+        else:
+            self.selected.discard(identity)
+        # A pack may appear in several categories; keep those checkboxes in sync.
+        for _kind, _sw, flow, _empty in self.grids.values():
+            for card in flow.get_children():
+                if isinstance(card, InstalledCard) and card.selection_id == identity:
+                    if card.select_check.get_active() != active:
+                        card.select_check.set_active(active)
+        self._selection_changed()
+
+    def _selection_changed(self):
+        count = len(self.selected)
+        self.delete_btn.set_label(f"Delete selected ({count})")
+        self.delete_btn.set_sensitive(bool(count))
+        self.clear_btn.set_sensitive(bool(count))
+        self.select_all_btn.set_sensitive(self.tabs.get_visible_child_name() != "active")
+
+    def select_all(self, *_):
+        grid = self.grids.get(self.tabs.get_visible_child_name())
+        if grid:
+            for card in grid[2].get_children():
+                if isinstance(card, InstalledCard):
+                    card.select_check.set_active(True)
+
+    def clear_selection(self):
+        self.selected.clear()
+        for _kind, _sw, flow, _empty in self.grids.values():
+            for card in flow.get_children():
+                if isinstance(card, InstalledCard):
+                    card.select_check.set_active(False)
+        self._selection_changed()
+
     def _sync_chip(self):
         name = self.tabs.get_visible_child_name()
+        self._selection_changed()
         if name == "wm":
             self.hint.show_all()
         else:
@@ -1294,6 +1352,9 @@ class InstalledPage(Gtk.Box):
 
     def load(self):
         m = installer.load_manifest()
+        self.selected = {(key, path) for key, path in self.selected if key in m and
+                         (path is None or any(c["path"] == path for c in m[key]["components"]))}
+        self._selection_changed()
         placed = set()
         counts = {}
         for key_name, (k, sw, flow, empty) in self.grids.items():
@@ -1467,7 +1528,7 @@ class Window(Gtk.ApplicationWindow):
         self.busy = {}  # item id -> {"bars": [...]}
 
         hb = Gtk.HeaderBar(show_close_button=True, title="drape",
-                           subtitle="Themes, icons, cursors & wallpapers from gnome-look.org")
+                           subtitle="Themes, icons, cursors & wallpapers for your desktop")
         self.set_titlebar(hb)
         self.search = Gtk.SearchEntry(placeholder_text="Search", width_chars=18)
         self.search.connect("search-changed", lambda _e: self.reload_current())
@@ -1521,6 +1582,9 @@ class Window(Gtk.ApplicationWindow):
         self.ccsm = None  # ccsm hosted on the Window manager page, once loaded
         self.wmpage = WindowManagerPage(self)
         self.stack.add_titled(self.wmpage, "windowmanager", "Window manager")
+        from .xfcepage import XfcePanelPage
+        self.xfcepage = XfcePanelPage(self)
+        self.stack.add_titled(self.xfcepage, "xfcepanel", "Xfce panel")
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
         side = self._sidebar()
@@ -1566,7 +1630,12 @@ class Window(Gtk.ApplicationWindow):
             self.set_icon_name("preferences-desktop-theme")
 
     # pages below the "Settings" divider in the sidebar; everything above is for finding and applying themes
-    SETTINGS_PAGES = ("lock", "windowmanager")
+    SETTINGS_PAGES = ("lock", "windowmanager", "xfcepanel")
+
+    def page_visible(self, name):
+        if name == "xfcepanel":
+            return desktop.current_desktop() == "xfce"
+        return name not in self.pages or desktop.category_visible(name, settings.get("only_applicable"))
 
     def __getattr__(self, name):
         """ccsm's pages call their window (widget.get_toplevel()) to switch pages; pass those to the
@@ -1581,8 +1650,7 @@ class Window(Gtk.ApplicationWindow):
         """Like Gtk.StackSidebar, plus a labelled divider between theme pages and settings pages."""
         lb = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE)
         self._sidebar_list = lb
-        lb.set_filter_func(lambda row: row.page not in self.pages or desktop.category_visible(
-            row.page, settings.get("only_applicable")))
+        lb.set_filter_func(lambda row: self.page_visible(row.page))
         lb.get_style_context().add_class("sidebar")
         rows = {}
         for child in self.stack.get_children():
@@ -1723,17 +1791,19 @@ class Window(Gtk.ApplicationWindow):
             self._sidebar_state = state
             sidebar.invalidate_filter()
         current = self.stack.get_visible_child_name()
-        if current in self.pages and not desktop.category_visible(current, state[-1]):
+        if not self.page_visible(current):
             self.stack.set_visible_child_name("installed")
             return
         child = self.stack.get_visible_child()
-        searchable = child not in (self.installed, self.lockpage, self.wmpage)
+        searchable = child not in (self.installed, self.lockpage, self.wmpage, self.xfcepage)
         self.search.set_sensitive(searchable)
         self.sort_combo.set_sensitive(searchable)
         if child is self.lockpage:
             self.lockpage.load()
         elif child is self.wmpage:
             self.wmpage.load()
+        elif child is self.xfcepage:
+            self.xfcepage.load()
         elif child is self.installed:
             self.installed.load()
         elif not child.loaded:
@@ -1934,6 +2004,64 @@ class Window(Gtk.ApplicationWindow):
             path = d.get_filename()
             self.apply({"provides": ["wallpapers"], "name": Path(path).name, "path": path})
         d.destroy()
+
+    def remove_selected(self, selection):
+        if not selection:
+            return
+        try:
+            plan = installer.removal_plan(selection, installer.load_manifest())
+        except installer.InstallError as exc:
+            error_dialog(self, "Couldn't delete selected items", exc)
+            self.refresh_item()
+            return
+        names = [Path(path).name if path else f"{entry['title']} (whole pack)"
+                 for _key, path, entry in plan]
+        commands = sorted({("uninstall", kind, name) for _key, _path, entry in plan
+                           for kind, name, _location, _label in system_copies(entry)})
+        active = any(in_use(c) for _key, _path, entry in plan for c in entry["components"])
+        detail = "\n".join(names[:15])
+        if len(names) > 15:
+            detail += f"\n… and {len(names) - 15} more"
+        detail += "\n\nThis permanently deletes the selected wallpapers and whole theme packs, including all pack variants."
+        if active:
+            detail += "\nSome selected items are currently in use. Choose a replacement after deleting them."
+        if commands:
+            detail += "\nTheir system copies will also be removed, with a password prompt."
+        dialog = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
+                                   buttons=Gtk.ButtonsType.NONE, text=f"Delete {len(plan)} selected item(s)?")
+        dialog.format_secondary_text(detail)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Delete selected", Gtk.ResponseType.ACCEPT)
+        dialog.set_default_response(Gtk.ResponseType.CANCEL)
+        dialog.get_widget_for_response(Gtk.ResponseType.ACCEPT).get_style_context().add_class("destructive-action")
+        accepted = dialog.run() == Gtk.ResponseType.ACCEPT
+        dialog.destroy()
+        if not accepted:
+            return
+
+        def finish():
+            removed, failures = 0, []
+            for key, path, entry in plan:
+                try:
+                    if path is None:
+                        installer.remove(key)
+                    else:
+                        installer.remove_component(key, path)
+                    removed += 1
+                    if path is None:
+                        self.installed.selected.difference_update(
+                            item for item in list(self.installed.selected) if item[0] == key)
+                    else:
+                        self.installed.selected.discard((key, path))
+                except (OSError, installer.InstallError) as exc:
+                    failures.append(f"{Path(path).name if path else entry['title']}: {exc}")
+            self.refresh_item()
+            self.notify(f"Deleted {removed} selected item(s).")
+            if failures:
+                error_dialog(self, "Some items couldn't be deleted", "\n".join(failures))
+        if commands:
+            self.run_root([list(cmd) for cmd in commands], "Deleting selected items…", finish)
+        else:
+            finish()
 
     def remove(self, key):
         entry = installer.load_manifest().get(key)

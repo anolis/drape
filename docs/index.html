@@ -138,7 +138,7 @@
       <a class="btn primary" href="#install">Install drape</a>
       <a class="btn" href="https://github.com/anolis/drape">View source</a>
     </div>
-    <div class="shot"><img src="img/shot-cursors.png" alt="drape showing the Cursors category with WhiteSur, Sweet and Layan cursor themes, each with Install and Install &amp; apply buttons" width="1487" height="859"></div>
+    <div class="shot"><img src="img/shot-cursors.png" alt="drape showing the Cursors category with WhiteSur, Sweet and Layan cursor themes, each with Install and Install &amp; apply buttons" width="1480" height="927"></div>
   </div>
 
   <section id="features">
@@ -154,7 +154,8 @@
       <div class="card"><h3>See each variant before you pick</h3><p>Packs with Dark, Light or Compact variants get a picker with a live preview drawn from the variant itself: its real icons, cursors, or a sample window in that theme.</p></div>
       <div class="card"><h3>Windows cursors just work</h3><p>Plenty of cursor uploads are Windows <code>.cur</code>/<code>.ani</code> packs. drape converts them to Linux cursors, animations included.</p></div>
       <div class="card"><h3>Your themes, at a glance</h3><p>Installed themes sit in the same tabs and picture grid you browse, marked when in use, with Update and Remove on each.</p></div>
-      <div class="card"><h3>Removes cleanly</h3><p>Every install is tracked, so Remove deletes exactly what drape added, and <em>Show installed files</em> tells you where everything went.</p></div>
+      <div class="card"><h3>Delete several at once</h3><p>Select installed wallpaper or theme-pack cards across categories, or select all in a category, then delete them together. One confirmation lists the affected items and flags anything currently in use. Failed deletions stay selected for retry.</p></div>
+      <div class="card"><h3>Style your Xfce panel</h3><p>An Xfce-only sidebar page offers size, length, hiding and GTK theme backgrounds. Choose a top bar, bottom taskbar, bottom dock or left bar preset while keeping your widgets, with Undo for the last panel change.</p></div>
       <div class="card"><h3>Three catalogs, one app</h3><p>Browse GNOME-Look, KDE-Look and Xfce-Look through their shared Pling catalog. Website <em>Install</em> links open in drape.</p></div>
       <div class="card"><h3>Careful with your files</h3><p>Downloads are checked against available checksums, archives can't write outside their folder, and drape asks before replacing a theme it didn't install.</p></div>
     </div>
@@ -169,12 +170,12 @@
         <tr><td>Cinnamon</td><td>GTK controls, icons, cursors, Muffin borders, desktop/panel themes and wallpapers</td></tr>
         <tr><td>MATE</td><td>GTK controls, icons, cursors, Marco borders and wallpapers</td></tr>
         <tr><td>GNOME</td><td>GTK controls, icons, cursors and wallpapers</td></tr>
-        <tr><td>Xfce</td><td>GTK controls, icons, cursors and Xfwm borders from Xfce-Look</td></tr>
+        <tr><td>Xfce</td><td>GTK controls, icons, cursors, wallpapers and Xfwm border previews; panel appearance and layout presets with Undo</td></tr>
         <tr><td>KDE Plasma</td><td>Plasma styles, global themes, colors, Aurorae borders, icons, cursors and wallpapers</td></tr>
       </table>
     </div>
     <p class="note">For Cinnamon's taskbar, choose a <strong>Desktop</strong> theme. For KDE's panel, choose a <strong>Plasma style</strong>. Global themes apply without requesting a panel layout reset. KDE categories follow your Plasma version, and KWin detection supports X11 and Wayland.</p>
-    <p class="note">Compiz decorators, GNOME Shell themes, compiled Qt/KWin plugins, Kvantum engines and Xfce wallpaper settings are not supported yet. Unknown downloads stay visible until their contents can be checked. <a href="https://github.com/anolis/drape/blob/main/docs/compatibility.md">Read the compatibility guide</a>.</p>
+    <p class="note">Xfce panel presets keep existing widgets and affect only the selected panel. Xfce wallpapers apply to configured monitors and workspaces, discovering active displays on X11 even before their wallpaper settings exist, and stop wallpaper cycling. Xfwm previews show the theme's own artwork. Compiz decorators, GNOME Shell themes, compiled Qt/KWin plugins and Kvantum engines are not supported yet. Unknown downloads stay visible until their contents can be checked. <a href="https://github.com/anolis/drape/blob/main/docs/compatibility.md">Read the compatibility guide</a>.</p>
     <p class="note">Temporary catalog and download server errors are retried twice. Persistent failures identify the download host so you can try later or use an archive from the author.</p>
   </section>
 
@@ -188,8 +189,8 @@
       <div class="card"><h3>Lock screen</h3><p>Set Cinnamon's lock screen clock, date format, fonts and message, and see whether your Controls theme styles it. On GNOME, give it its own wallpaper.</p></div>
     </div>
     <div class="gallery" style="margin-top:24px">
-      <figure><img src="img/shot-boot.png" alt="The Boot splash tab showing Plymouth themes such as Darwin, MacOS Boot and Vortex Ubuntu" loading="lazy" width="1487" height="859"><figcaption>Boot splashes from gnome-look's Plymouth collection.</figcaption></figure>
-      <figure><img src="img/shot-lock.png" alt="The Lock and login page showing the current login screen settings, login screen software choices and lock screen clock options" loading="lazy" width="1487" height="859"><figcaption>Login screen and lock screen settings in one place.</figcaption></figure>
+      <figure><img src="img/shot-boot.png" alt="The Boot splash tab showing Plymouth themes such as Darwin, MacOS Boot and Vortex Ubuntu" loading="lazy" width="1480" height="927"><figcaption>Boot splashes from gnome-look's Plymouth collection.</figcaption></figure>
+      <figure><img src="img/shot-lock.png" alt="Drape showing login screen settings and available login screen software" loading="lazy" width="1480" height="927"><figcaption>Login screen and lock screen settings in one place.</figcaption></figure>
     </div>
   </section>
 
@@ -211,12 +212,10 @@
     <h2>Screenshots</h2>
     <p class="lede">drape uses your own GTK theme, so it always matches the look you've picked.</p>
     <div class="gallery">
-      <figure><img src="img/shot-icons.png" alt="The Icons category showing Candy, Papirus and Tela icon themes" loading="lazy" width="1487" height="859"><figcaption>Browse icon themes by popularity, rating or date.</figcaption></figure>
-      <figure><img src="img/shot-installed.png" alt="The Installed page's Controls tab: a grid of installed themes with Apply, Remove and more buttons" loading="lazy" width="1491" height="859"><figcaption>Installed themes in the same tabs and grid, with a picture of each.</figcaption></figure>
-      <figure><img src="img/shot-variants.png" alt="The variant picker for Alcove GTK themes: a list of four variants beside a sample window drawn in the highlighted Alcove-jive-Dark variant" loading="lazy" width="1491" height="859"><figcaption>Hover a variant to see it: this sample window is drawn in Alcove-jive-Dark.</figcaption></figure>
-      <figure><img src="img/shot-files.png" alt="The Show installed files window listing each Alcove variant's folder with its size, file count and an expanded file list" loading="lazy" width="812" height="659"><figcaption>Show installed files: every location, its size and contents.</figcaption></figure>
-      <figure><img src="img/shot-wallpapers.png" alt="The Wallpapers category with landscape and abstract wallpapers" loading="lazy" width="1487" height="859"><figcaption>Browse wallpapers and apply them on supported desktops.</figcaption></figure>
-      <figure><img src="img/shot-details.png" alt="Details dialog for WhiteSur cursors with a large preview, variant picker and Install buttons" loading="lazy" width="940" height="739"><figcaption>Details with previews and a choice of downloads.</figcaption></figure>
+      <figure><img src="img/shot-icons.png" alt="Drape browsing icon themes with previews and install controls" loading="lazy" width="1480" height="927"><figcaption>Browse icon themes by popularity, rating or date.</figcaption></figure>
+      <figure><img src="img/shot-installed.png" alt="Installed wallpapers with selection checkboxes and a Delete selected button" loading="lazy" width="1480" height="927"><figcaption>Select installed wallpapers or theme packs and delete them together.</figcaption></figure>
+      <figure><img src="img/shot-xfce-panel.png" alt="Xfce panel settings for size, length, automatic hiding, theme background and layout presets" loading="lazy" width="1480" height="927"><figcaption>Adjust the Xfce panel and try layout presets, with Undo for the last change.</figcaption></figure>
+      <figure><img src="img/shot-wallpapers.png" alt="The Wallpapers category with landscape and abstract wallpapers" loading="lazy" width="1480" height="927"><figcaption>Browse wallpapers and apply them on supported desktops.</figcaption></figure>
     </div>
   </section>
 

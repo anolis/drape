@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from gi.repository import Gio
-from . import kde
+from . import kde, xfce
 from .kde import ApplyError
 
 # component -> (schema, key) for the running desktop
@@ -133,7 +133,7 @@ def supported(part):
         return supported("xfwm")
     if part == "xfwm":
         return border_part() == "xfwm" and shutil.which("xfconf-query") is not None
-    if current_desktop() == "xfce" and part in XFCE_KEYS:
+    if current_desktop() == "xfce" and part in (*XFCE_KEYS, "wallpapers"):
         return shutil.which("xfconf-query") is not None
     return _key(part) is not None
 
@@ -158,6 +158,8 @@ def _xfconf(key, value=None):
 
 
 def get(part):
+    if part == "wallpapers" and current_desktop() == "xfce":
+        return xfce.wallpaper()
     if current_desktop() == "kde" or part in ("wm", "aurorae") and border_part() == "aurorae":
         return kde.get(theme_part(part))
     xk = _xfce_key(part)
@@ -174,6 +176,8 @@ def get(part):
 
 
 def set_(part, value):
+    if part == "wallpapers" and current_desktop() == "xfce":
+        return xfce.apply_wallpaper(value) if supported(part) else False
     if current_desktop() == "kde" or part in ("wm", "aurorae") and border_part() == "aurorae":
         return kde.apply(theme_part(part), value) if supported(part) else False
     xk = _xfce_key(part)

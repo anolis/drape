@@ -22,9 +22,18 @@ click. No hunting for archives, no guessing which folder things go in.
   converts them to Linux cursors automatically, using the pack's `Install.inf` to map each cursor.
 - **Shows variants before you pick.** Packs with Dark / Light / Compact variants get an
   [Apply | ▾] button; ▾ lists the variants with a live preview drawn from each one's own files.
+- **Deletes installed items in batches.** Check wallpaper or theme-pack cards in Installed,
+  or use Select all in category, then Delete selected. Selection carries across categories;
+  one confirmation lists the affected images/packs and flags anything currently in use.
 - **Applies them.** Uses Cinnamon, MATE or GNOME settings, or Xfce's Xfconf settings for controls,
-  icons, cursors and Xfwm borders. MATE wallpaper settings use filenames, while Cinnamon/GNOME
+  icons, cursors, wallpapers and Xfwm borders. MATE wallpaper settings use filenames, while Cinnamon/GNOME
   use URIs. Packs with several variants (Dark, Compact, …) let you pick which one.
+- **Styles the Xfce panel.** An Xfce-only sidebar page controls panel size, length, hiding,
+  position locking and GTK theme backgrounds. Bottom taskbar, top bar, bottom dock and left bar
+  presets reshape the selected panel while keeping its widgets, with Undo for the last change
+  during this app session. Xfwm variants show previews from their own title-bar artwork.
+  Wallpaper application covers configured monitors/workspaces, discovers active displays on X11
+  even before their wallpaper settings exist, and stops wallpaper cycling.
 - **Supports KDE Plasma.** Plasma styles, global themes, color schemes and Aurorae window
   decorations install into their native user data folders. Icons, cursors and wallpapers use
   Plasma's apply tools too. Catalog selection follows Plasma 5/6, with KWin detected on X11
@@ -43,7 +52,7 @@ click. No hunting for archives, no guessing which folder things go in.
   enable applying unsupported components.
 
   Compiz decorators, GNOME Shell themes, compiled Qt styles/KWin plugins, Kvantum engines,
-  Xfce wallpaper settings, and non-KWin window borders on Wayland are not supported yet.
+  and non-KWin window borders on Wayland are not supported yet.
   GTK application themes on KDE should be configured in KDE's own settings. Drape does not assume these sessions use
   GNOME settings just because the schemas are installed. Compatibility checks identify formats,
   not whether every theme's CSS or artwork renders correctly.
