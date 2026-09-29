@@ -1,14 +1,19 @@
-"""Apply installed components to the running desktop via GSettings."""
+"""Detect theme compatibility and apply components via GSettings or Xfconf."""
 
 import functools
 import os
 import re
+import shutil
 import subprocess
+import time
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from gi.repository import Gio
+from . import kde
+from .kde import ApplyError
 
-# component -> (schema, key) per desktop; first schema that exists wins
+# component -> (schema, key) for the running desktop
 KEYS = {
     "cinnamon": {
         "icons": ("org.cinnamon.desktop.interface", "icon-theme"),
@@ -17,6 +22,13 @@ KEYS = {
         "wm": ("org.cinnamon.desktop.wm.preferences", "theme"),
         "desktop": ("org.cinnamon.theme", "name"),
         "wallpapers": ("org.cinnamon.desktop.background", "picture-uri"),
+    },
+    "mate": {
+        "icons": ("org.mate.interface", "icon-theme"),
+        "cursors": ("org.mate.peripherals-mouse", "cursor-theme"),
+        "gtk": ("org.mate.interface", "gtk-theme"),
+        "wm": ("org.mate.Marco.general", "theme"),
+        "wallpapers": ("org.mate.background", "picture-filename"),
     },
     "gnome": {
         "icons": ("org.gnome.desktop.interface", "icon-theme"),
@@ -29,6 +41,48 @@ KEYS = {
 
 
 FALLBACK = {"icons": "Adwaita", "cursors": "Adwaita", "gtk": "Adwaita", "wm": "Adwaita", "desktop": ""}
+XFCE_KEYS = {"gtk": ("xsettings", "/Net/ThemeName"),
+             "icons": ("xsettings", "/Net/IconThemeName"),
+             "cursors": ("xsettings", "/Gtk/CursorThemeName"),
+             "xfwm": ("xfwm4", "/general/theme")}
+_wm_cache = (None, 0.0)
+
+
+def running_wm(refresh=False):
+    """Read the actual X11 window manager, never infer it from installed packages."""
+    global _wm_cache
+    if not refresh and time.monotonic() < _wm_cache[1]:
+        return _wm_cache[0]
+    name = None
+    if os.environ.get("XDG_SESSION_TYPE") == "wayland" and current_desktop() == "kde" and kde.kwin_running():
+        name = "KWin"
+    if os.environ.get("DISPLAY") and os.environ.get("XDG_SESSION_TYPE") != "wayland":
+        try:
+            root = subprocess.run(["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"],
+                                  capture_output=True, text=True, timeout=2).stdout
+            wid = re.search(r"window id # (0x[0-9a-fA-F]+)", root)
+            if wid:
+                out = subprocess.run(["xprop", "-id", wid[1], "_NET_WM_NAME"],
+                                     capture_output=True, text=True, timeout=2).stdout
+                match = re.search(r'= "([^"]*)"', out)
+                name = match[1] if match else None
+        except (OSError, subprocess.SubprocessError):
+            pass
+    _wm_cache = (name, time.monotonic() + 2)
+    return name
+
+
+def border_part():
+    wm = (running_wm() or "").lower()
+    if "xfwm4" in wm:
+        return "xfwm"
+    if "kwin" in wm:
+        return "aurorae"
+    if any(name in wm for name in ("marco", "metacity", "muffin")):
+        return "wm"
+    # Mutter, Compiz (whose decorator is independent), and unknown WMs
+    # must not be offered classic Metacity themes as though they were supported.
+    return None
 
 
 def _schema_exists(schema):
@@ -38,41 +92,109 @@ def _schema_exists(schema):
 
 def current_desktop():
     de = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    if any(name in de.split(":") for name in ("kde", "plasma")):
+        return "kde"
     if "cinnamon" in de and _schema_exists("org.cinnamon.desktop.interface"):
         return "cinnamon"
-    if _schema_exists("org.gnome.desktop.interface"):
-        return "gnome"
+    if "mate" in de.split(":"):
+        return "mate" if _schema_exists("org.mate.interface") else None
+    if "xfce" in de.split(":"):
+        return "xfce"
+    if any(name in de.split(":") for name in ("gnome", "unity")):
+        return "gnome" if _schema_exists("org.gnome.desktop.interface") else None
     return None
 
 
 def _key(part):
+    if part == "wm":
+        if border_part() != "wm":
+            return None
+        wm = (running_wm() or "").lower()
+        schema = ("org.mate.Marco.general" if "marco" in wm else
+                  "org.cinnamon.desktop.wm.preferences" if "muffin" in wm else
+                  "org.gnome.desktop.wm.preferences")
+        return (schema, "theme") if _schema_exists(schema) else None
     de = current_desktop()
-    if de is None:
+    if de not in KEYS:
         return None
     sk = KEYS[de].get(part)
     return sk if sk and _schema_exists(sk[0]) else None
 
 
 def supported(part):
+    if part in ("wm", "aurorae") and border_part() == "aurorae":
+        return kde.supported("aurorae")
+    if current_desktop() == "kde":
+        target = theme_part(part)
+        if target == "aurorae" and border_part() != "aurorae":
+            return False
+        return kde.supported(target)
+    if part == "wm" and border_part() == "xfwm":
+        return supported("xfwm")
+    if part == "xfwm":
+        return border_part() == "xfwm" and shutil.which("xfconf-query") is not None
+    if current_desktop() == "xfce" and part in XFCE_KEYS:
+        return shutil.which("xfconf-query") is not None
     return _key(part) is not None
 
 
+def _xfce_key(part):
+    if part == "wm" and border_part() == "xfwm":
+        part = "xfwm"
+    if part == "xfwm" or current_desktop() == "xfce":
+        return XFCE_KEYS.get(part) if supported(part) else None
+    return None
+
+
+def _xfconf(key, value=None):
+    cmd = ["xfconf-query", "-c", key[0], "-p", key[1]]
+    if value is not None:
+        cmd += ["--create", "--type", "string", "--set", value]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+        return (r.stdout.rstrip("\n") if value is None else True) if r.returncode == 0 else None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def get(part):
+    if current_desktop() == "kde" or part in ("wm", "aurorae") and border_part() == "aurorae":
+        return kde.get(theme_part(part))
+    xk = _xfce_key(part)
+    if xk:
+        return _xfconf(xk)
     sk = _key(part)
-    return Gio.Settings.new(sk[0]).get_string(sk[1]) if sk else None
+    if sk is None:
+        return None
+    value = Gio.Settings.new(sk[0]).get_string(sk[1])
+    # The rest of drape uses wallpaper URIs; MATE stores a local filename.
+    if sk == KEYS["mate"]["wallpapers"] and value:
+        return Path(value).as_uri()
+    return value
 
 
 def set_(part, value):
+    if current_desktop() == "kde" or part in ("wm", "aurorae") and border_part() == "aurorae":
+        return kde.apply(theme_part(part), value) if supported(part) else False
+    xk = _xfce_key(part)
+    if xk:
+        return bool(_xfconf(xk, value))
     sk = _key(part)
     if sk is None:
         return False
+    if sk == KEYS["mate"]["wallpapers"] and value.startswith("file:"):
+        uri = urlsplit(value)
+        if uri.netloc not in ("", "localhost"):
+            return False
+        value = unquote(uri.path)
     s = Gio.Settings.new(sk[0])
     if part != "wallpapers" and s.get_string(sk[1]) == value:
         # same name as before (e.g. a reinstalled theme): nothing would notice the change,
         # so switch away for a moment to make the desktop reload it
         s.set_string(sk[1], FALLBACK.get(part, "Adwaita"))
         Gio.Settings.sync()
-    s.set_string(sk[1], value)
+    if not s.set_string(sk[1], value):
+        return False
     if part == "wallpapers" and current_desktop() == "gnome":
         s.set_string("picture-uri-dark", value)
     Gio.Settings.sync()
@@ -92,8 +214,9 @@ def _set_default_cursor(name):
 def apply_component(component, only=None):
     """Apply one manifest component (dict with provides/name/path). Returns the parts applied."""
     applied = []
-    for part in component["provides"]:
-        if only and part not in only:
+    running_wm(refresh=True)
+    for part in compatible_parts(component):
+        if only is not None and part not in {theme_part(p) for p in only}:
             continue
         value = Path(component["path"]).as_uri() if part == "wallpapers" else component["name"]
         if set_(part, value):
@@ -101,6 +224,83 @@ def apply_component(component, only=None):
             if part == "cursors":
                 _set_default_cursor(value)
     return applied
+
+
+def compatible_parts(component):
+    """Supported parts of a fully unpacked component; mixed packs keep usable parts."""
+    result = []
+    path = Path(component["path"])
+    for part in component["provides"]:
+        if part == "desktop" and current_desktop() == "kde":
+            continue  # this format means Cinnamon, even though the UI tab also hosts Plasma
+        if part == "wm" and border_part() != "wm":
+            continue
+        if not supported(part):
+            continue
+        if part in kde.DIRECTORIES and not kde.compatible(part, path):
+            continue
+        # Our supported desktop shells use GTK 3; a GTK 2/4-only theme
+        # cannot style their controls even though it is a GTK theme.
+        if part == "gtk" and not (path / "gtk-3.0").is_dir():
+            continue
+        result.append(part)
+    return result
+
+
+def scope(kind, only=True):
+    """Catalog scope shared by GUI and CLI. Empty categories means unsupported."""
+    label = f"{current_desktop() or 'unsupported desktop'} / {running_wm() or 'unknown window manager'}"
+    if kind in ("login", "boot"):
+        return None, ""
+    if kind == "wm" and not only:
+        return "125,138,114,717", label
+    if not supported(kind):
+        return ("" if only else None), f"{label}: applying {kind} themes is not supported."
+    if kind == "wm":
+        return {"xfwm": "138", "wm": "125", "aurorae": "114,717" if kde.major_version() >= 6 else "114"}[border_part()], label
+    if current_desktop() == "kde":
+        if kind == "desktop":
+            return "104", "Plasma styles from KDE-Look.org"
+        if kind == "lookandfeel":
+            return ("722" if kde.major_version() >= 6 else "121") if only else "121,722", "KDE global themes"
+    return None, label
+
+
+def archive_compatible(parts, complete, kind):
+    """Only reject a catalog download when a complete listing proves incompatibility."""
+    if not complete or not parts or kind in ("login", "boot"):
+        return True
+    target = theme_part(kind)
+    if not target or not supported(target) or target not in parts:
+        return False
+    if target == "gtk" and parts & {"gtk-2.0", "gtk-3.0", "gtk-4.0"}:
+        return "gtk-3.0" in parts
+    return True
+
+
+def theme_part(kind):
+    """Map a UI category to the format used by the active desktop/window manager."""
+    if kind == "wm":
+        return border_part() or "wm"
+    if kind == "desktop" and current_desktop() == "kde":
+        return "plasma"
+    return kind
+
+
+def category_label(kind, default):
+    if kind == "desktop" and current_desktop() == "kde":
+        return "Plasma style"
+    if kind == "gtk":
+        return "GTK applications" if current_desktop() == "kde" else "Controls"
+    return default
+
+
+def category_visible(kind, only_applicable=True):
+    return not only_applicable or kind in ("login", "boot") or supported(kind)
+
+
+def catalog_name():
+    return {"kde": "KDE-Look.org", "xfce": "Xfce-Look.org"}.get(current_desktop(), "GNOME-Look.org")
 
 
 # ---------------------------------------------------------------- Cinnamon theme compatibility

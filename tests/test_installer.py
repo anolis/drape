@@ -90,6 +90,9 @@ class InstallerTest(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         self.p = paths
+        pref = mock.patch("drape.settings.get", return_value=False)
+        pref.start()
+        self.addCleanup(pref.stop)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -103,6 +106,61 @@ class InstallerTest(unittest.TestCase):
         self.assertTrue((dest / "48x48/apps/foo.png").is_file())
         self.assertTrue((dest / "48x48/apps/bar.png").is_symlink())
         self.assertEqual(e["components"][0]["provides"], ["icons"])
+
+    @mock.patch("drape.desktop.current_desktop", return_value="mate")
+    @mock.patch("drape.desktop.running_wm", return_value="Marco")
+    @mock.patch("drape.desktop._schema_exists", return_value=True)
+    def test_mate_installs_usable_components_of_mixed_archive(self, *_mocks):
+        a = self.src / "mixed.zip"
+        make_zip(a, {"Usable/gtk-3.0/gtk.css": b"", "Usable/metacity-1/metacity-theme-1.xml": b"",
+                     "Usable/cinnamon/cinnamon.css": b"", "XfceOnly/xfwm4/themerc": b"",
+                     "ShellOnly/gnome-shell/gnome-shell.css": b"", "Gtk4Only/gtk-4.0/gtk.css": b""})
+        e = installer.install_file(a, "mixed", "Mixed", only_applicable=True)
+        self.assertEqual([c["name"] for c in e["components"]], ["Usable"])
+        self.assertEqual(set(e["skipped"]), {"XfceOnly", "ShellOnly", "Gtk4Only"})
+        self.assertFalse((self.p["THEMES_DIR"] / "XfceOnly").exists())
+        self.assertTrue((self.p["THEMES_DIR"] / "Usable/gtk-3.0/gtk.css").exists())
+
+    @mock.patch("drape.desktop.current_desktop", return_value="mate")
+    @mock.patch("drape.desktop.running_wm", return_value="Compiz")
+    @mock.patch("drape.desktop._schema_exists", return_value=True)
+    def test_incompatible_archive_does_not_change_existing_install(self, *_mocks):
+        a = self.src / "theme.zip"
+        make_zip(a, {"Original/gtk-3.0/gtk.css": b""})
+        before = installer.install_file(a, "item", "Original", only_applicable=True)
+        make_zip(a, {"Borders/metacity-1/metacity-theme-1.xml": b""})
+        with self.assertRaises(installer.IncompatibleError):
+            installer.install_file(a, "item", "Replacement", only_applicable=True)
+        self.assertEqual(installer.load_manifest()["item"], before)
+        self.assertTrue(Path(before["paths"][0]).exists())
+        self.assertFalse((self.p["THEMES_DIR"] / "Borders").exists())
+        e = installer.install_file(a, "other", "Borders", only_applicable=False)
+        self.assertEqual(e["components"][0]["provides"], ["wm"])
+
+    @mock.patch("drape.desktop.current_desktop", return_value="mate")
+    @mock.patch("drape.desktop.running_wm", return_value="Marco")
+    @mock.patch("drape.desktop._schema_exists", return_value=True)
+    def test_mate_wallpaper_does_not_write_cinnamon_preferences(self, *_mocks):
+        a = self.src / "wall.zip"
+        make_zip(a, {"wall.jpg": b"x"})
+        installer.install_file(a, "wall", "Wall", only_applicable=True)
+        self.assertFalse(self.p["CINNAMON_BG_FOLDERS"].exists())
+
+    @mock.patch("drape.desktop.current_desktop", return_value="mate")
+    @mock.patch("drape.desktop.running_wm", return_value="Marco")
+    @mock.patch("drape.desktop._schema_exists", return_value=True)
+    def test_default_download_tries_compatible_variant(self, *_mocks):
+        from drape.pling import Item, Download
+        wrong, right = self.src / "xfce.zip", self.src / "mate.zip"
+        make_zip(wrong, {"Xfce/xfwm4/themerc": b""})
+        make_zip(right, {"Mate/metacity-1/metacity-theme-1.xml": b""})
+        it = Item.from_ocs({"id": "variants", "name": "Variants"})
+        it.files = [Download(1, "xfce.zip", str(wrong), 0, ""), Download(2, "mate.zip", str(right), 0, "")]
+        with mock.patch.object(installer, "download", side_effect=lambda url, *args: Path(url)):
+            e = installer.install_item(it, only_applicable=True)
+            self.assertEqual(e["file"], "mate.zip")
+            with self.assertRaises(installer.IncompatibleError):
+                installer.install_item(it, file_index=1, only_applicable=True)
 
     def test_icon_theme_with_gtk_extras_is_still_icons(self):
         a = self.src / "i.tar.gz"
@@ -196,7 +254,8 @@ class InstallerTest(unittest.TestCase):
     def test_wallpapers_and_folder_registration(self):
         a = self.src / "walls.zip"
         make_zip(a, {"walls/one.jpg": b"x", "walls/two.png": b"y", "readme.txt": b""})
-        e = installer.install_file(a, "5", "Nice Walls")
+        with mock.patch("drape.desktop.current_desktop", return_value="cinnamon"):
+            e = installer.install_file(a, "5", "Nice Walls")
         folder = self.p["WALLPAPER_DIR"] / "Nice Walls"
         self.assertTrue((folder / "one.jpg").is_file())
         self.assertIn(str(folder), self.p["CINNAMON_BG_FOLDERS"].read_text())

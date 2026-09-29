@@ -43,19 +43,8 @@ def session():
 
 
 def running_wm():
-    """Name the running window manager reports about itself (e.g. 'Mutter (Muffin)', 'compiz')."""
-    try:
-        root = subprocess.run(["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"], capture_output=True,
-                              text=True, timeout=3).stdout
-        wid = re.search(r"window id # (0x[0-9a-f]+)", root)
-        if not wid:
-            return None
-        out = subprocess.run(["xprop", "-id", wid.group(1), "_NET_WM_NAME"], capture_output=True,
-                             text=True, timeout=3).stdout
-        name = re.search(r'= "([^"]*)"', out)
-        return name.group(1) if name else None
-    except (OSError, subprocess.SubprocessError):
-        return None
+    from . import desktop
+    return desktop.running_wm(refresh=True)
 
 
 def installed(program):

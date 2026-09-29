@@ -213,6 +213,10 @@ def _button_strip(metacity):
 def theme_preview_path(theme_dir, kind):
     """Path of a PNG preview for a GTK / window border / desktop theme, rendering it if needed.
     Blocking - call from a worker thread."""
+    for name in ("contents/previews/fullscreenpreview.jpg", "contents/previews/preview.png",
+                 "contents/screenshot.png", "screenshot.png", "preview.png"):
+        if (theme_dir / name).is_file():
+            return theme_dir / name
     if kind == "desktop" and (theme_dir / "cinnamon" / "thumbnail.png").is_file():
         return theme_dir / "cinnamon" / "thumbnail.png"
     if kind == "wm" and (theme_dir / "metacity-1" / "thumbnail.png").is_file():

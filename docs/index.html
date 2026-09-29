@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>drape — theme manager for Linux</title>
-<meta name="description" content="Browse and install icons, cursors, GTK themes, window borders, wallpapers, login screens and boot splashes from gnome-look.org one piece at a time. One click to install, one click to apply.">
+<meta name="description" content="Browse and install icons, cursors, GTK themes, window borders, wallpapers, login screens and boot splashes from GNOME-Look, KDE-Look and Xfce-Look one piece at a time. One click to install, one click to apply.">
 <meta property="og:title" content="drape — theme manager for Linux">
-<meta property="og:description" content="Icons, cursors, themes, wallpapers, login screens and boot splashes from gnome-look.org. One click to install, one click to apply.">
+<meta property="og:description" content="Icons, cursors, themes, wallpapers, login screens and boot splashes from GNOME-Look, KDE-Look and Xfce-Look. One click to install, one click to apply.">
 <meta property="og:image" content="img/shot-icons.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 4h20v4c-3 0-5 3-5 7v13H11V15c0-4-2-7-5-7z' fill='%23d9480f'/%3E%3C/svg%3E">
 <style>
@@ -133,7 +133,7 @@
 
   <div class="hero">
     <h1>Theme your Linux desktop <em>one piece at a time.</em></h1>
-    <p>Icons, cursors, themes, wallpapers, login screens and boot splashes from gnome-look.org. One click to install, one click to apply. No archives, no hidden folders.</p>
+    <p>Icons, cursors, themes, wallpapers, login screens and boot splashes from GNOME-Look, KDE-Look and Xfce-Look. One click to install, one click to apply. No archives, no hidden folders.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Install drape</a>
       <a class="btn" href="https://github.com/anolis/drape">View source</a>
@@ -145,19 +145,37 @@
     <h2>Mix and match, the way theming should work</h2>
     <p class="lede">Most theme tools only hand you whole theme packages. drape gives every part of your desktop its own catalog, so you can pair Papirus icons with Bibata cursors and a mountain wallpaper without touching a terminal.</p>
     <div class="pieces">
-      <span>Icons</span><span>Cursors</span><span>Controls (GTK)</span><span>Window borders</span><span>Desktop themes</span><span>Wallpapers</span><span>Login screen</span><span>Boot splash</span>
+      <span>Icons</span><span>Cursors</span><span>Controls (GTK)</span><span>Window borders</span><span>Desktop styles</span><span>KDE global themes</span><span>Color schemes</span><span>Wallpapers</span><span>Login screen</span><span>Boot splash</span>
     </div>
     <div class="grid">
       <div class="card"><h3>Knows what's in the box</h3><p>Downloads are unpacked, including archives inside archives, and each folder is identified by its contents, not by the category someone uploaded it to.</p></div>
-      <div class="card"><h3>Puts it in the right place</h3><p>Icons, cursors, themes and wallpapers each land where your desktop looks for them. Wallpapers also show up in Backgrounds settings.</p></div>
-      <div class="card"><h3>Applies in one click</h3><p>Sets the right setting for Cinnamon or GNOME, and makes sure apps that ignore live settings pick up your cursor too.</p></div>
+      <div class="card"><h3>Puts it in the right place</h3><p>Icons, cursors, themes and wallpapers each land where your desktop looks for them. On Cinnamon, wallpapers also show up in Backgrounds settings.</p></div>
+      <div class="card"><h3>Applies in one click</h3><p>Uses the matching settings for Cinnamon, MATE, GNOME, Xfce or KDE Plasma. Theme formats are checked against your desktop and running window manager.</p></div>
       <div class="card"><h3>See each variant before you pick</h3><p>Packs with Dark, Light or Compact variants get a picker with a live preview drawn from the variant itself: its real icons, cursors, or a sample window in that theme.</p></div>
       <div class="card"><h3>Windows cursors just work</h3><p>Plenty of cursor uploads are Windows <code>.cur</code>/<code>.ani</code> packs. drape converts them to Linux cursors, animations included.</p></div>
       <div class="card"><h3>Your themes, at a glance</h3><p>Installed themes sit in the same tabs and picture grid you browse, marked when in use, with Update and Remove on each.</p></div>
       <div class="card"><h3>Removes cleanly</h3><p>Every install is tracked, so Remove deletes exactly what drape added, and <em>Show installed files</em> tells you where everything went.</p></div>
-      <div class="card"><h3>Works with gnome-look.org</h3><p>Prefer browsing the website? Its <em>Install</em> buttons open straight in drape.</p></div>
-      <div class="card"><h3>Careful with your files</h3><p>Downloads are checksum-verified, archives can't write outside their folder, and drape asks before replacing a theme it didn't install.</p></div>
+      <div class="card"><h3>Three catalogs, one app</h3><p>Browse GNOME-Look, KDE-Look and Xfce-Look through their shared Pling catalog. Website <em>Install</em> links open in drape.</p></div>
+      <div class="card"><h3>Careful with your files</h3><p>Downloads are checked against available checksums, archives can't write outside their folder, and drape asks before replacing a theme it didn't install.</p></div>
     </div>
+  </section>
+
+  <section id="desktops">
+    <h2>Themes for the desktop you use</h2>
+    <p class="lede">The compatibility filter follows your desktop and window manager. Mixed packs keep their usable components, and switching window managers updates the catalog and sidebar. Unsupported sections are hidden while the compatibility filter is enabled.</p>
+    <div class="table-scroll">
+      <table class="compare">
+        <tr><th>Desktop</th><th>Supported appearance settings</th></tr>
+        <tr><td>Cinnamon</td><td>GTK controls, icons, cursors, Muffin borders, desktop/panel themes and wallpapers</td></tr>
+        <tr><td>MATE</td><td>GTK controls, icons, cursors, Marco borders and wallpapers</td></tr>
+        <tr><td>GNOME</td><td>GTK controls, icons, cursors and wallpapers</td></tr>
+        <tr><td>Xfce</td><td>GTK controls, icons, cursors and Xfwm borders from Xfce-Look</td></tr>
+        <tr><td>KDE Plasma</td><td>Plasma styles, global themes, colors, Aurorae borders, icons, cursors and wallpapers</td></tr>
+      </table>
+    </div>
+    <p class="note">For Cinnamon's taskbar, choose a <strong>Desktop</strong> theme. For KDE's panel, choose a <strong>Plasma style</strong>. Global themes apply without requesting a panel layout reset. KDE categories follow your Plasma version, and KWin detection supports X11 and Wayland.</p>
+    <p class="note">Compiz decorators, GNOME Shell themes, compiled Qt/KWin plugins, Kvantum engines and Xfce wallpaper settings are not supported yet. Unknown downloads stay visible until their contents can be checked. <a href="https://github.com/anolis/drape/blob/main/docs/compatibility.md">Read the compatibility guide</a>.</p>
+    <p class="note">Temporary catalog and download server errors are retried twice. Persistent failures identify the download host so you can try later or use an archive from the author.</p>
   </section>
 
   <section id="system">
@@ -177,7 +195,7 @@
 
   <section>
     <h2>Before and after</h2>
-    <p class="lede">What it takes to install one cursor theme from gnome-look.org.</p>
+    <p class="lede">What it takes to install one cursor theme from GNOME-Look, KDE-Look and Xfce-Look.</p>
     <div class="table-scroll">
     <table class="compare">
       <tr><th>Step</th><th>By hand</th><th>With drape</th></tr>
@@ -197,14 +215,14 @@
       <figure><img src="img/shot-installed.png" alt="The Installed page's Controls tab: a grid of installed themes with Apply, Remove and more buttons" loading="lazy" width="1491" height="859"><figcaption>Installed themes in the same tabs and grid, with a picture of each.</figcaption></figure>
       <figure><img src="img/shot-variants.png" alt="The variant picker for Alcove GTK themes: a list of four variants beside a sample window drawn in the highlighted Alcove-jive-Dark variant" loading="lazy" width="1491" height="859"><figcaption>Hover a variant to see it: this sample window is drawn in Alcove-jive-Dark.</figcaption></figure>
       <figure><img src="img/shot-files.png" alt="The Show installed files window listing each Alcove variant's folder with its size, file count and an expanded file list" loading="lazy" width="812" height="659"><figcaption>Show installed files: every location, its size and contents.</figcaption></figure>
-      <figure><img src="img/shot-wallpapers.png" alt="The Wallpapers category with landscape and abstract wallpapers" loading="lazy" width="1487" height="859"><figcaption>Wallpapers go straight into Backgrounds settings.</figcaption></figure>
+      <figure><img src="img/shot-wallpapers.png" alt="The Wallpapers category with landscape and abstract wallpapers" loading="lazy" width="1487" height="859"><figcaption>Browse wallpapers and apply them on supported desktops.</figcaption></figure>
       <figure><img src="img/shot-details.png" alt="Details dialog for WhiteSur cursors with a large preview, variant picker and Install buttons" loading="lazy" width="940" height="739"><figcaption>Details with previews and a choice of downloads.</figcaption></figure>
     </div>
   </section>
 
   <section id="install">
     <h2>Install</h2>
-    <p class="lede">Needs Python 3.12+, GTK 3 with PyGObject, Pillow and python3-requests. Cinnamon and GNOME desktops already have them. Installing drape needs no root; boot splash and login screen changes ask for your password through polkit.</p>
+    <p class="lede">Needs Python 3.12+, GTK 3 with PyGObject, Pillow and python3-requests. KDE also needs its native Plasma apply tools; Xfce uses xfconf-query. Installing drape needs no root; boot splash and login screen changes ask for your password through polkit.</p>
     <div class="two">
       <div>
         <h3>Get it</h3>
@@ -212,14 +230,15 @@
 cd drape
 ./install.sh
 <span class="c"># adds drape to your menu and handles
-# gnome-look.org Install buttons</span></code></pre>
+# theme catalog Install buttons</span></code></pre>
         <p class="note">Uninstall with <code>./install.sh --uninstall</code>. Themes you installed stay put.</p>
       </div>
       <div>
         <h3>Or use the command line</h3>
 <pre><code>drape search icons papirus
 drape install 1166289 --apply
-drape search boot
+drape search colors arc
+drape search lookandfeel
 drape list
 drape remove 1166289
 drape updates</code></pre>
@@ -229,8 +248,8 @@ drape updates</code></pre>
 
   <footer>
     drape is free software under the GPL-3.0 license. Content comes from
-    <a href="https://www.gnome-look.org">gnome-look.org</a> and belongs to its creators;
-    drape isn't affiliated with Pling or gnome-look.org.
+    <a href="https://www.gnome-look.org">GNOME-Look</a>, <a href="https://www.kde-look.org">KDE-Look</a> and <a href="https://www.xfce-look.org">Xfce-Look</a> and belongs to its creators;
+    drape is not affiliated with these catalogs or Pling.
   </footer>
 </div>
 </body>

@@ -22,7 +22,7 @@ import requests
 
 from .pling import USER_AGENT
 
-CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "peek.json"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "peek-v3.json"
 TAR_BUDGETS = (64 * 1024, 256 * 1024)  # bytes read from the start of a tar download; more only if needed
 BLOCK = 128 * 1024        # zip reads are fetched and cached in blocks this size
 IMAGE_RE = re.compile(r"\.(jpe?g|png|webp|jxl|avif|bmp)$", re.I)
@@ -49,8 +49,22 @@ def classify_names(names):
         parts.add("login")
     if has(r"(^|/)gtk-[234]\.0(/|$)"):
         parts.add("gtk")
-    if has(r"(^|/)(metacity-1|xfwm4)(/|$)"):
+        parts.update(f"gtk-{v}.0" for v in (2, 3, 4) if has(rf"(^|/)gtk-{v}\.0(/|$)"))
+    if has(r"(^|/)metacity-1(/|$)"):
         parts.add("wm")
+    if has(r"(^|/)xfwm4(/|$)"):
+        parts.add("xfwm")
+    if has(r"(^|/)decoration\.svgz?$") or has(r"(^|/)aurorae/themes/[^/]+/"):
+        parts.add("aurorae")
+    if has(r"(^|/)contents/defaults$") or has(r"(^|/)plasma/look-and-feel/[^/]+/"):
+        parts.add("lookandfeel")
+    if has(r"(^|/)(widgets|dialogs)/[^/]+\.svgz?$") and has(r"(^|/)metadata\.(json|desktop)$"):
+        parts.add("plasma")
+    if has(r"\.colors$"):
+        parts.add("colors")
+    for folder in ("gnome-shell", "openbox-3"):
+        if has(rf"(^|/){folder}(/|$)"):
+            parts.add(folder)
     if has(r"(^|/)cinnamon/cinnamon\.css$") or any(re.search(r"(^|/)cinnamon$", d) for d in dirs):
         parts.add("desktop")
     if has(r"(^|/)cursors/[^/]+$") or has(r"\.(cur|ani)$"):
@@ -64,10 +78,10 @@ def classify_names(names):
             (has(r"(^|/)index\.theme$") and any(icon_dir.search(d) for d in dirs)):
         parts.add("icons")
     # pictures that aren't a theme's own assets
-    theme_bits = r"(gtk-[234]\.0|metacity-1|xfwm4|cinnamon|gnome-shell|assets|cursors|icons?|css|fonts?)/"
+    theme_bits = r"(gtk-[234]\.0|metacity-1|xfwm4|cinnamon|gnome-shell|openbox-3|plasma|aurorae|assets|cursors|icons?|css|fonts?)/"
     pictures = [n for n in lower if IMAGE_RE.search(n) and not re.search(theme_bits, n) and not icon_dir.search(n)
                 and not re.search(r"(preview|screenshot|thumbnail|logo)", n.rsplit("/", 1)[-1])]
-    if pictures and (not parts or len(pictures) >= 3 or any(re.search(r"wall|background", n) for n in pictures)):
+    if pictures and not parts & {"plasma", "lookandfeel", "aurorae"} and (not parts or len(pictures) >= 3 or any(re.search(r"wall|background", n) for n in pictures)):
         parts.add("wallpapers")
     return parts
 
@@ -190,6 +204,8 @@ def contents(item_id, url, filename):
         for budget in TAR_BUDGETS:
             names, complete = list_archive(url, filename, budget)
             parts = classify_names(names)
+            if any(re.search(r"\.(zip|tar|tgz|txz|tbz2?|7z|tar\.(gz|xz|bz2|zst))$", n, re.I) for n in names):
+                complete = False  # an outer listing cannot prove what's in nested archives
             if complete or parts - {"wallpapers"}:
                 break
     except (requests.RequestException, OSError, zipfile.BadZipFile, ValueError):

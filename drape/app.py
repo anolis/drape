@@ -102,10 +102,11 @@ class WindowBordersHelp(Gtk.Box):
 
 
 PART_NAMES = {"icons": "Icons", "cursors": "Cursors", "gtk": "Controls", "wm": "Window borders",
-              "desktop": "Desktop", "wallpapers": "Wallpaper", "plymouth": "Boot splash", "login": "Login screen"}
+              "desktop": "Desktop", "wallpapers": "Wallpaper", "plymouth": "Boot splash", "login": "Login screen",
+              "plasma": "Plasma style", "lookandfeel": "Global theme", "colors": "Color scheme", "aurorae": "KWin borders"}
 # which glyph a browse tab expects to see
 TAB_PART = {"icons": "icons", "cursors": "cursors", "gtk": "gtk", "wm": "wm", "desktop": "desktop",
-            "wallpapers": "wallpapers", "login": "login", "boot": "plymouth"}
+            "wallpapers": "wallpapers", "login": "login", "boot": "plymouth", "colors": "colors", "lookandfeel": "lookandfeel"}
 _peeks = ThreadPoolExecutor(max_workers=1)  # small and gentle: one listing at a time, after pictures
 
 GLYPH_CSS = b"""
@@ -118,7 +119,7 @@ GLYPH_CSS = b"""
 class Glyphs(Gtk.Box):
     """Small symbols on a card saying what its download actually contains."""
 
-    ORDER = ["desktop", "gtk", "wm", "icons", "cursors", "wallpapers", "login", "plymouth"]
+    ORDER = ["desktop", "plasma", "lookandfeel", "colors", "gtk", "wm", "aurorae", "icons", "cursors", "wallpapers", "login", "plymouth"]
 
     def __init__(self):
         super().__init__(spacing=4, halign=Gtk.Align.START, valign=Gtk.Align.START, margin=6, no_show_all=True)
@@ -132,7 +133,8 @@ class Glyphs(Gtk.Box):
             self.hide()
             return False
         for p in parts:
-            img = Gtk.Image.new_from_icon_name(f"drape-part-{p}-symbolic", Gtk.IconSize.MENU)
+            glyph = {"plasma": "desktop", "lookandfeel": "desktop", "colors": "gtk", "aurorae": "wm"}.get(p, p)
+            img = Gtk.Image.new_from_icon_name(f"drape-part-{glyph}-symbolic", Gtk.IconSize.MENU)
             img.show()
             self.pack_start(img, False, False, 0)
         names = ", ".join(PART_NAMES[p] for p in parts)
@@ -190,6 +192,8 @@ def system_theme_active(kind, name):
 
 
 def matches(kind, component):
+    if kind in ("wm", "desktop"):
+        return desktop.theme_part(kind) in component["provides"]
     return bool(TAB_PARTS.get(kind, {kind}) & set(component["provides"]))
 
 
@@ -370,7 +374,7 @@ def in_use(component):
         return system.display_manager() == "sddm" and system.current_sddm_theme() == component["name"]
     if kind == "webgreeter":
         return system.current_web_greeter_theme() == component["name"]
-    for part in component["provides"]:
+    for part in desktop.compatible_parts(component):
         value = Path(component["path"]).as_uri() if part == "wallpapers" else component["name"]
         if desktop.get(part) == value:
             return True
@@ -504,6 +508,9 @@ class ApplyControl(Gtk.Box):
         apply.connect("clicked", self._apply)
         self.pack_start(apply, False, False, 0)
         comps = self._components()
+        apply.set_sensitive(bool(comps))
+        if not comps:
+            apply.set_tooltip_text("No supported components for this desktop and window manager")
         if len(comps) > 1:
             more = Gtk.Button(image=Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON))
             more.get_style_context().add_class("suggested-action")
@@ -518,8 +525,10 @@ class ApplyControl(Gtk.Box):
             return []
         comps = entry["components"]
         if self.kind and self.kind != "wallpapers":
-            comps = [c for c in comps if matches(self.kind, c)] or comps
-        return comps
+            comps = [c for c in comps if matches(self.kind, c)]
+        return [c for c in comps if c.get("system") or
+                any(p in desktop.compatible_parts(c) for p in (
+                    [desktop.theme_part(self.kind)] if self.kind else c["provides"]))]
 
     def _target(self, comps):
         using = [c for c in comps if in_use(c)]
@@ -537,6 +546,8 @@ class ApplyControl(Gtk.Box):
 
     def _pick(self, btn):
         comps = self._components()
+        if not comps:
+            return
         if self.kind == "wallpapers":
             self.win.choose_wallpaper(comps)
             return
@@ -547,6 +558,7 @@ class Card(Gtk.FlowBoxChild):
     def __init__(self, window, kind, item):
         super().__init__()
         self.win, self.kind, self.item = window, kind, item
+        self.compatible = True
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         frame = Gtk.Frame()
@@ -610,17 +622,33 @@ class Card(Gtk.FlowBoxChild):
         hit = peek.cached(self.item.id, f.name)
         if hit is not None:
             self._show_glyphs(*hit)
-            return
+            if desktop.archive_compatible(*hit, self.kind) or all(
+                    peek.cached(self.item.id, other.name) is not None for other in self.item.files):
+                return
 
         def work():
             if alive is not None and not alive.is_set():
                 return
             result = peek.contents(self.item.id, f.url, f.name)
+            if not desktop.archive_compatible(*result, self.kind):
+                for other in self.item.files:
+                    if other != f:
+                        peek.contents(self.item.id, other.url, other.name)
             GLib.idle_add(self._show_glyphs, *result)
         _peeks.submit(lambda: _safe(work))
 
     def _show_glyphs(self, parts, complete):
-        expected = TAB_PART.get(self.kind)
+        checks = [peek.cached(self.item.id, f.name) for f in self.item.files]
+        self.compatible = not checks or any(
+            hit is None or desktop.archive_compatible(*hit, self.kind) for hit in checks)
+        parent = self.get_parent()
+        if isinstance(parent, Gtk.FlowBox):
+            parent.invalidate_filter()
+            page = self.win.pages.get(self.kind)
+            if page:
+                GLib.idle_add(page._filtered_status)
+        parts = {"wm" if p in ("xfwm", "aurorae") else p for p in parts}
+        expected = "plasma" if self.kind == "desktop" and desktop.current_desktop() == "kde" else TAB_PART.get(self.kind)
         if self.glyphs.show_parts(parts, expected, complete):
             not_ = GLib.markup_escape_text(PART_NAMES[expected])
             if set(parts) == {"wallpapers"}:
@@ -676,6 +704,7 @@ class BrowsePage(Gtk.Box):
         self.flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                                 valign=Gtk.Align.START, max_children_per_line=8,
                                 margin=12, row_spacing=6, column_spacing=6)
+        self.flow.set_filter_func(lambda card: not settings.get("only_applicable") or card.compatible)
         # "Asking gnome-look.org…" with a spinner, or a message
         self.status = Gtk.Box(spacing=10, margin=24, halign=Gtk.Align.CENTER, no_show_all=True)
         self.status_spinner = Gtk.Spinner()
@@ -713,6 +742,17 @@ class BrowsePage(Gtk.Box):
 
     def cards(self):
         return self.flow.get_children()
+
+    def _filtered_status(self):
+        if self.flow.in_destruction():
+            return False
+        message = "No compatible themes in these results."
+        if settings.get("only_applicable") and self.cards() and not any(c.compatible for c in self.cards()):
+            self._set_status(message)
+            self._maybe_more()
+        elif self.status_label.get_text() == message:
+            self._set_status("")
+        return False
 
     def _set_status(self, text, busy=False):
         self.status_label.set_text(text or "")
@@ -759,11 +799,11 @@ class BrowsePage(Gtk.Box):
         if shown:
             self._set_status("")
         else:
-            self._set_status("Asking gnome-look.org…", busy=True)
+            self._set_status(f"Asking {desktop.catalog_name()}…", busy=True)
 
         def slow():
             if gen == self.generation and not self.cards() and self.status.get_visible():
-                self._set_status("Still waiting for gnome-look.org - the connection seems slow. "
+                self._set_status(f"Still waiting for {desktop.catalog_name()} - the connection seems slow. "
                                  "Results will show as soon as they arrive.", busy=True)
             return False
         GLib.timeout_add_seconds(6, slow)
@@ -795,7 +835,7 @@ class BrowsePage(Gtk.Box):
 
         def failed(e):
             if gen == self.generation and not self.cards():
-                self._set_status(f"Couldn't reach gnome-look.org: {e}")
+                self._set_status(f"Couldn't reach {desktop.catalog_name()}: {e}")
 
         for i in range(FIRST_CHUNKS):
             run_async(lambda i=i: pling.search(self.kind, query, sort, i, CHUNK, categories),
@@ -842,6 +882,10 @@ class BrowsePage(Gtk.Box):
     def _scope(self):
         """(categories to search or None for the default, explanation) for this computer."""
         only = settings.get("only_applicable")
+        if self.kind not in ("login", "boot"):
+            cats, note = desktop.scope(self.kind, only)
+            if cats is not None or not desktop.supported(self.kind):
+                return cats, GLib.markup_escape_text(note)
         if self.kind == "login":
             cats = system.login_categories(only)
             dm, greeter = system.display_manager(), system.lightdm_greeter()
@@ -999,6 +1043,7 @@ class InstalledCard(Gtk.FlowBoxChild):
 # ---------------------------------------------------------------- what's in use right now
 
 ACTIVE_PARTS = [("gtk", "Controls"), ("wm", "Window borders"), ("desktop", "Desktop"), ("icons", "Icons"),
+                ("lookandfeel", "Global theme"), ("colors", "Color scheme"),
                 ("cursors", "Cursors"), ("wallpapers", "Wallpaper"), ("login", "Login screen"),
                 ("boot", "Boot splash")]
 
@@ -1007,6 +1052,8 @@ def locate_theme(part, name):
     """Folder of the theme in use for a part, looked up the way the desktop does."""
     if not name:
         return None
+    if desktop.current_desktop() == "kde" and desktop.theme_part(part) in desktop.kde.DIRECTORIES:
+        return desktop.kde.locate(desktop.theme_part(part), name)
     if part in ("gtk", "wm", "desktop"):
         return desktop.find_theme_dir(name)
     for base in (installer.ICONS_DIR, installer.CURSORS_DIR, Path("/usr/share/icons")):
@@ -1105,7 +1152,7 @@ class ActiveCard(Gtk.FlowBoxChild):
 
     def _describe(self, part):
         """(name, detail line, drape manifest key, page for Change) - and start the preview."""
-        if part in ("gtk", "wm", "desktop", "icons", "cursors"):
+        if part in ("gtk", "wm", "desktop", "icons", "cursors", "lookandfeel", "colors"):
             name = desktop.get(part) or ""
             path = locate_theme(part, name)
             source, key = theme_source(path)
@@ -1189,6 +1236,7 @@ class InstalledPage(Gtk.Box):
         self.tabs = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hhomogeneous=False)
         self.grids = {}
         for k in [pling.Kind("active", "In use", "")] + kinds + [pling.Kind("other", "Other", "")]:
+            k = pling.Kind(k.key, desktop.category_label(k.key, k.label), k.categories)
             flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                                valign=Gtk.Align.START, max_children_per_line=8,
                                margin=12, row_spacing=6, column_spacing=6)
@@ -1254,17 +1302,24 @@ class InstalledPage(Gtk.Box):
             if key_name == "active":
                 for part, label in ACTIVE_PARTS:
                     if part in ("login", "boot", "wallpapers") or desktop.supported(part):
-                        flow.add(ActiveCard(self.win, part, label))
+                        flow.add(ActiveCard(self.win, part, desktop.category_label(part, label)))
                 flow.show_all()
                 counts["active"] = len(flow.get_children())
                 continue
             n = 0
             for key, e in sorted(m.items(), key=lambda kv: kv[1]["title"].lower()):
+                if settings.get("only_applicable") and not any(
+                        c.get("system") or desktop.compatible_parts(c) for c in e["components"]):
+                    continue
                 if key_name == "other":
                     if key in placed:
                         continue
                 elif not any(matches(key_name, c) for c in e["components"]):
                     continue
+                elif settings.get("only_applicable") and key_name not in ("login", "boot"):
+                    target = desktop.theme_part(key_name)
+                    if not any(target in desktop.compatible_parts(c) for c in e["components"]):
+                        continue
                 placed.add(key)
                 if key_name == "wallpapers":
                     for c in e["components"]:
@@ -1353,7 +1408,7 @@ class DetailsDialog(Gtk.Dialog):
         meta = Gtk.Label(xalign=0, wrap=True)
         meta.set_markup(f"by <b>{GLib.markup_escape_text(item.author)}</b> · updated {item.changed[:10]} · "
                         f"{item.downloads:,} downloads · "
-                        f"<a href=\"{GLib.markup_escape_text(item.page)}\">view on gnome-look.org</a>")
+                        f"<a href=\"{GLib.markup_escape_text(item.page)}\">view on theme catalog</a>")
         area.pack_start(meta, False, False, 0)
         summary = Gtk.Label(label=item.summary, xalign=0, wrap=True, selectable=True)
         area.pack_start(summary, False, False, 0)
@@ -1454,11 +1509,9 @@ class Window(Gtk.ApplicationWindow):
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hhomogeneous=False)
         self.pages = {}
         for k in pling.KINDS:
-            if k.key not in ("wallpapers", "login", "boot") and not desktop.supported(k.key):
-                continue  # e.g. no "Desktop" (Cinnamon theme) page on GNOME
             p = BrowsePage(self, k.key)
             self.pages[k.key] = p
-            self.stack.add_titled(p, k.key, k.label)
+            self.stack.add_titled(p, k.key, desktop.category_label(k.key, k.label))
         self.installed = InstalledPage(self, [k for k in pling.KINDS if k.key in self.pages])
         self.stack.add_titled(self.installed, "installed", "Installed")
         from .lockpage import LockLoginPage
@@ -1497,6 +1550,7 @@ class Window(Gtk.ApplicationWindow):
         self._closing = threading.Event()
         self.connect("destroy", lambda *_: self._closing.set())
         GLib.timeout_add_seconds(4, self._start_prefetch)
+        GLib.timeout_add_seconds(3, self._check_theme_session)
 
     def set_app_icon(self):
         """The drape mark: from the icon theme once installed, else straight from the repo."""
@@ -1526,6 +1580,9 @@ class Window(Gtk.ApplicationWindow):
     def _sidebar(self):
         """Like Gtk.StackSidebar, plus a labelled divider between theme pages and settings pages."""
         lb = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE)
+        self._sidebar_list = lb
+        lb.set_filter_func(lambda row: row.page not in self.pages or desktop.category_visible(
+            row.page, settings.get("only_applicable")))
         lb.get_style_context().add_class("sidebar")
         rows = {}
         for child in self.stack.get_children():
@@ -1621,10 +1678,22 @@ class Window(Gtk.ApplicationWindow):
 
     def _toggle_applicable(self, item):
         settings.set("only_applicable", item.get_active())
-        for key in ("login", "boot"):
-            if key in self.pages:
-                self.pages[key].loaded = False
-        self.on_page()
+        self.reload_all()
+
+    def _check_theme_session(self):
+        if self._closing.is_set():
+            return False
+        if getattr(self, "_checking_theme_session", False):
+            return True
+        self._checking_theme_session = True
+
+        def done(signature):
+            self._checking_theme_session = False
+            if not self._closing.is_set() and signature != getattr(self, "_theme_session", None):
+                self.reload_all()
+        run_async(lambda: (desktop.current_desktop(), desktop.running_wm()), done,
+                  lambda _e: setattr(self, "_checking_theme_session", False))
+        return True
 
     def query(self):
         return self.search.get_text().strip()
@@ -1643,6 +1712,20 @@ class Window(Gtk.ApplicationWindow):
         self.infobar.show()
 
     def on_page(self):
+        signature = (desktop.current_desktop(), desktop.running_wm())
+        if signature != getattr(self, "_theme_session", None):
+            self._theme_session = signature
+            for page in self.pages.values():
+                page.loaded = False
+        sidebar = getattr(self, "_sidebar_list", None)
+        state = (*signature, settings.get("only_applicable"))
+        if sidebar is not None and state != getattr(self, "_sidebar_state", None):
+            self._sidebar_state = state
+            sidebar.invalidate_filter()
+        current = self.stack.get_visible_child_name()
+        if current in self.pages and not desktop.category_visible(current, state[-1]):
+            self.stack.set_visible_child_name("installed")
+            return
         child = self.stack.get_visible_child()
         searchable = child not in (self.installed, self.lockpage, self.wmpage)
         self.search.set_sensitive(searchable)
@@ -1756,7 +1839,9 @@ class Window(Gtk.ApplicationWindow):
                 else:
                     self.notify(f"Installed {item.name} — it has {len(comps)} variants, pick one with Apply.")
             else:
-                self.notify(f"Installed {item.name}.")
+                skipped = result.get("skipped", [])
+                self.notify(f"Installed {item.name}." + (
+                    f" Skipped {len(skipped)} incompatible component(s)." if skipped else ""))
 
         def error(e):
             self.busy.pop(item.id, None)
@@ -1817,16 +1902,20 @@ class Window(Gtk.ApplicationWindow):
         if component.get("system"):
             self.apply_system(component)
             return
-        only = [kind] if kind and kind in component["provides"] else None
+        only = [desktop.theme_part(kind)] if kind else None
         parts = only or component["provides"]
         if "desktop" in parts and desktop.cinnamon_theme_outdated(component["path"]) and not self.ask(
                 f"{component['name']} was made for an older Cinnamon",
                 f"It'll work, but it was {desktop.OUTDATED_NOTE}: they'll look see-through and unstyled.",
                 "Apply anyway"):
             return
-        applied = desktop.apply_component(component, only)
+        try:
+            applied = desktop.apply_component(component, only)
+        except desktop.ApplyError as e:
+            error_dialog(self, "Couldn't apply theme", e)
+            return
         if applied:
-            if "wm" in applied:
+            if any(p in applied for p in ("wm", "xfwm", "aurorae")):
                 self.notify(f"Now using {component['name']} for window borders. They show on apps with a "
                             "classic title bar, like Files; apps with their own title bar follow your Controls theme.",
                             action=("Show me", self.show_border_sample))
@@ -2062,7 +2151,7 @@ class Window(Gtk.ApplicationWindow):
         self.notify(f"The lock screen now shows {Path(component['path']).name}.")
 
     def install_link(self, url):
-        self.notify("Installing from gnome-look.org link…")
+        self.notify("Installing from theme catalog link…")
 
         reapply = []
 

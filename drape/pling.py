@@ -1,4 +1,4 @@
-"""Minimal client for the Pling / gnome-look.org OCS API."""
+"""Pling OCS client shared by GNOME-Look, KDE-Look and Xfce-Look catalogs."""
 
 import hashlib
 import json
@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import requests
+from . import http
 
 API = "https://api.pling.com/ocs/v1"
 USER_AGENT = "drape/0.1 (+https://github.com/anolis/drape)"
@@ -28,6 +29,8 @@ KINDS = [
     Kind("gtk", "Controls", "135"),
     Kind("wm", "Window borders", "125"),
     Kind("desktop", "Desktop", "133"),
+    Kind("lookandfeel", "Global themes", "121,722"),
+    Kind("colors", "Color schemes", "112"),
     Kind("wallpapers", "Wallpapers", "295,261,58,300,283,302,303,360"),
     Kind("login", "Login screen", "101,154,131"),
     Kind("boot", "Boot splash", "108"),
@@ -111,14 +114,14 @@ def _get(path, params=None):
     params = dict(params or {}, format="json")
     try:
         # slow connections can take a while to deliver a page; only give up if nothing arrives at all
-        r = requests.get(f"{API}/{path}", params=params, timeout=(15, 90),
+        r = http.get(f"{API}/{path}", params=params, timeout=(15, 90),
                          headers={"User-Agent": USER_AGENT})
         r.raise_for_status()
         data = r.json()
     except (requests.RequestException, ValueError) as e:
-        raise PlingError(f"Could not reach gnome-look.org: {e}") from e
+        raise PlingError(f"Could not reach the Pling theme catalog: {e}") from e
     if data.get("status") != "ok":
-        raise PlingError(data.get("message") or "gnome-look.org returned an error")
+        raise PlingError(data.get("message") or "The theme catalog returned an error")
     return data
 
 

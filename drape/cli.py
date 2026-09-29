@@ -1,10 +1,10 @@
-"""drape command line: search, install, apply and remove themes from gnome-look.org."""
+"""Search, install, apply and remove themes from GNOME-Look, KDE-Look and Xfce-Look."""
 
 import argparse
 import sys
 from pathlib import Path
 
-from . import desktop, installer, pling
+from . import desktop, installer, pling, settings, peek
 
 
 def _progress(done, total):
@@ -25,7 +25,16 @@ def _print_entry(key, e):
 
 
 def cmd_search(a):
-    items, total = pling.search(a.kind, a.query, a.sort, a.page, max(a.limit, 10))
+    only = not a.all_themes and settings.get("only_applicable")
+    categories, note = desktop.scope(a.kind, only)
+    if categories == "":
+        print(note, file=sys.stderr)
+        return
+    items, total = pling.search(a.kind, a.query, a.sort, a.page, max(a.limit, 10), categories)
+    if only:
+        items = [it for it in items if not it.files or any(
+            (hit := peek.cached(it.id, f.name)) is None or desktop.archive_compatible(*hit, a.kind)
+            for f in it.files)]
     items = items[:a.limit]  # the API won't return pages smaller than 10
     for it in items:
         print(f"{it.id:>10}  {it.name[:48]:48}  {it.author[:16]:16}  score {it.score:3d}  {it.downloads:>7} dl")
@@ -44,7 +53,8 @@ def cmd_show(a):
 def cmd_install(a):
     it = pling.get(a.id)
     print(f"Installing {it.name}...", file=sys.stderr)
-    e = installer.install_item(it, a.file, _progress, a.force, _replace(a))
+    e = installer.install_item(it, a.file, _progress, a.force, _replace(a),
+                               only_applicable=False if a.all_themes else None)
     print(file=sys.stderr)
     _print_entry(it.id, e)
     if a.apply:
@@ -52,7 +62,8 @@ def cmd_install(a):
 
 
 def cmd_install_url(a):
-    key, e = installer.install_url(a.url, _progress, a.force, _replace(a))
+    key, e = installer.install_url(a.url, _progress, a.force, _replace(a),
+                                   only_applicable=False if a.all_themes else None)
     print(file=sys.stderr)
     _print_entry(key, e)
     if a.apply:
@@ -73,7 +84,8 @@ def _conflict_hint(e):
 def cmd_file(a):
     p = Path(a.path)
     e = installer.install_file(p, f"file:{p.name}", p.name.split(".")[0], source=str(p.resolve()),
-                               replace_foreign=a.force, file=p.name, replace_items=_replace(a))
+                               replace_foreign=a.force, file=p.name, replace_items=_replace(a),
+                               only_applicable=False if a.all_themes else None)
     _print_entry(f"file:{p.name}", e)
 
 
@@ -90,8 +102,9 @@ def _apply(entry, name=None):
     for c in comps:
         # for multi-variant downloads apply the first variant of each part only
         parts = [p for p in c["provides"] if p not in seen]
-        applied += desktop.apply_component(c, only=parts)
-        seen.update(c["provides"])
+        changed = desktop.apply_component(c, only=parts)
+        applied += changed
+        seen.update(changed)
     print("Applied: " + (", ".join(applied) or "nothing (unsupported desktop?)"))
 
 
@@ -203,12 +216,15 @@ def main(argv=None):
 
     sub.add_parser("updates", help="check installed items for updates").set_defaults(func=cmd_updates)
 
+    for name in ("search", "install", "install-url", "install-file"):
+        sub.choices[name].add_argument("--all-themes", action="store_true",
+                                      help="include themes for other desktops (Apply still checks compatibility)")
     a = ap.parse_args(argv)
     try:
         a.func(a)
     except installer.ConflictError as e:
         sys.exit(f"error: {_conflict_hint(e)}")
-    except (pling.PlingError, installer.InstallError) as e:
+    except (pling.PlingError, installer.InstallError, desktop.ApplyError) as e:
         sys.exit(f"error: {e}")
 
 

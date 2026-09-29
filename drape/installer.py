@@ -17,7 +17,7 @@ from pathlib import Path
 
 import requests
 
-from . import helper, wincursors
+from . import helper, wincursors, kde, http
 from .pling import USER_AGENT
 
 HOME = Path.home()
@@ -39,12 +39,17 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".svg", ".bmp", ".jxl", ".avif"}
 THEME_PARTS = {
     "gtk-3.0": "gtk", "gtk-4.0": "gtk", "gtk-2.0": "gtk",
     "metacity-1": "wm", "cinnamon": "desktop", "xfwm4": "xfwm",
+    "gnome-shell": "gnome-shell", "openbox-3": "openbox-3",
 }
 MAX_NESTING = 2
 
 
 class InstallError(Exception):
     pass
+
+
+class IncompatibleError(InstallError):
+    """The archive has no components usable in the current session."""
 
 
 class ConflictError(InstallError):
@@ -94,7 +99,7 @@ def _owner_of(path, manifest):
 def download(url, dest_dir, filename=None, md5=None, progress=None):
     headers = {"User-Agent": USER_AGENT}
     try:
-        with requests.get(url, stream=True, timeout=30, headers=headers) as r:
+        with http.get(url, stream=True, timeout=30, headers=headers) as r:
             r.raise_for_status()
             if not filename:
                 cd = r.headers.get("content-disposition", "")
@@ -113,8 +118,13 @@ def download(url, dest_dir, filename=None, md5=None, progress=None):
                     if progress:
                         progress(done, total)
     except requests.HTTPError as e:
+        if e.response is not None and e.response.status_code in http.RETRY_STATUSES:
+            host = urllib.parse.urlsplit(e.response.url or url).hostname or "the download server"
+            raise InstallError(f"{host} returned HTTP {e.response.status_code} after 3 attempts. "
+                               "The theme file could not be downloaded. Try again later or use the author's "
+                               "original download; no theme was installed.") from e
         if e.response is not None and e.response.status_code == 404:
-            raise InstallError("gnome-look.org no longer has this file - the upload is broken. "
+            raise InstallError("The theme catalog no longer has this file - the upload is broken. "
                                "Try another download for this item or let its author know.") from e
         raise InstallError(f"Download failed (HTTP {e.response.status_code if e.response is not None else '?'}).") from e
     except requests.RequestException as e:
@@ -161,7 +171,7 @@ def extract(archive, dest):
 
 def unpack_all(path, work):
     """Extract `path` (and archives nested inside it) under `work`; return the root to scan."""
-    if path.suffix.lower() in IMAGE_EXTS and not _is_archive(path):
+    if path.suffix.lower() in IMAGE_EXTS | {".colors"} and not _is_archive(path):
         root = work / "unpacked"
         root.mkdir()
         shutil.copy2(path, root / path.name)
@@ -239,6 +249,9 @@ def _classify_dir(d):
         return ("icons", "cursors") if has_cursors else ("icons",)
     if has_cursors:
         return ("cursors",)
+    kde_kind = kde.classify_dir(d)
+    if kde_kind:
+        return (kde_kind,)
     parts = sorted({v for k, v in THEME_PARTS.items() if (d / k).is_dir()})
     return tuple(parts) or None
 
@@ -255,8 +268,16 @@ def classify(root, fallback_name):
         kind = _classify_dir(d)
         if kind:
             name = d.name if d != root else _sanitize(fallback_name)
+            if kind[0] in kde.DIRECTORIES:
+                try:
+                    name = kde.theme_name(d, name)
+                except ValueError as e:
+                    raise InstallError(str(e)) from e
             components.append(Component(kind, d, name.removesuffix(".d")))
             return
+        for file in sorted(d.glob("*.colors")):
+            if "[Colors:Window]" in _read(file):
+                components.append(Component(("colors",), file, file.stem))
         if sum(1 for p in d.iterdir() if wincursors.is_windows_cursor(p)) >= 3:
             # name a bare "cursors" folder after the pack that contains it
             named = d.parent if d.name.lower() in ("cursors", "cursor") and d != root else d
@@ -287,6 +308,9 @@ def _system_name(name):
 
 
 def _dest_for(comp, wallpaper_dir):
+    if comp.provides[0] in kde.DIRECTORIES:
+        folder = kde.DATA_HOME / kde.DIRECTORIES[comp.provides[0]]
+        return folder / (comp.name + ".colors" if comp.provides[0] == "colors" else comp.name)
     if comp.provides[0] in SYSTEM_KINDS:
         return STAGING_DIR / comp.provides[0] / _system_name(comp.name)
     if comp.provides == ("wallpapers",):
@@ -311,20 +335,40 @@ def _register_wallpaper_folder(folder):
 
 
 def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview="",
-                 replace_items=False):
+                 replace_items=False, only_applicable=None):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
         root = unpack_all(Path(path), Path(work))
         comps = classify(root, title)
         if not comps:
-            raise InstallError("Couldn't find an icon theme, cursor theme, GTK/window/desktop theme or images in this download.")
+            raise InstallError("Couldn't find a supported theme, color scheme or wallpaper in this download.")
 
         wall_dir = WALLPAPER_DIR / _sanitize(title)
         installed, provides = [], []
         if any(c.provides == ("gdm",) for c in comps):
             raise InstallError("This is a GDM login theme. Those work by replacing a core GNOME Shell file, which "
                                "breaks when GNOME updates, so drape doesn't install them yet.")
+        from . import desktop, settings
+        if only_applicable is None:
+            only_applicable = settings.get("only_applicable")
+        skipped = []
+        if only_applicable:
+            desktop.running_wm(refresh=True)
+            usable = []
+            for c in comps:
+                if c.provides[0] in SYSTEM_KINDS or desktop.compatible_parts(
+                        {"provides": c.provides, "path": str(c.path)}):
+                    usable.append(c)
+                else:
+                    skipped.append(c.name)
+            comps = usable
+            if not comps:
+                raise IncompatibleError("This download has no supported themes for "
+                                   f"{desktop.current_desktop() or 'this desktop'} / "
+                                   f"{desktop.running_wm() or 'unknown window manager'}. "
+                                   "Nothing was installed. Turn off 'Only show themes that work on this computer' "
+                                   "to install themes for another session.")
         # check every name before copying anything, so a clash can't leave a half-installed pack
         conflicts, foreign = {}, []
         for c in comps:
@@ -377,7 +421,8 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                                capture_output=True)
 
         if any(c.provides == ("wallpapers",) for c in comps):
-            _register_wallpaper_folder(wall_dir)
+            if desktop.current_desktop() == "cinnamon":
+                _register_wallpaper_folder(wall_dir)
             installed.append(str(wall_dir))
 
     # drop paths from a previous version of this item that the new version no longer has
@@ -394,24 +439,38 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
         "installed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "paths": installed,
         "components": provides,
+        "skipped": skipped,
     }
     save_manifest(manifest)
     return manifest[key]
 
 
-def install_item(item, file_index=None, progress=None, replace_foreign=False, replace_items=False):
+def install_item(item, file_index=None, progress=None, replace_foreign=False, replace_items=False,
+                 only_applicable=None):
     """Install a pling.Item. The item should be freshly fetched (download links expire)."""
     if not item.files:
         raise InstallError("This item has no direct downloads (it may link to an external site).")
-    f = next((f for f in item.files if f.index == file_index), None) or item.best_file()
+    if file_index is not None:
+        files = [f for f in item.files if f.index == file_index]
+        if not files:
+            raise InstallError(f"No download numbered {file_index}.")
+    else:
+        best = item.best_file()
+        files = [best] + [f for f in item.files if f != best]
     with tempfile.TemporaryDirectory(prefix="drape-dl-") as tmp:
-        path = download(f.url, tmp, f.name, f.md5, progress)
-        return install_file(path, item.id, item.name, item.changed, item.page,
-                            replace_foreign, file=f.name,
-                            preview=item.previews[0] if item.previews else "", replace_items=replace_items)
+        for f in files:
+            path = download(f.url, tmp, f.name, f.md5, progress)
+            try:
+                return install_file(path, item.id, item.name, item.changed, item.page,
+                                    replace_foreign, file=f.name,
+                                    preview=item.previews[0] if item.previews else "", replace_items=replace_items,
+                                    only_applicable=only_applicable)
+            except IncompatibleError as e:
+                last_error = e
+        raise last_error
 
 
-def install_url(url, progress=None, replace_foreign=False, replace_items=False):
+def install_url(url, progress=None, replace_foreign=False, replace_items=False, only_applicable=None):
     """Install from an ocs://install?url=...&filename=... link (gnome-look "Install" buttons) or a
     plain download URL. Returns (manifest key, entry)."""
     u = urllib.parse.urlparse(url)
@@ -426,7 +485,8 @@ def install_url(url, progress=None, replace_foreign=False, replace_items=False):
         key = f"url:{path.name}"
         title = re.sub(r"(\.(tar|zip|tgz|gz|xz|bz2|zst|7z))+$", "", path.name, flags=re.I)
         return key, install_file(path, key, title, source=url,
-                                 replace_foreign=replace_foreign, file=path.name, replace_items=replace_items)
+                                 replace_foreign=replace_foreign, file=path.name, replace_items=replace_items,
+                                 only_applicable=only_applicable)
 
 
 def set_chosen(key, kind, name):
@@ -447,7 +507,8 @@ def set_preview(key, url):
 
 def _remove_path(p):
     # only ever delete inside the directories we install into
-    allowed = (ICONS_DIR, CURSORS_DIR, THEMES_DIR, WALLPAPER_DIR, STAGING_DIR)
+    allowed = (ICONS_DIR, CURSORS_DIR, THEMES_DIR, WALLPAPER_DIR, STAGING_DIR,
+               *(kde.DATA_HOME / folder for folder in kde.DIRECTORIES.values()))
     if not any(p.is_relative_to(a) and p != a for a in allowed):
         return
     if p.is_dir() and not p.is_symlink():
