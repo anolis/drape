@@ -46,6 +46,8 @@ class ThemeActions:
             run_async(work, done, error)
 
         def done(result):
+            if not isinstance(result, installer.InstallError):
+                feedback.complete()
             feedback.close()
             self.busy.pop(item.id, None)
             if isinstance(result, installer.ConflictError):

@@ -100,7 +100,13 @@ class InstallerTest(unittest.TestCase):
     def test_installation_reports_stages_through_cache_and_manifest(self):
         archive = self.src / "icons.tar.gz"
         make_tar(archive, {"Test/index.theme": ICON_INDEX, "Test/48x48/apps/icon.svg": b"svg"})
-        stages = []
+        stages, fractions = [], []
+
+        def report(text, fraction):
+            stages.append(text)
+            if fraction is not None:
+                fractions.append(fraction)
+
         copytree, save = installer.shutil.copytree, installer.save_manifest
 
         def copy(*args, **kwargs):
@@ -118,11 +124,13 @@ class InstallerTest(unittest.TestCase):
                 mock.patch.object(installer.shutil, "which", return_value="/usr/bin/gtk-update-icon-cache"), \
                 mock.patch.object(installer.subprocess, "run", side_effect=cache), \
                 mock.patch.object(installer, "save_manifest", side_effect=persist):
-            installer.install_file(archive, "stage", "Test", status=stages.append)
+            installer.install_file(archive, "stage", "Test", status=report)
         self.assertIn("Extracting files…", stages)
         self.assertIn("Checking for nested archives…", stages)
         self.assertIn("Cleaning up extracted files…", stages)
         self.assertIn("stage", installer.load_manifest())
+        self.assertEqual(fractions, sorted(fractions))
+        self.assertLess(max(fractions), 1.0)
 
     def test_icon_theme(self):
         a = self.src / "icons.tar.gz"

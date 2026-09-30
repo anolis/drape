@@ -96,13 +96,13 @@ def _owner_of(path, manifest):
 
 # ---------------------------------------------------------------- download
 
-def _report_status(status, text):
+def _report_status(status, text, fraction=None):
     if status:
-        status(text)
+        status(text, fraction)
 
 
 def download(url, dest_dir, filename=None, md5=None, progress=None, status=None):
-    _report_status(status, "Downloading…")
+    _report_status(status, "Downloading…", 0)
     headers = {"User-Agent": USER_AGENT}
     try:
         with http.get(url, stream=True, timeout=30, headers=headers) as r:
@@ -135,7 +135,7 @@ def download(url, dest_dir, filename=None, md5=None, progress=None, status=None)
         raise InstallError(f"Download failed (HTTP {e.response.status_code if e.response is not None else '?'}).") from e
     except requests.RequestException as e:
         raise InstallError(f"Download failed: {e.__class__.__name__}. Check your connection.") from e
-    _report_status(status, "Verifying download…")
+    _report_status(status, "Verifying download…", 0.40)
     with open(out, "rb") as f:
         head = f.read(512).lstrip().lower()
     if head.startswith((b"<!doctype html", b"<html")):
@@ -184,10 +184,10 @@ def unpack_all(path, work, status=None):
         shutil.copy2(path, root / path.name)
         return root
     root = work / "unpacked"
-    _report_status(status, "Extracting files…")
+    _report_status(status, "Extracting files…", 0.42)
     extract(path, root)
     for _ in range(MAX_NESTING):
-        _report_status(status, "Checking for nested archives…")
+        _report_status(status, "Checking for nested archives…", 0.55)
         nested = [p for p in root.rglob("*") if _is_archive(p) and p.suffix.lower() not in IMAGE_EXTS]
         if not nested:
             break
@@ -350,7 +350,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
         root = unpack_all(Path(path), Path(work), status)
-        _report_status(status, "Inspecting theme files…")
+        _report_status(status, "Inspecting theme files…", 0.60)
         comps = classify(root, title)
         if not comps:
             raise InstallError("Couldn't find a supported theme, color scheme or wallpaper in this download.")
@@ -381,7 +381,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                                    "Nothing was installed. Turn off 'Only show themes that work on this computer' "
                                    "to install themes for another session.")
         # check every name before copying anything, so a clash can't leave a half-installed pack
-        _report_status(status, "Checking installed themes…")
+        _report_status(status, "Checking installed themes…", 0.65)
         conflicts, foreign = {}, []
         for c in comps:
             dest = _dest_for(c, wall_dir)
@@ -407,9 +407,9 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             remove(owner)
         manifest = load_manifest()
 
-        for c in comps:
+        for index, c in enumerate(comps):
             dest = _dest_for(c, wall_dir)
-            _report_status(status, f"Installing {c.name}…")
+            _report_status(status, f"Installing {c.name}…", 0.68 + 0.22 * index / len(comps))
             if dest.exists() or dest.is_symlink():
                 shutil.rmtree(dest) if dest.is_dir() and not dest.is_symlink() else dest.unlink()
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -430,7 +430,8 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                 comp["system"] = c.provides[0]  # still needs copying into /usr/share by the helper
             provides.append(comp)
             if "icons" in c.provides and shutil.which("gtk-update-icon-cache"):
-                _report_status(status, f"Updating icon cache for {c.name}…")
+                _report_status(status, f"Updating icon cache for {c.name}…",
+                               0.68 + 0.22 * (index + 0.8) / len(comps))
                 subprocess.run(["gtk-update-icon-cache", "-q", "-f", "-t", str(dest)],
                                capture_output=True)
 
@@ -439,7 +440,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                 _register_wallpaper_folder(wall_dir)
             installed.append(str(wall_dir))
 
-        _report_status(status, "Cleaning up extracted files…")
+        _report_status(status, "Cleaning up extracted files…", 0.90)
 
     # drop paths from a previous version of this item that the new version no longer has
     old = manifest.get(key, {})
@@ -457,7 +458,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
         "components": provides,
         "skipped": skipped,
     }
-    _report_status(status, "Saving installation…")
+    _report_status(status, "Saving installation…", 0.98)
     save_manifest(manifest)
     return manifest[key]
 

@@ -83,9 +83,10 @@ click. No hunting for archives, no guessing which folder things go in.
   the command line).
 - **Flags outdated Cinnamon themes.** Desktop themes made before Cinnamon 5.4 leave password and
   logout dialogs see-through; drape marks them and asks before applying one.
-- **Shows installation stages.** Download percentages are labeled as downloads. Extraction,
-  copying, icon-cache generation and cleanup show their current stage with an animated bar
-  until installation finishes.
+- **Shows installation stages.** One progress bar covers downloading, extraction, copying,
+  icon-cache generation, cleanup and saving. It names the current step and reaches 100%
+  only after installation succeeds. Steps have fixed shares of the bar; the percentage
+  describes installation progress, not an estimate of time remaining.
 - **Fast on slow connections.** Tabs show cached results instantly and refresh in the
   background, cards load small previews in batches with infinite scroll, and animated previews
   watch their own CPU cost (idle CPU dropped from 21% to 4%). The window fits screens down to
