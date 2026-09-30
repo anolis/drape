@@ -4,16 +4,34 @@ from unittest import mock
 
 from drape import cli, desktop, installer, settings
 from drape.ui.browse import BrowsePage
+from drape.ui.installed import InstalledPage
 from drape.ui.widgets import ApplyControl
 
 
 class CompatibilityUiTest(unittest.TestCase):
-    def test_sidebar_follows_capabilities_and_show_all_override(self):
+    def test_unsupported_categories_stay_hidden_in_installed(self):
+        kinds = ("wm", "gtk", "desktop", "lookandfeel", "colors", "icons", "cursors", "wallpapers")
+        panels = {kind: mock.Mock() for kind in kinds}
+        chips = {kind: mock.Mock() for kind in kinds}
+        page = SimpleNamespace(grids={kind: (None, panels[kind]) for kind in kinds}, chip=chips)
+        widgets = list(panels.values()) + [chip.get_parent() for chip in chips.values()]
+        with mock.patch.object(settings, "get", return_value=False), \
+                mock.patch.object(desktop, "supported", return_value=False):
+            InstalledPage._sync_category_visibility(page)
+        for widget in widgets:
+            widget.set_no_show_all.assert_called_once_with(True)
+            widget.set_visible.assert_called_once_with(False)
+        with mock.patch.object(desktop, "supported", return_value=True):
+            InstalledPage._sync_category_visibility(page)
+        for widget in widgets:
+            self.assertEqual(widget.set_visible.call_args.args, (True,))
+
+    def test_sidebar_follows_capabilities_even_with_filter_off(self):
         with mock.patch.object(desktop, "supported", side_effect=lambda kind: kind in ("gtk", "icons", "cursors", "wm")):
             self.assertTrue(desktop.category_visible("wm"))
             self.assertFalse(desktop.category_visible("desktop"))
             self.assertFalse(desktop.category_visible("lookandfeel"))
-            self.assertTrue(desktop.category_visible("lookandfeel", False))
+            self.assertFalse(desktop.category_visible("lookandfeel", False))
             self.assertTrue(desktop.category_visible("login"))
         with mock.patch.object(desktop, "supported", return_value=False):
             self.assertFalse(desktop.category_visible("wm"))

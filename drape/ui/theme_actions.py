@@ -6,6 +6,7 @@ from .gtk import GLib, Gtk
 from .. import desktop, installer, pling
 from ..installer import system_copies
 from .common import PART_NAMES, TAB_PART, error_dialog, in_use, matches, run_async, system_theme_active
+from .install_progress import InstallProgress
 
 
 class ThemeActions:
@@ -19,24 +20,17 @@ class ThemeActions:
     def install(self, item, file_index=None, apply_kind=None):
         if item.id in self.busy:
             return
-        self.busy[item.id] = {"bars": []}
+        feedback = InstallProgress(self._closing)
+        self.busy[item.id] = {"progress": feedback}
         self.refresh_item(item.id)
-
-        def progress(done, total):
-            def update():
-                for bar in self.busy.get(item.id, {}).get("bars", []):
-                    if total:
-                        bar.set_fraction(done / total)
-                    else:
-                        bar.pulse()
-            GLib.idle_add(update)
 
         flags = {"foreign": False, "items": False}  # what the user agreed to replace
 
         def work():
             fresh = pling.get(item.id)  # download links are signed and expire
             try:
-                return installer.install_item(fresh, file_index, progress, flags["foreign"], flags["items"])
+                return installer.install_item(fresh, file_index, feedback.download,
+                                              flags["foreign"], flags["items"], status=feedback.status)
             except installer.ConflictError as e:
                 return e  # ask the user on the main thread
             except installer.InstallError as e:
@@ -45,11 +39,14 @@ class ThemeActions:
                 return e
 
         def retry():
-            self.busy[item.id] = {"bars": []}
+            nonlocal feedback
+            feedback = InstallProgress(self._closing)
+            self.busy[item.id] = {"progress": feedback}
             self.refresh_item(item.id)
             run_async(work, done, error)
 
         def done(result):
+            feedback.close()
             self.busy.pop(item.id, None)
             if isinstance(result, installer.ConflictError):
                 self.refresh_item(item.id)
@@ -89,6 +86,7 @@ class ThemeActions:
                     f" Skipped {len(skipped)} incompatible component(s)." if skipped else ""))
 
         def error(e):
+            feedback.close()
             self.busy.pop(item.id, None)
             self.refresh_item(item.id)
             error_dialog(self, f"Couldn't install {item.name}", e)

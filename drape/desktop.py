@@ -78,7 +78,12 @@ def border_part():
         return "xfwm"
     if "kwin" in wm:
         return "aurorae"
-    if any(name in wm for name in ("marco", "metacity", "muffin")):
+    if "muffin" in wm:
+        # Cinnamon 5.4 rebased Muffin onto GTK-drawn decorations. The old
+        # GSettings theme key still exists, but Metacity themes have no effect.
+        version = cinnamon_version()
+        return "wm" if version is not None and version < (5, 4) else None
+    if any(name in wm for name in ("marco", "metacity")):
         return "wm"
     # Mutter, Compiz (whose decorator is independent), and unknown WMs
     # must not be offered classic Metacity themes as though they were supported.
@@ -300,7 +305,11 @@ def category_label(kind, default):
 
 
 def category_visible(kind, only_applicable=True):
-    return not only_applicable or kind in ("login", "boot") or supported(kind)
+    """Sections require an apply backend, independently of the archive filter.
+
+    Login and boot themes use the privileged system helper, not the window manager.
+    """
+    return kind in ("login", "boot") or supported(kind)
 
 
 def catalog_name():

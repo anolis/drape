@@ -27,7 +27,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             width, height = min(width, area.width - 40), min(height, area.height - 40)
         self.set_default_size(width, height)
         self.set_app_icon()
-        self.busy = {}  # item id -> {"bars": [...]}
+        self.busy = {}  # item id -> installation progress controller
 
         hb = Gtk.HeaderBar(show_close_button=True, title="drape",
                            subtitle="Themes, icons, cursors & wallpapers for your desktop")
@@ -211,6 +211,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         sort = self.sort()
         plan = []
         for kind, page in self.pages.items():
+            if not self.page_visible(kind):
+                continue
             categories, _ = page._scope()
             if categories != "":
                 plan.append((kind, categories))

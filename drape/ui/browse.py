@@ -131,7 +131,7 @@ class Card(Gtk.FlowBoxChild):
         installed = self.item.id in installer.load_manifest()
         if self.win.busy.get(self.item.id):
             bar = Gtk.ProgressBar(valign=Gtk.Align.CENTER, hexpand=True)
-            self.win.busy[self.item.id]["bars"].append(bar)
+            self.win.busy[self.item.id]["progress"].attach(bar)
             self.actions.pack_start(bar, True, True, 0)
         elif installed:
             self.actions.pack_start(ApplyControl(self.win, self.item.id, self.kind), False, False, 0)
@@ -347,6 +347,8 @@ class BrowsePage(Gtk.Box):
     def _scope(self):
         """(categories to search or None for the default, explanation) for this computer."""
         only = settings.get("only_applicable")
+        if not desktop.category_visible(self.kind):
+            only = True  # hidden sections must not fetch an unsupported catalog
         if self.kind not in ("login", "boot"):
             cats, note = desktop.scope(self.kind, only)
             if cats is not None or not desktop.supported(self.kind):

@@ -44,15 +44,16 @@ click. No hunting for archives, no guessing which folder things go in.
   Native tools must be installed; missing tools disable the corresponding feature. See
   [desktop compatibility](docs/compatibility.md) for category mappings and limitations.
 - **Matches the running desktop and window manager.** With **Only show themes that work on this
-  computer** enabled (the default), window borders are scoped to Marco/Metacity/Muffin, Xfwm or KWin/Aurorae,
+  computer** enabled (the default), window borders are scoped to Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae,
   and Cinnamon desktop themes are excluded from other sessions. Known incompatible downloads
   are filtered after archive inspection; incomplete or unrecognized listings remain visible
   until installation checks their extracted contents. GTK controls require a GTK 3 component.
   Mixed archives install usable components, and Apply checks compatibility again. The default
   download selection tries another variant if the first is incompatible; an explicitly chosen
-  download is never silently substituted. The sidebar shows supported categories and updates when the window manager changes.
-  Turn the filter off to install for another session, or use CLI `--all-themes`; this does not
-  enable applying unsupported components.
+  download is never silently substituted. The sidebar and Installed category tabs always hide unsupported sections and update when the window manager changes.
+  Cinnamon 5.4 and newer use Controls (GTK) themes for window borders, so they have no separate Window borders section.
+  Turn the filter off to broaden downloads within supported sections, or use CLI `--all-themes`
+  to install for another session; this does not enable applying unsupported components.
 
   Compiz decorators, GNOME Shell themes, compiled Qt styles/KWin plugins, Kvantum engines,
   and non-KWin window borders on Wayland are not supported yet.
@@ -82,6 +83,9 @@ click. No hunting for archives, no guessing which folder things go in.
   the command line).
 - **Flags outdated Cinnamon themes.** Desktop themes made before Cinnamon 5.4 leave password and
   logout dialogs see-through; drape marks them and asks before applying one.
+- **Shows installation stages.** Download percentages are labeled as downloads. Extraction,
+  copying, icon-cache generation and cleanup show their current stage with an animated bar
+  until installation finishes.
 - **Fast on slow connections.** Tabs show cached results instantly and refresh in the
   background, cards load small previews in batches with infinite scroll, and animated previews
   watch their own CPU cost (idle CPU dropped from 21% to 4%). The window fits screens down to
@@ -154,6 +158,7 @@ The GUI entry point is `drape/app.py`; its implementation is in `drape/ui/`:
   installed packs, the current look and item details.
 - `widgets.py`: shared cards' controls, variant picker and border explanation.
 - `images.py`: preview downloads, caches, worker pools and animation state.
+- `install_progress.py`: installation stages and coalesced progress-bar updates.
 - `theme_actions.py`, `system_actions.py`: window action mixins for theme operations
   and privileged/login/lock-screen changes. They use the window's state and callbacks;
   pages receive that window explicitly rather than importing it.

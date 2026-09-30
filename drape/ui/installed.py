@@ -208,6 +208,16 @@ class InstalledPage(Gtk.Box):
         self.hint.set_no_show_all(True)
         self.pack_start(self.hint, False, False, 0)
         self.pack_start(self.tabs, True, True, 0)
+        self._sync_category_visibility()
+
+    def _sync_category_visibility(self):
+        for kind, (_label, panel, *_rest) in self.grids.items():
+            if kind in ("active", "other"):
+                continue
+            visible = desktop.category_visible(kind)
+            for widget in (panel, self.chip[kind].get_parent()):
+                widget.set_no_show_all(not visible)
+                widget.set_visible(visible)
 
     def select_card(self, identity, active):
         if active:
@@ -256,6 +266,7 @@ class InstalledPage(Gtk.Box):
             rb.set_active(True)
 
     def load(self):
+        self._sync_category_visibility()
         m = installer.load_manifest()
         self.selected = {(key, path) for key, path in self.selected if key in m and
                          (path is None or any(c["path"] == path for c in m[key]["components"]))}
@@ -265,6 +276,9 @@ class InstalledPage(Gtk.Box):
         for key_name, (k, sw, flow, empty) in self.grids.items():
             for c in flow.get_children():
                 c.destroy()
+            if key_name not in ("active", "other") and not desktop.category_visible(key_name):
+                counts[key_name] = 0
+                continue
             if key_name == "active":
                 for part, label in ACTIVE_PARTS:
                     if part in ("login", "boot", "wallpapers") or desktop.supported(part):

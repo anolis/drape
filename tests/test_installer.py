@@ -97,6 +97,33 @@ class InstallerTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_installation_reports_stages_through_cache_and_manifest(self):
+        archive = self.src / "icons.tar.gz"
+        make_tar(archive, {"Test/index.theme": ICON_INDEX, "Test/48x48/apps/icon.svg": b"svg"})
+        stages = []
+        copytree, save = installer.shutil.copytree, installer.save_manifest
+
+        def copy(*args, **kwargs):
+            self.assertEqual(stages[-1], "Installing Test…")
+            return copytree(*args, **kwargs)
+
+        def cache(*args, **kwargs):
+            self.assertEqual(stages[-1], "Updating icon cache for Test…")
+
+        def persist(manifest):
+            self.assertEqual(stages[-1], "Saving installation…")
+            return save(manifest)
+
+        with mock.patch.object(installer.shutil, "copytree", side_effect=copy), \
+                mock.patch.object(installer.shutil, "which", return_value="/usr/bin/gtk-update-icon-cache"), \
+                mock.patch.object(installer.subprocess, "run", side_effect=cache), \
+                mock.patch.object(installer, "save_manifest", side_effect=persist):
+            installer.install_file(archive, "stage", "Test", status=stages.append)
+        self.assertIn("Extracting files…", stages)
+        self.assertIn("Checking for nested archives…", stages)
+        self.assertIn("Cleaning up extracted files…", stages)
+        self.assertIn("stage", installer.load_manifest())
+
     def test_icon_theme(self):
         a = self.src / "icons.tar.gz"
         make_tar(a, {"MyIcons/index.theme": ICON_INDEX, "MyIcons/48x48/apps/foo.png": b"x"},

@@ -96,7 +96,13 @@ def _owner_of(path, manifest):
 
 # ---------------------------------------------------------------- download
 
-def download(url, dest_dir, filename=None, md5=None, progress=None):
+def _report_status(status, text):
+    if status:
+        status(text)
+
+
+def download(url, dest_dir, filename=None, md5=None, progress=None, status=None):
+    _report_status(status, "Downloading…")
     headers = {"User-Agent": USER_AGENT}
     try:
         with http.get(url, stream=True, timeout=30, headers=headers) as r:
@@ -129,6 +135,7 @@ def download(url, dest_dir, filename=None, md5=None, progress=None):
         raise InstallError(f"Download failed (HTTP {e.response.status_code if e.response is not None else '?'}).") from e
     except requests.RequestException as e:
         raise InstallError(f"Download failed: {e.__class__.__name__}. Check your connection.") from e
+    _report_status(status, "Verifying download…")
     with open(out, "rb") as f:
         head = f.read(512).lstrip().lower()
     if head.startswith((b"<!doctype html", b"<html")):
@@ -169,7 +176,7 @@ def extract(archive, dest):
         raise InstallError(f"Unsupported archive format: {archive.name}")
 
 
-def unpack_all(path, work):
+def unpack_all(path, work, status=None):
     """Extract `path` (and archives nested inside it) under `work`; return the root to scan."""
     if path.suffix.lower() in IMAGE_EXTS | {".colors"} and not _is_archive(path):
         root = work / "unpacked"
@@ -177,12 +184,15 @@ def unpack_all(path, work):
         shutil.copy2(path, root / path.name)
         return root
     root = work / "unpacked"
+    _report_status(status, "Extracting files…")
     extract(path, root)
     for _ in range(MAX_NESTING):
+        _report_status(status, "Checking for nested archives…")
         nested = [p for p in root.rglob("*") if _is_archive(p) and p.suffix.lower() not in IMAGE_EXTS]
         if not nested:
             break
         for p in nested:
+            _report_status(status, f"Extracting {p.name}…")
             extract(p, p.with_name(p.name + ".d"))
             p.unlink()
     return root
@@ -335,11 +345,12 @@ def _register_wallpaper_folder(folder):
 
 
 def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview="",
-                 replace_items=False, only_applicable=None):
+                 replace_items=False, only_applicable=None, status=None):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
-        root = unpack_all(Path(path), Path(work))
+        root = unpack_all(Path(path), Path(work), status)
+        _report_status(status, "Inspecting theme files…")
         comps = classify(root, title)
         if not comps:
             raise InstallError("Couldn't find a supported theme, color scheme or wallpaper in this download.")
@@ -370,6 +381,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                                    "Nothing was installed. Turn off 'Only show themes that work on this computer' "
                                    "to install themes for another session.")
         # check every name before copying anything, so a clash can't leave a half-installed pack
+        _report_status(status, "Checking installed themes…")
         conflicts, foreign = {}, []
         for c in comps:
             dest = _dest_for(c, wall_dir)
@@ -397,6 +409,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
 
         for c in comps:
             dest = _dest_for(c, wall_dir)
+            _report_status(status, f"Installing {c.name}…")
             if dest.exists() or dest.is_symlink():
                 shutil.rmtree(dest) if dest.is_dir() and not dest.is_symlink() else dest.unlink()
             dest.parent.mkdir(parents=True, exist_ok=True)
@@ -417,6 +430,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                 comp["system"] = c.provides[0]  # still needs copying into /usr/share by the helper
             provides.append(comp)
             if "icons" in c.provides and shutil.which("gtk-update-icon-cache"):
+                _report_status(status, f"Updating icon cache for {c.name}…")
                 subprocess.run(["gtk-update-icon-cache", "-q", "-f", "-t", str(dest)],
                                capture_output=True)
 
@@ -424,6 +438,8 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             if desktop.current_desktop() == "cinnamon":
                 _register_wallpaper_folder(wall_dir)
             installed.append(str(wall_dir))
+
+        _report_status(status, "Cleaning up extracted files…")
 
     # drop paths from a previous version of this item that the new version no longer has
     old = manifest.get(key, {})
@@ -441,12 +457,13 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
         "components": provides,
         "skipped": skipped,
     }
+    _report_status(status, "Saving installation…")
     save_manifest(manifest)
     return manifest[key]
 
 
 def install_item(item, file_index=None, progress=None, replace_foreign=False, replace_items=False,
-                 only_applicable=None):
+                 only_applicable=None, status=None):
     """Install a pling.Item. The item should be freshly fetched (download links expire)."""
     if not item.files:
         raise InstallError("This item has no direct downloads (it may link to an external site).")
@@ -459,12 +476,12 @@ def install_item(item, file_index=None, progress=None, replace_foreign=False, re
         files = [best] + [f for f in item.files if f != best]
     with tempfile.TemporaryDirectory(prefix="drape-dl-") as tmp:
         for f in files:
-            path = download(f.url, tmp, f.name, f.md5, progress)
+            path = download(f.url, tmp, f.name, f.md5, progress, status)
             try:
                 return install_file(path, item.id, item.name, item.changed, item.page,
                                     replace_foreign, file=f.name,
                                     preview=item.previews[0] if item.previews else "", replace_items=replace_items,
-                                    only_applicable=only_applicable)
+                                    only_applicable=only_applicable, status=status)
             except IncompatibleError as e:
                 last_error = e
         raise last_error

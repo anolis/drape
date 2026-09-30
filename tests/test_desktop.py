@@ -8,6 +8,29 @@ from drape import desktop
 
 
 class WindowManagerDetectionTest(unittest.TestCase):
+    def test_muffin_border_support_ends_at_cinnamon_54(self):
+        with mock.patch.object(desktop, "running_wm", return_value="Mutter (Muffin)"), \
+                mock.patch.object(desktop, "_schema_exists", return_value=True):
+            for version, supported in (((5, 2), True), ((5, 4), False), ((6, 4), False), (None, False)):
+                with self.subTest(version=version), \
+                        mock.patch.object(desktop, "cinnamon_version", return_value=version), \
+                        mock.patch.object(desktop.Gio, "Settings") as settings:
+                    self.assertEqual(desktop.border_part(), "wm" if supported else None)
+                    self.assertEqual(desktop.supported("wm"), supported)
+                    self.assertEqual(desktop.category_visible("wm", False), supported)
+                    if not supported:
+                        self.assertEqual(desktop.scope("wm")[0], "")
+                        self.assertIsNone(desktop.get("wm"))
+                        self.assertFalse(desktop.set_("wm", "Test"))
+                        settings.new.assert_not_called()
+
+    def test_unrelated_managers_do_not_depend_on_cinnamon_version(self):
+        with mock.patch.object(desktop, "cinnamon_version") as version:
+            for wm, part in (("Marco", "wm"), ("Metacity", "wm"), ("Xfwm4", "xfwm"), ("KWin", "aurorae")):
+                with self.subTest(wm=wm), mock.patch.object(desktop, "running_wm", return_value=wm):
+                    self.assertEqual(desktop.border_part(), part)
+            version.assert_not_called()
+
     def test_reads_actual_wm_and_refreshes_after_switch(self):
         with mock.patch.dict(os.environ, {"DISPLAY": ":99", "XDG_SESSION_TYPE": "x11"}), \
                 mock.patch.object(desktop, "_wm_cache", (None, 0)), \
@@ -98,6 +121,7 @@ class MateDesktopTest(unittest.TestCase):
                              ("Xfwm4", "xfwm"), ("Compiz", None), ("GNOME Shell", None),
                              ("KWin", "aurorae"), (None, None)):
             with self.subTest(wm=wm), mock.patch.object(desktop, "running_wm", return_value=wm), \
+                    mock.patch.object(desktop, "cinnamon_version", return_value=(5, 2)), \
                     mock.patch.object(desktop.shutil, "which", return_value="/usr/bin/xfconf-query"):
                 self.assertEqual(desktop.border_part(), expected)
                 self.assertEqual(desktop.supported("wm"), expected is not None)

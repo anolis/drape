@@ -2,9 +2,10 @@
 
 Drape uses the Pling OCS API shared by GNOME-Look, KDE-Look and Xfce-Look. The active
 desktop and window manager determine which categories are searched and which settings
-backend is used. The sidebar hides unsupported categories when the compatibility filter is
-enabled, and refreshes when the active window manager changes. Turning the filter off
-shows all categories. Installing several desktops does not make their themes interchangeable.
+backend is used. The sidebar hides unsupported categories and refreshes when the active
+window manager changes. Unsupported sections stay hidden in both the sidebar and
+Installed tabs even when the archive filter is off. Installing several desktops does
+not make their themes interchangeable.
 
 Catalog IDs verified against `/ocs/v1/content/categories` on 2026-09-28:
 
@@ -14,11 +15,15 @@ Catalog IDs verified against `/ocs/v1/content/categories` on 2026-09-28:
 | Plasma style | KDE Plasma | 104 |
 | Global theme | Plasma 5 / Plasma 6 | 121 / 722 |
 | Color scheme | KDE Plasma | 112 |
-| Window borders | Marco, Metacity, Muffin | 125 |
+| Window borders | Marco, Metacity, Muffin before Cinnamon 5.4 | 125 |
 | Window borders | Xfwm4 | 138 |
 | Window borders | KWin / Aurorae | 114; also 717 on Plasma 6 |
 | GTK controls | Cinnamon, MATE, GNOME, Xfce | 135 |
 | Icons / cursors | Shared | 132 / 107 |
+
+Cinnamon 5.4 and newer render all title bars with the GTK Controls theme and no longer
+use Metacity border themes. Drape hides their separate Window borders section and does
+not write the obsolete border-theme setting. See [Linux Mint's Cinnamon 5.4 release notes](https://linuxmint.com/rel_vanessa_cinnamon_whatsnew.php).
 
 Shared wallpaper categories remain available for desktops with an apply backend.
 Unrecognized or incomplete archive listings remain visible. Installation checks extracted
