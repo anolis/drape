@@ -4,7 +4,8 @@ from pathlib import Path
 import sys
 
 from .gtk import Gdk, Gio, Gtk
-from .common import APP_ID
+from .. import installer
+from .common import APP_ID, error_dialog
 from .widgets import GLYPH_CSS
 from .window import Window
 
@@ -22,13 +23,22 @@ class App(Gtk.Application):
                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
     def _window(self):
+        try:
+            installer.load_manifest()
+        except installer.InstallError as exc:
+            error_dialog(self.get_active_window(), "Cannot load installed themes", exc)
+            return None
         return self.get_active_window() or Window(self)
 
     def do_activate(self):
-        self._window().present()
+        win = self._window()
+        if win is not None:
+            win.present()
 
     def do_open(self, files, _n, _hint):
         win = self._window()
+        if win is None:
+            return
         win.present()
         for f in files:
             uri = f.get_uri()

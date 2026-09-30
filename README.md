@@ -95,6 +95,10 @@ click. No hunting for archives, no guessing which folder things go in.
   installed (including system copies), with sizes, file lists and a button to open each one.
 - **Cleans up.** Everything is tracked in `~/.local/share/drape/installed.json`, so Remove deletes
   exactly what was installed, and *Check for updates* compares against the Pling catalog.
+  Record updates are locked across threads and processes, and file installation/removal is
+  serialized while downloads can run together. Each successful update keeps the previous records
+  in `installed.json.bak`. Unreadable or malformed records stop updates with an error instead of
+  being treated as an empty installation list.
 - **Works with the catalogs' own Install buttons** (`ocs://` links) once registered.
 - **Safe by default.** Downloads are checksum-verified when the catalog provides a checksum, archive extraction rejects path tricks, and
   drape won't overwrite themes it didn't install without asking.
@@ -164,6 +168,9 @@ The GUI entry point is `drape/app.py`; its implementation is in `drape/ui/`:
   and privileged/login/lock-screen changes. They use the window's state and callbacks;
   pages receive that window explicitly rather than importing it.
 - `common.py`, `gtk.py`: shared metadata/helpers and GTK version configuration.
+
+`drape/records.py` owns locked manifest transactions, atomic writes and the previous-version
+backup. Use `ManifestStore.edit()` for record mutations so they merge with the latest saved data.
 
 UI modules call the existing `installer`, `pling`, `desktop`, `kde`, `xfce` and
 `system` backends. Backends do not import the GUI entry point. Import UI helpers from

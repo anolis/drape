@@ -2,7 +2,6 @@
 
 import configparser
 import hashlib
-import json
 import os
 import re
 import shutil
@@ -13,12 +12,14 @@ import time
 import urllib.parse
 import zipfile
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 
 import requests
 
 from . import helper, wincursors, kde, http
 from .pling import USER_AGENT
+from .records import InstallError, ManifestStore
 
 HOME = Path.home()
 DATA_HOME = Path(os.environ.get("XDG_DATA_HOME") or HOME / ".local/share")
@@ -42,10 +43,6 @@ THEME_PARTS = {
     "gnome-shell": "gnome-shell", "openbox-3": "openbox-3",
 }
 MAX_NESTING = 2
-
-
-class InstallError(Exception):
-    pass
 
 
 class IncompatibleError(InstallError):
@@ -74,17 +71,21 @@ class Component:
 # ---------------------------------------------------------------- manifest
 
 def load_manifest():
-    try:
-        return json.loads(MANIFEST.read_text())
-    except (OSError, ValueError):
-        return {}
+    return ManifestStore(MANIFEST).load()
 
 
 def save_manifest(m):
-    MANIFEST.parent.mkdir(parents=True, exist_ok=True)
-    tmp = MANIFEST.with_suffix(".tmp")
-    tmp.write_text(json.dumps(m, indent=2, sort_keys=True))
-    tmp.replace(MANIFEST)
+    ManifestStore(MANIFEST).save(m)
+
+
+def _serialized_files(fn):
+    """Keep name checks, copies, removals and record commits in one file operation."""
+    @wraps(fn)
+    def run(*args, **kwargs):
+        _report_status(kwargs.get("status"), "Waiting to install…")
+        with ManifestStore(MANIFEST).operations():
+            return fn(*args, **kwargs)
+    return run
 
 
 def _owner_of(path, manifest):
@@ -344,6 +345,7 @@ def _register_wallpaper_folder(folder):
         pass
 
 
+@_serialized_files
 def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview="",
                  replace_items=False, only_applicable=None, status=None):
     """Install from a local file. `key` identifies the entry in the manifest."""
@@ -447,7 +449,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
     for p in set(old.get("paths", [])) - set(installed):
         _remove_path(Path(p))
 
-    manifest[key] = {
+    entry = {
         "title": title,
         "changed": changed,
         "source": source,
@@ -459,8 +461,16 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
         "skipped": skipped,
     }
     _report_status(status, "Saving installation…", 0.98)
-    save_manifest(manifest)
-    return manifest[key]
+    with ManifestStore(MANIFEST).edit() as latest:
+        # Preview/variant updates can happen during a large file copy. Preserve
+        # those edits and all unrelated installations from the latest records.
+        current = latest.get(key, {})
+        if "chosen" in current:
+            entry["chosen"] = current["chosen"]
+        if not entry["preview"] and current.get("preview"):
+            entry["preview"] = current["preview"]
+        latest[key] = entry
+    return entry
 
 
 def install_item(item, file_index=None, progress=None, replace_foreign=False, replace_items=False,
@@ -508,19 +518,17 @@ def install_url(url, progress=None, replace_foreign=False, replace_items=False, 
 
 
 def set_chosen(key, kind, name):
-    """Remember the variant last picked for a category, so plain "Apply" re-uses it."""
-    m = load_manifest()
-    if key in m:
-        m[key].setdefault("chosen", {})[kind] = name
-        save_manifest(m)
+    """Remember the variant last picked for a category, so plain Apply re-uses it."""
+    with ManifestStore(MANIFEST).edit() as m:
+        if key in m:
+            m[key].setdefault("chosen", {})[kind] = name
 
 
 def set_preview(key, url):
-    """Record a preview image for an entry installed before previews were tracked."""
-    m = load_manifest()
-    if key in m:
-        m[key]["preview"] = url
-        save_manifest(m)
+    """Record a preview without overwriting unrelated installations or preferences."""
+    with ManifestStore(MANIFEST).edit() as m:
+        if key in m:
+            m[key]["preview"] = url
 
 
 def _remove_path(p):
@@ -556,8 +564,9 @@ def removal_plan(selection, manifest):
     return plan
 
 
+@_serialized_files
 def remove_component(key, path):
-    """Remove one component (e.g. a single wallpaper) of an entry; the entry goes when it's empty."""
+    """Remove one component; other records and concurrent metadata edits are retained."""
     manifest = load_manifest()
     entry = manifest.get(key)
     if entry is None:
@@ -568,20 +577,23 @@ def remove_component(key, path):
     if not comps:
         return remove(key)
     _remove_path(Path(path))
-    entry["components"] = comps
-    entry["paths"] = [p for p in entry["paths"] if p != path]
-    save_manifest(manifest)
+    with ManifestStore(MANIFEST).edit() as latest:
+        entry = latest[key]
+        entry["components"] = comps
+        entry["paths"] = [p for p in entry["paths"] if p != path]
     return entry
 
 
+@_serialized_files
 def remove(key):
     manifest = load_manifest()
-    entry = manifest.pop(key, None)
+    entry = manifest.get(key)
     if entry is None:
         raise InstallError(f"{key} is not installed")
     for p in entry["paths"]:
         _remove_path(Path(p))
-    save_manifest(manifest)
+    with ManifestStore(MANIFEST).edit() as latest:
+        latest.pop(key, None)
     return entry
 
 

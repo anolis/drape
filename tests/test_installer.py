@@ -107,7 +107,7 @@ class InstallerTest(unittest.TestCase):
             if fraction is not None:
                 fractions.append(fraction)
 
-        copytree, save = installer.shutil.copytree, installer.save_manifest
+        copytree, save = installer.shutil.copytree, installer.ManifestStore._save
 
         def copy(*args, **kwargs):
             self.assertEqual(stages[-1], "Installing Test…")
@@ -116,15 +116,16 @@ class InstallerTest(unittest.TestCase):
         def cache(*args, **kwargs):
             self.assertEqual(stages[-1], "Updating icon cache for Test…")
 
-        def persist(manifest):
+        def persist(store, manifest):
             self.assertEqual(stages[-1], "Saving installation…")
-            return save(manifest)
+            return save(store, manifest)
 
         with mock.patch.object(installer.shutil, "copytree", side_effect=copy), \
                 mock.patch.object(installer.shutil, "which", return_value="/usr/bin/gtk-update-icon-cache"), \
                 mock.patch.object(installer.subprocess, "run", side_effect=cache), \
-                mock.patch.object(installer, "save_manifest", side_effect=persist):
+                mock.patch.object(installer.ManifestStore, "_save", autospec=True, side_effect=persist) as saved:
             installer.install_file(archive, "stage", "Test", status=report)
+        saved.assert_called_once()
         self.assertIn("Extracting files…", stages)
         self.assertIn("Checking for nested archives…", stages)
         self.assertIn("Cleaning up extracted files…", stages)

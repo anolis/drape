@@ -5,7 +5,7 @@ from pathlib import Path
 from .gtk import GLib, Gtk, Pango
 from .. import desktop, installer, pling, settings
 from .active import ACTIVE_PARTS, ActiveCard
-from .common import CARD_H, CARD_W, in_use, matches, run_async
+from .common import CARD_H, CARD_W, error_dialog, in_use, matches, run_async
 from .images import load_image
 from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 
@@ -267,7 +267,11 @@ class InstalledPage(Gtk.Box):
 
     def load(self):
         self._sync_category_visibility()
-        m = installer.load_manifest()
+        try:
+            m = installer.load_manifest()
+        except installer.InstallError as exc:
+            error_dialog(self.win, "Cannot load installed themes", exc)
+            return
         self.selected = {(key, path) for key, path in self.selected if key in m and
                          (path is None or any(c["path"] == path for c in m[key]["components"]))}
         self._selection_changed()
