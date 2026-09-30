@@ -478,28 +478,28 @@ class CacheTest(unittest.TestCase):
             self.assertIsNone(pling.cached_search("icons", "seven", max_age=-1))
 
     def test_animated_gif_previews_decode(self):
-        from drape import app
+        from drape.ui import images
         with tempfile.TemporaryDirectory() as t:
             gif = Path(t) / "anim.gif"
             frames = [Image.new("RGB", (300, 200), c) for c in ("red", "blue", "green")]
             frames[0].save(gif, save_all=True, append_images=frames[1:], duration=100, loop=0)
-            pb = app._decode(gif, 150, 150)
+            pb = images._decode(gif, 150, 150)
             self.assertEqual((pb.get_width(), pb.get_height()), (150, 100))
 
 
 class AnimationTest(unittest.TestCase):
     def test_gif_frames_keep_their_delays(self):
-        from drape import app
+        from drape.ui import images
         with tempfile.TemporaryDirectory() as t:
             gif = Path(t) / "anim.gif"
             frames = [Image.new("RGB", (400, 200), c) for c in ("red", "blue", "green")]
             frames[0].save(gif, save_all=True, append_images=frames[1:], duration=[50, 200, 80], loop=0)
-            out = app._frames(gif, 200, 200)
+            out = images._frames(gif, 200, 200)
             self.assertEqual([d for _pb, d in out], [50, 200, 80])
             self.assertEqual((out[0][0].get_width(), out[0][0].get_height()), (200, 100))
             still = Path(t) / "still.png"
             Image.new("RGB", (10, 10)).save(still)
-            self.assertIsNone(app._frames(still, 50, 50))
+            self.assertIsNone(images._frames(still, 50, 50))
 
 
 class WindowBordersTest(unittest.TestCase):

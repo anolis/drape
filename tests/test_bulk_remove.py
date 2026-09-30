@@ -4,7 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from drape import app, installer
+from drape import installer
+from drape.ui import theme_actions
+from drape.ui.window import Window
 
 
 class BulkRemoveTest(unittest.TestCase):
@@ -36,25 +38,25 @@ class BulkRemoveTest(unittest.TestCase):
     def test_cancel_does_not_delete_anything(self):
         window = self.window()
         with mock.patch.object(installer, "load_manifest", return_value=self.manifest), \
-                mock.patch.object(app, "system_copies", return_value=[]), \
-                mock.patch.object(app, "in_use", return_value=True), \
-                mock.patch.object(app.Gtk, "MessageDialog") as dialog, \
+                mock.patch.object(theme_actions, "system_copies", return_value=[]), \
+                mock.patch.object(theme_actions, "in_use", return_value=True), \
+                mock.patch.object(theme_actions.Gtk, "MessageDialog") as dialog, \
                 mock.patch.object(installer, "remove_component") as remove:
-            dialog.return_value.run.return_value = app.Gtk.ResponseType.CANCEL
-            app.Window.remove_selected(window, window.installed.selected)
+            dialog.return_value.run.return_value = theme_actions.Gtk.ResponseType.CANCEL
+            Window.remove_selected(window, window.installed.selected)
             remove.assert_not_called()
             window.run_root.assert_not_called()
 
     def test_failure_keeps_failed_selection_and_reports_successes(self):
         window = self.window()
         with mock.patch.object(installer, "load_manifest", return_value=self.manifest), \
-                mock.patch.object(app, "system_copies", return_value=[]), \
-                mock.patch.object(app, "in_use", return_value=False), \
-                mock.patch.object(app.Gtk, "MessageDialog") as dialog, \
-                mock.patch.object(app, "error_dialog") as error, \
+                mock.patch.object(theme_actions, "system_copies", return_value=[]), \
+                mock.patch.object(theme_actions, "in_use", return_value=False), \
+                mock.patch.object(theme_actions.Gtk, "MessageDialog") as dialog, \
+                mock.patch.object(theme_actions, "error_dialog") as error, \
                 mock.patch.object(installer, "remove_component", side_effect=[None, PermissionError("denied")]):
-            dialog.return_value.run.return_value = app.Gtk.ResponseType.ACCEPT
-            app.Window.remove_selected(window, set(window.installed.selected))
+            dialog.return_value.run.return_value = theme_actions.Gtk.ResponseType.ACCEPT
+            Window.remove_selected(window, set(window.installed.selected))
             self.assertEqual(window.installed.selected, {("1", "/walls/b.jpg")})
             error.assert_called_once()
             window.notify.assert_called_once_with("Deleted 1 selected item(s).")
@@ -62,12 +64,12 @@ class BulkRemoveTest(unittest.TestCase):
     def test_system_removal_completes_before_user_files_are_removed(self):
         window = self.window()
         with mock.patch.object(installer, "load_manifest", return_value=self.manifest), \
-                mock.patch.object(app, "system_copies", return_value=[("background", "copy", Path('/system'), "copy")]), \
-                mock.patch.object(app, "in_use", return_value=False), \
-                mock.patch.object(app.Gtk, "MessageDialog") as dialog, \
+                mock.patch.object(theme_actions, "system_copies", return_value=[("background", "copy", Path('/system'), "copy")]), \
+                mock.patch.object(theme_actions, "in_use", return_value=False), \
+                mock.patch.object(theme_actions.Gtk, "MessageDialog") as dialog, \
                 mock.patch.object(installer, "remove_component") as remove:
-            dialog.return_value.run.return_value = app.Gtk.ResponseType.ACCEPT
-            app.Window.remove_selected(window, set(window.installed.selected))
+            dialog.return_value.run.return_value = theme_actions.Gtk.ResponseType.ACCEPT
+            Window.remove_selected(window, set(window.installed.selected))
             remove.assert_not_called()
             self.assertEqual(window.run_root.call_args.args[0], [["uninstall", "background", "copy"]])
             window.run_root.call_args.args[2]()

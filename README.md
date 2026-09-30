@@ -146,6 +146,23 @@ GNOME-Look, KDE-Look or Xfce-Look.
 
 ## Development
 
+The GUI entry point is `drape/app.py`; its implementation is in `drape/ui/`:
+
+- `application.py`: GTK lifecycle and incoming OCS links.
+- `window.py`: window layout, navigation, preferences and page coordination.
+- `browse.py`, `installed.py`, `active.py`, `details.py`: catalog browsing,
+  installed packs, the current look and item details.
+- `widgets.py`: shared cards' controls, variant picker and border explanation.
+- `images.py`: preview downloads, caches, worker pools and animation state.
+- `theme_actions.py`, `system_actions.py`: window action mixins for theme operations
+  and privileged/login/lock-screen changes. They use the window's state and callbacks;
+  pages receive that window explicitly rather than importing it.
+- `common.py`, `gtk.py`: shared metadata/helpers and GTK version configuration.
+
+UI modules call the existing `installer`, `pling`, `desktop`, `kde`, `xfce` and
+`system` backends. Backends do not import the GUI entry point. Import UI helpers from
+their owning module when extending the interface or patching them in tests.
+
 ```sh
 python3 -m unittest -v
 ```

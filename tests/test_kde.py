@@ -6,7 +6,8 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from drape import desktop, installer, kde, peek, app
+from drape import desktop, installer, kde, peek
+from drape.ui.common import matches
 
 
 def package_metadata(kind, name="org.example.test"):
@@ -28,8 +29,8 @@ class KdeBackendTest(unittest.TestCase):
             self.assertEqual(desktop.scope(kind)[0], cats)
         self.assertEqual(desktop.theme_part("desktop"), "plasma")
         self.assertEqual(desktop.theme_part("wm"), "aurorae")
-        self.assertTrue(app.matches("desktop", {"provides": ["plasma"]}))
-        self.assertFalse(app.matches("desktop", {"provides": ["desktop"]}))
+        self.assertTrue(matches("desktop", {"provides": ["plasma"]}))
+        self.assertFalse(matches("desktop", {"provides": ["desktop"]}))
         self.assertFalse(desktop.supported("gtk"))
         with mock.patch.dict(os.environ, {"KDE_SESSION_VERSION": "5"}):
             self.assertEqual(desktop.scope("lookandfeel")[0], "121")

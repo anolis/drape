@@ -180,7 +180,7 @@ class LockLoginPage(Gtk.ScrolledWindow):
         return box
 
     def _use_current(self, greeter):
-        from .app import login_commands
+        from .ui.common import login_commands
         cmds = current_look_commands(greeter, login_commands)
         if not cmds:
             self.win.notify("Couldn't find your current theme files to copy.")
