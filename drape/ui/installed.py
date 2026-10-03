@@ -120,6 +120,16 @@ class InstalledCard(FadingCard):
             meta.get_style_context().add_class("dim-label")
         box.pack_start(meta, False, False, 0)
 
+        if entry.get("author"):
+            from .profile import author_link
+
+            uploader = Gtk.Label(xalign=0)
+            uploader.set_markup(
+                f'<small><a href="drape:author">{GLib.markup_escape_text(entry["author"])}</a></small>'
+            )
+            author_link(uploader, window, entry["author"], kind)
+            box.pack_start(uploader, False, False, 0)
+
         actions = Gtk.Box(spacing=6)
         if wallpaper:
             b = Gtk.Button(label="Set wallpaper")
@@ -133,6 +143,8 @@ class InstalledCard(FadingCard):
             ub.connect("clicked", lambda _b: window.install(update))
             actions.pack_start(ub, False, False, 0)
         extra = [("Show installed files…", lambda *_: window.show_files(key, wallpaper))]
+        if key.isdigit():
+            extra.append(("Uploader profile…", lambda *_: window.show_uploader_by_id(kind, key)))
         target = wallpaper or (comps[0] if len(comps) == 1 else None)
         if kind in ("wallpapers", "gtk", "icons", "cursors"):
             extra.append(

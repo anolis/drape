@@ -29,27 +29,26 @@ Theme packs combine the applicable GTK, desktop-style, window-border, global-the
 color-scheme catalogs above; catalog IDs were rechecked on 2026-10-03. A bundle must contain
 at least two supported appearance parts, including controls, desktop style or window borders.
 Compatible KDE global themes also qualify. An archive's GTK 2/3/4 directories count as one
-part, and several variants of one part do not qualify by themselves. Unlike ordinary sections,
+part, and several variants of one part do not qualify by themselves. After inspection,
 unverified downloads stay hidden, and disabling the general compatibility filter does not
 broaden Theme packs. Extraction rechecks compatibility before installation, and Apply pack
 allows one variant per part or Keep current. Drape does not run an archive's installation scripts.
 
 Shared wallpaper categories remain available for desktops with an apply backend.
-Unrecognized or incomplete archive listings remain visible. Installation checks extracted
+Unrecognized or incomplete archive listings stay hidden while filtering is enabled. Disabling the filter reveals them with a Compatibility unverified label. Installation checks extracted
 files, and Apply checks compatibility again. Source-only compiled plugins are not installed
 as decorations. A catalog match is not a guarantee that a theme's CSS, QML, or external
 dependencies work on every release.
 
-## Older Cinnamon themes
+## Desktop-aware compatibility filtering
 
-The Cinnamon-only menu toggle **Hide themes made for older Cinnamon** defaults to on.
-On Cinnamon 5.4+, it checks whether desktop-theme CSS includes modern `.dialog` or
-`.prompt-dialog` styles. ZIP and tar inspection reads bounded amounts of CSS, including
-imported styles; incomplete checks stay unknown instead of being labeled incompatible.
-Existing cached listings are refreshed to include this check. Known old themes are hidden
-independently of the general compatibility filter, and installation checks extracted CSS again.
-Installed themes are hidden without deleting their files and can be shown by disabling the toggle.
-This detects the known dialog-style change; it does not certify all styling for every Cinnamon release.
+**☰ → Hide incompatible themes for this desktop** defaults to on and controls every theme category in Browse and Installed. Compatibility follows the desktop, window manager, display manager and known version requirements. Unsupported sections remain hidden independently of this preference. Disabling the filter reveals incompatible downloads within supported sections, but does not enable applying unsupported components.
+
+The same rules evaluate each archive variant and each extracted component. A mixed bundle can retain usable GTK or icon components while its Cinnamon styles are hidden from the Desktop category. One compatible download keeps a card available; an unverified alternate download does not override a failed check. Cards load immediately while compatibility checks run independently of preview loading. Incompatible or unverified results fade out as their individual scans finish; one positively identified compatible variant keeps a card visible. A slow scan never holds the first page behind a batch barrier.
+
+Cinnamon checks work in both directions across the 5.4 dialog-style change. Newer Cinnamon requires `.dialog` or `.prompt-dialog` styles. Older Cinnamon uses `.modal-dialog`; an inspected modern-only theme is incompatible there. Themes including both generations can remain usable on both. Imported styles are included; unresolved imports and bounded partial reads remain unverified. These checks identify known CSS mismatches, rather than certifying every panel, menu or app style on every Cinnamon release.
+
+Window border formats follow the active window manager: Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae. GTK controls require GTK 3 content. Plasma global-theme catalogs follow Plasma 5/6 and installation validates their extracted metadata. Login-theme formats follow the detected display manager. Installed files and records are preserved when filtering hides an item.
 
 ## Xfce wallpaper, panel and border support
 
@@ -119,3 +118,39 @@ Validation includes unit tests for catalog selection, native command arguments a
 Wayland KWin detection, mixed archives, metadata IDs, and install/remove behavior. Isolated
 package discovery was also checked with the installed Plasma 6.3 tools. Live rendering and
 application in a running Plasma session still need visual verification.
+
+## Local compatibility evidence
+
+Drape builds a SQLite index in `$XDG_DATA_HOME/drape/compatibility.sqlite3`
+(normally `~/.local/share/drape/compatibility.sqlite3`). Archive evidence is keyed by
+catalog item, filename and checksum, or modification date when no checksum is supplied.
+Results are re-evaluated for the current desktop, window manager and versions.
+Complete listings are reused for a week; incomplete checks retry after ten minutes.
+Matching installed bundle files can supply additional local evidence without claiming
+that companion themes or other downloads were included in that archive.
+
+Export observations with `drape compatibility export --output compatibility.json`.
+The output's `cursor` can be passed to a later export as `--since CURSOR` to produce a
+diff. Repeated unchanged checks do not create duplicate contributions. Import reviewed
+records with `drape compatibility import compatibility.json`; local inspection takes
+precedence and imported claims are evaluated by local compatibility rules. Installed-file
+observations are recorded separately and are not treated as portable archive listings.
+
+These commands prepare for a community database. There is no central service or automatic
+upload/download configured yet. Exports contain public catalog identifiers, filenames and
+desktop/version context; they omit download tokens and local filesystem paths.
+
+## Browsing and applying components
+
+Click an uploader name on a card or in theme details to open their public Pling profile,
+biography, website and paginated uploads. Installed items also offer **Uploader profile**
+in their menu. Uploads open details for their own catalog category.
+
+Downloads with multiple usable appearance components offer **All components**, **Only
+[current section]**, or **Later** after installation. The component chooser lists every
+supported part, with variant selection and **Keep current**. Companion icon/cursor names
+in metatheme metadata are labeled as separate downloads when their files are absent.
+
+Browse sections remember their scroll positions per search and sort order. Installed
+categories and settings sections also save their positions across launches. Drape restores
+a deep catalog position by loading additional pages as content becomes available.

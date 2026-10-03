@@ -1,3 +1,5 @@
+"""Run the CLI after resolving any missing runtime dependencies."""
+
 from .dependencies import ensure
 
 if not ensure():

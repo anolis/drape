@@ -49,11 +49,10 @@ click. No hunting for archives, no guessing which folder things go in.
   or through D-Bus on Wayland. Global themes apply without requesting a desktop layout reset.
   Native tools must be installed; missing tools disable the corresponding feature. See
   [desktop compatibility](docs/compatibility.md) for category mappings and limitations.
-- **Matches the running desktop and window manager.** With **Only show themes that work on this
-  computer** enabled (the default), window borders are scoped to Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae,
+- **Matches the running desktop and window manager.** With **Hide incompatible themes for this desktop** enabled (the default), window borders are scoped to Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae,
   and Cinnamon desktop themes are excluded from other sessions. Known incompatible downloads
-  are filtered after archive inspection; incomplete or unrecognized listings remain visible
-  until installation checks their extracted contents. GTK controls require a GTK 3 component.
+  are filtered after archive inspection; incomplete or unrecognized listings stay hidden
+  while filtering is enabled. Turn the filter off to browse unverified downloads. GTK controls require a GTK 3 component.
   Mixed archives install usable components, and Apply checks compatibility again. The default
   download selection tries another variant if the first is incompatible; an explicitly chosen
   download is never silently substituted. The sidebar and Installed category tabs always hide unsupported sections and update when the window manager changes.
@@ -87,13 +86,14 @@ click. No hunting for archives, no guessing which folder things go in.
 - **Handles name clashes.** If a new theme shares a name with one you have, drape explains and
   offers **Replace**, even for the boot splash or login theme currently in use (`--replace` on
   the command line).
-- **Filters outdated Cinnamon themes.** **☰ → Hide themes made for older Cinnamon** is enabled
-  by default. On Cinnamon 5.4 and newer, Drape inspects dialog CSS in downloaded archives,
-  including imported styles, and hides themes with known outdated styling in browsing,
-  Theme packs and Installed. Installed reports how many are hidden; the files stay in place.
-  Turn the toggle off to show them again and retain the warning before applying. Unverified
-  archives remain visible in ordinary sections. This checks known dialog-style incompatibility,
-  not every rendering issue or an uploader's publication date.
+- **Filters incompatible themes for the current desktop.** The single **☰ → Hide incompatible
+  themes for this desktop** option covers all categories and uses the desktop, window manager,
+  display manager and known version requirements. Cinnamon checks both older and newer dialog
+  styles; mixed bundles keep their usable components. Archive checks run independently of previews.
+  Unverified downloads stay hidden with the filter enabled, and are labeled when it is disabled. Installed
+  files are preserved when hidden. These checks catch known format/version mismatches, not every
+  visual defect in a theme.
+
 - **Shows installation stages.** One progress bar covers downloading, extraction, copying,
   icon-cache generation, cleanup and saving. It names the current step and reaches 100%
   only after installation succeeds. Steps have fixed shares of the bar; the percentage
@@ -138,10 +138,12 @@ Needs Python 3.12+, PyGObject with GTK 3, Pillow and Requests, plus polkit for b
 
 If dependencies are missing, Drape offers to install them on Arch-based distributions (including CachyOS) and Debian/Ubuntu-based distributions. Terminal launches use a y/n prompt and `sudo`; menu launches use a dialog and `pkexec`. If GTK's Python bindings are missing, the dialog uses KDialog or Zenity when available. Installation only runs after you accept, and Drape resumes after a successful installation.
 
-To install dependencies manually on CachyOS or Arch:
+On a fresh CachyOS live session, pacman's repository databases may be absent. Drape detects this before installation and asks permission to refresh them and perform a full system upgrade along with the dependency install. Existing databases are used without a refresh for ordinary installs.
+
+To install dependencies manually on CachyOS or Arch, refreshing the repositories and upgrading the system at the same time:
 
 ```sh
-sudo pacman -S --needed python-pillow python-gobject gtk3 python-requests
+sudo pacman -Syu --needed python-pillow python-gobject gtk3 python-requests
 ```
 
 ```sh
@@ -187,6 +189,18 @@ GPL-3.0. Themes and wallpapers belong to their creators; drape is not affiliated
 GNOME-Look, KDE-Look or Xfce-Look.
 
 ## Development
+
+Python source and tests use four-space indentation, 100-column formatting and blank lines
+between logical sections. Section comments explain module responsibilities and non-obvious
+compatibility, threading and file-ownership decisions. Keep these consistent with:
+
+```sh
+ruff format drape tests bin/drape
+ruff format --check drape tests bin/drape
+```
+
+Ruff is a development tool; it is not needed to run Drape. Formatting settings live in
+`pyproject.toml`.
 
 The GUI entry point is `drape/app.py`; its implementation is in `drape/ui/`:
 

@@ -81,10 +81,13 @@ class Card(FadingCard):
 
         meta = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=32)
         meta.set_markup(
-            f"<small>{GLib.markup_escape_text(item.author)} · ★ {item.score / 10:.1f} · "
+            f'<small><a href="drape:author">{GLib.markup_escape_text(item.author)}</a> · ★ {item.score / 10:.1f} · '
             f"{item.downloads:,} downloads</small>"
         )
         meta.get_style_context().add_class("dim-label")
+        from .profile import author_link
+
+        author_link(meta, window, item.author, kind)
         box.pack_start(meta, False, False, 0)
         self.misfiled = Gtk.Label(
             xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34, no_show_all=True

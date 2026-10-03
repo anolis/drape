@@ -456,6 +456,7 @@ def install_file(
     only_applicable=None,
     status=None,
     required_kind=None,
+    author="",
 ):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
@@ -622,6 +623,7 @@ def install_file(
         "source": source,
         "file": file,
         "preview": preview,
+        "author": author,
         "installed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "paths": installed,
         "components": provides,
@@ -676,6 +678,7 @@ def install_item(
                     replace_foreign,
                     file=f.name,
                     preview=item.previews[0] if item.previews else "",
+                    author=item.author,
                     replace_items=replace_items,
                     only_applicable=True if required_kind == "packs" else only_applicable,
                     status=status,

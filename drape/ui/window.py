@@ -377,6 +377,12 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.stack.set_visible_child_name("installed")
             return
         child = self.stack.get_visible_child()
+        from .profile import ProfileView
+
+        if isinstance(child, ProfileView):
+            self.search.set_sensitive(False)
+            self.sort_combo.set_sensitive(False)
+            return
         searchable = child not in (self.installed, self.lockpage, self.wmpage, self.xfcepage)
         self.search.set_sensitive(searchable)
         self.sort_combo.set_sensitive(searchable)
@@ -412,11 +418,24 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
     def refresh_item(self, item_id=None):
         for p in self.pages.values():
             p.refresh_cards(item_id)
+        for profile in getattr(self, "_profiles", ()):
+            for card in profile.flow.cards():
+                if item_id in (None, card.item.id):
+                    card.refresh()
         if self.stack.get_visible_child() is self.installed:
             self.installed.load()
 
     def show_details(self, kind, item):
         DetailsDialog(self, kind, item)
+
+    def show_uploader_by_id(self, kind, key):
+        from .profile import ProfileDialog
+
+        run_async(
+            lambda: pling.get(key),
+            lambda item: ProfileDialog(self, item.author, kind),
+            lambda e: error_dialog(self, "Couldn't load uploader", e),
+        )
 
     def show_details_by_id(self, kind, key):
         run_async(

@@ -7,12 +7,16 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 from . import http
 
 API = "https://api.pling.com/ocs/v1"
 USER_AGENT = "drape/0.1 (+https://github.com/anolis/drape)"
+
+
+# Catalog data models
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,7 @@ class Item:
     page: str
     previews: list = field(default_factory=list)
     files: list = field(default_factory=list)
+    category: str = ""
 
     def best_file(self):
         """The download most likely to be the installable theme: an archive or image, not the
@@ -108,11 +113,15 @@ class Item:
             page=d.get("detailpage") or f"https://www.pling.com/p/{d['id']}",
             previews=previews,
             files=files,
+            category=str(d.get("typeid") or ""),
         )
 
 
 class PlingError(Exception):
     pass
+
+
+# OCS requests and catalog parsing
 
 
 def _get(path, params=None):
@@ -148,6 +157,9 @@ def _search_params(kind, query, sort, page, pagesize, categories):
         "page": page,
         "pagesize": pagesize,
     }
+
+
+# Search cache and item lookups
 
 
 def _cache_file(params):
@@ -193,3 +205,32 @@ def get(item_id):
     if not rows:
         raise PlingError(f"No item with id {item_id}")
     return Item.from_ocs(rows[0])
+
+
+# Public uploader profiles and uploads, independent of theme categories
+
+
+def profile(author):
+    rows = _get(f"person/data/{quote(author, safe='')}").get("data") or []
+    if not rows:
+        raise PlingError("This uploader's profile is unavailable or private.")
+    return rows[0]
+
+
+def uploads(author, page=0):
+    items, total = _parse(
+        _get("content/data", {"user": author, "page": page, "pagesize": 20, "sortmode": "new"})
+    )
+    # Do not show an unrelated catalog if a provider stops honoring its author filter.
+    return [item for item in items if item.author.casefold() == author.casefold()], total
+
+
+def item_kind(item):
+    return next(
+        (
+            kind.key
+            for kind in KINDS
+            if kind.key != "packs" and item.category in kind.categories.split(",")
+        ),
+        None,
+    )

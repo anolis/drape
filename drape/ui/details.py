@@ -34,11 +34,14 @@ class DetailsDialog(Gtk.Dialog):
 
         meta = Gtk.Label(xalign=0, wrap=True)
         meta.set_markup(
-            f"by {GLib.markup_escape_text(item.author)} · updated {item.changed[:10]} · "
+            f'by <a href="drape:author">{GLib.markup_escape_text(item.author)}</a> · updated {item.changed[:10]} · '
             f"{item.downloads:,} downloads · "
             f'<a href="{GLib.markup_escape_text(item.page)}">view on theme catalog</a>'
         )
         area.pack_start(meta, False, False, 0)
+        from .profile import author_link
+
+        author_link(meta, window, item.author, kind)
         summary = Gtk.Label(label=item.summary, xalign=0, wrap=True, selectable=True)
         area.pack_start(summary, False, False, 0)
 
