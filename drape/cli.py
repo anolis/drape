@@ -45,9 +45,8 @@ def cmd_search(a):
         visible = []
         for item in items:
             try:
-                status = desktop.download_status(
-                    list(peek.inspect_downloads(item, a.kind, installed).values()), a.kind
-                )
+                _, checks = peek.inspect_downloads(item, a.kind, installed)
+                status = desktop.download_status(list(checks.values()), a.kind)
             except peek.RateLimited as exc:
                 print(
                     f"{item.name}: compatibility check rate-limited; retry in {math.ceil(exc.retry_after)}s.",

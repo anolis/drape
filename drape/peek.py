@@ -37,8 +37,16 @@ _lock = threading.Lock()
 RateLimited = http.RateLimited
 
 
+# what a file host answers once a signed download link has expired
+EXPIRED_STATUSES = {401, 403, 410}
+
+
 class InspectionFailed(Exception):
     """No archive evidence was obtained; callers must not record a verdict."""
+
+
+class LinkExpired(InspectionFailed):
+    """The signed download link was refused; fresh links may still work."""
 
 
 def fresh_item(item):
@@ -51,6 +59,30 @@ def fresh_item(item):
         if isinstance(exc.__cause__, RateLimited):
             raise exc.__cause__ from None
         raise InspectionFailed("Could not refresh download links.") from exc
+
+
+def _file_named(item, name):
+    file = next((f for f in item.files if f.name == name), None)
+    if file is None:
+        raise InspectionFailed(f"{name} is no longer offered for download.")
+    return file
+
+
+def contents_refreshing(item, file, use_cache=True):
+    """`contents` for one download of `item`, re-fetching the item's links once if they have
+    expired. Returns (item, result), where item may be the refreshed one; a later call with it
+    uses the fresh link for any of its files."""
+    file = _file_named(item, file.name)
+    try:
+        return item, contents(item.id, file.url, file.name, use_cache)
+    except LinkExpired:
+        item = fresh_item(item)
+        file = _file_named(item, file.name)
+        try:
+            return item, contents(item.id, file.url, file.name, use_cache)
+        except RateLimited as exc:
+            exc.item = item
+            raise
 
 
 # ---------------------------------------------------------------- what a list of paths contains
@@ -399,11 +431,17 @@ def contents(item_id, url, filename, use_cache=True):
     except RateLimited:
         raise  # A server cooldown is not an inspection result and must not be cached.
     except (requests.RequestException, OSError, zipfile.BadZipFile, ValueError) as exc:
-        # zipfile turns OSErrors (RateLimited included) from the end-record read into BadZipFile.
+        # zipfile turns OSErrors (RateLimited and HTTPError included) from the end-record read
+        # into BadZipFile, so look through the chain for what actually went wrong.
         cause = exc
         while cause is not None:
             if isinstance(cause, RateLimited):
                 raise cause from None
+            response = getattr(cause, "response", None)
+            if isinstance(cause, requests.HTTPError) and response is not None:
+                if response.status_code in EXPIRED_STATUSES:
+                    raise LinkExpired(f"Download link refused (HTTP {response.status_code}).") from exc
+                break
             cause = cause.__cause__ or cause.__context__
         raise InspectionFailed(
             "Could not inspect the download; no compatibility evidence obtained."
@@ -443,19 +481,25 @@ def installed_parts(entry):
 
 
 def inspect_downloads(item, kind, installed=None):
-    """Inspect download variants and add successful checks to the local index."""
+    """Inspect download variants and add successful checks to the local index.
+
+    Returns (item, results): item is refreshed if its download links had expired, and results
+    maps each file index to (parts, complete), or None when that file could not be checked."""
     from . import compatibility, desktop
     import sqlite3
     import sys
 
     best = item.best_file()
     if best is None:
-        return {}
+        return item, {}
     index = compatibility.Index()
     context = compatibility.context()
     results = {}
     limited = None
-    for file in [best, *(file for file in item.files if file != best)]:
+    for name in [best.name, *(file.name for file in item.files if file != best)]:
+        file = next((f for f in item.files if f.name == name), None)
+        if file is None:
+            continue  # dropped from the refreshed item
         entry = (installed or {}).get(item.id)
         if (
             kind == "packs"
@@ -478,7 +522,7 @@ def inspect_downloads(item, kind, installed=None):
                     )
                 except (OSError, sqlite3.Error):
                     pass
-                return {file.index: result}
+                return item, {file.index: result}
         try:
             result = index.inspection(item, file)
         except (OSError, sqlite3.Error, ValueError) as exc:
@@ -488,14 +532,16 @@ def inspect_downloads(item, kind, installed=None):
         # index with stale evidence for a newly uploaded file of the same name.
         if result is None:
             try:
-                result = contents(item.id, file.url, file.name, use_cache=False)
+                item, result = contents_refreshing(item, file, use_cache=False)
             except RateLimited as exc:
+                item = exc.item or item
                 results[file.index] = None
                 limited = exc
                 continue
             except InspectionFailed:
                 results[file.index] = None
                 continue
+            file = _file_named(item, file.name)
         results[file.index] = result
         status = desktop.archive_status(*result, kind)
         try:
@@ -503,7 +549,7 @@ def inspect_downloads(item, kind, installed=None):
         except (OSError, sqlite3.Error) as exc:
             print(f"drape: could not save compatibility evidence: {exc}", file=sys.stderr)
         if status == "compatible":
-            return results
+            return item, results
     if limited is not None:
-        raise RateLimited(limited.retry_after, checks=results, host=limited.host)
-    return results
+        raise RateLimited(limited.retry_after, checks=results, host=limited.host, item=item)
+    return item, results

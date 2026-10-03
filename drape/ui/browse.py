@@ -3,18 +3,19 @@
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
-import math
 
 from .card_transitions import CardFlow, FadingCard
 from .gtk import GLib, Gtk, Pango
 from .. import desktop, installer, peek, pling, settings, system
 from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, _safe, run_async
 from .images import _ui_busy_until, load_image
+from .retries import RetryQueue
 from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 from .scroll_state import ScrollState
 
 
 _peeks = ThreadPoolExecutor(max_workers=3)  # bounded scans for incoming catalog batches
+_retries = RetryQueue(_peeks.submit)  # rate-limited scans, released per host after its cooldown
 
 
 CHUNK = 10  # results per request: small batches paint sooner on slow connections
@@ -23,7 +24,7 @@ FIRST_CHUNKS = 3  # batches requested up front when a tab opens
 
 
 class Card(FadingCard):
-    def __init__(self, window, kind, item, checks=None):
+    def __init__(self, window, kind, item, checks=None, rate_limited=False):
         super().__init__()
         self.win, self.kind, self.item = window, kind, item
         self.compatible = False
@@ -31,9 +32,10 @@ class Card(FadingCard):
         self.compatibility_pending = bool(item.files)
         self._peek_started = False
         self._checks = checks
-        self._rate_limited = bool(checks and any(result is None for result in checks.values()))
+        self._rate_limited = rate_limited
         self._scan_alive = True
         self.connect("destroy", lambda *_: setattr(self, "_scan_alive", False))
+        self.connect("destroy", lambda *_: _retries.cancel(lambda key: key == ("card", self)))
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         frame = Gtk.Frame()
@@ -122,7 +124,7 @@ class Card(FadingCard):
 
     # Archive checks independent of image previews
 
-    def _peek(self, alive, refresh=False):
+    def _peek(self, alive):
         """Find out what the download contains (cached, or a small partial read) and show glyphs."""
         if not self._scan_alive or self._checks is not None:
             return
@@ -143,46 +145,56 @@ class Card(FadingCard):
         if self._peek_started:
             return
         self._peek_started = True
+        _peeks.submit(lambda: _safe(lambda: self._peek_work(alive)))
 
-        def work():
-            if self.departing or (alive is not None and not alive.is_set()):
-                return
-            try:
-                item = peek.fresh_item(self.item) if refresh else self.item
-                best = item.best_file()
-                if best is None:
-                    return
-                result = peek.contents(item.id, best.url, best.name)
-                if not desktop.archive_compatible(*result, self.kind):
-                    for other in item.files:
-                        if self.departing:
-                            return
-                        if other != best:
-                            peek.contents(item.id, other.url, other.name)
-            except peek.RateLimited as exc:
-                GLib.idle_add(self._defer_peek, exc.retry_delay(), alive)
-            else:
+    def _peek_work(self, alive):
+        """Worker half of `_peek`; also what a rate-limited card re-runs from the retry queue."""
+        if not self._scan_alive or self.departing or (alive is not None and not alive.is_set()):
+            return
+        item = self.item
+        best = item.best_file()
+        if best is None:
+            return
+        try:
+            item, result = peek.contents_refreshing(item, best)
+            if not desktop.archive_compatible(*result, self.kind):
+                for other in list(item.files):
+                    if self.departing:
+                        return
+                    if other.name != best.name:
+                        try:
+                            item, _ = peek.contents_refreshing(item, other)
+                        except peek.InspectionFailed:
+                            pass  # a broken alternative must not hide the best file's result
+        except peek.RateLimited as exc:
+            GLib.idle_add(self._defer_peek, exc, alive)
+            return
+        except peek.InspectionFailed:
+            result = None  # no evidence: shown as unverified, not as still checking
 
-                def done():
-                    if self._scan_alive:
-                        self.item = item
-                        self._rate_limited = False
-                        self._show_glyphs(*result, checked=True)
-                    return False
+        def done():
+            if self._scan_alive:
+                self.item = item
+                self._rate_limited = False
+                self._show_glyphs(*(result or (set(), False)), checked=True)
+            return False
 
-                GLib.idle_add(done)
+        GLib.idle_add(done)
 
-        _peeks.submit(lambda: _safe(work))
-
-    def _defer_peek(self, delay, alive):
+    def _defer_peek(self, limited, alive):
         if not self._scan_alive or self.departing:
             return False
+        if limited.item is not None:
+            self.item = limited.item
         self._rate_limited = True
-        self._peek_started = False
         best = self.item.best_file()
         self._show_glyphs(*((best and peek.cached(self.item.id, best.name)) or (set(), False)))
-        GLib.timeout_add_seconds(
-            max(1, math.ceil(delay)), lambda: (self._peek(alive, True), False)[1]
+        # _peek_started stays set, so a redraw doesn't start a second check while this one waits
+        _retries.add(
+            limited.host,
+            ("card", self),
+            lambda: _safe(lambda: self._peek_work(alive)),
+            limited.retry_after,
         )
         return False
 
@@ -285,6 +297,7 @@ class BrowsePage(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win, self.kind = window, kind
         self._scanned_checks = {}
+        self._rate_limited = set()  # item ids whose scan is waiting in the retry queue
         self._first_scan_pending = False
         self._initial_fetching = False
         self.generation = 0
@@ -392,7 +405,15 @@ class BrowsePage(Gtk.Box):
     def _add(self, items):
         _ui_busy_until[0] = time.monotonic() + 2
         for it in items:
-            self.flow.add(Card(self.win, self.kind, it, self._scanned_checks.get(it.id)))
+            self.flow.add(
+                Card(
+                    self.win,
+                    self.kind,
+                    it,
+                    self._scanned_checks.get(it.id),
+                    rate_limited=it.id in self._rate_limited,
+                )
+            )
         self.flow.show_all()
         if self.kind == "packs" or settings.get("only_applicable"):
             GLib.idle_add(self._filtered_status)
@@ -409,40 +430,41 @@ class BrowsePage(Gtk.Box):
             self._scanned_checks[item.id] = {}
         ready()
 
-        def finished(item, checks, retry_after=None):
+        def finished(item, checks, limited=None):
             if generation != self.generation or self.flow.in_destruction():
                 return False
             self._scanned_checks[item.id] = checks
+            if limited is None:
+                self._rate_limited.discard(item.id)
+            else:
+                self._rate_limited.add(item.id)
             for card in self.cards():
                 if card.item.id == item.id:
                     card.item = item
                     card._checks = checks
-                    card._rate_limited = retry_after is not None
+                    card._rate_limited = limited is not None
                     best = item.best_file()
                     result = (checks.get(best.index) or (set(), False)) if best else (set(), False)
                     card._show_glyphs(*result, checked=True)
             self._filtered_status()
             self._maybe_more()
-            if retry_after is not None:
-
-                def retry():
-                    if generation == self.generation and not self.flow.in_destruction():
-                        _peeks.submit(lambda: work(item, refresh=True))
-                    return False
-
-                GLib.timeout_add_seconds(max(1, math.ceil(retry_after)), retry)
+            if limited is not None:
+                _retries.add(
+                    limited.host,
+                    ("scan", self, item.id),
+                    lambda: work(item),
+                    limited.retry_after,
+                )
             return False
 
-        def work(item, refresh=False):
+        def work(item):
             if generation != self.generation:
                 return
             try:
-                if refresh:
-                    item = peek.fresh_item(item)
                 installed = installer.load_manifest() if self.kind == "packs" else None
-                checks = peek.inspect_downloads(item, self.kind, installed)
+                item, checks = peek.inspect_downloads(item, self.kind, installed)
             except peek.RateLimited as exc:
-                GLib.idle_add(finished, item, exc.checks, exc.retry_delay())
+                GLib.idle_add(finished, exc.item or item, exc.checks, exc)
                 return
             except Exception:
                 # A failed check stays unverified and can be retried on a later visit.
@@ -460,6 +482,8 @@ class BrowsePage(Gtk.Box):
         self.generation += 1
         gen = self.generation
         self._scanned_checks.clear()
+        self._rate_limited.clear()
+        _retries.cancel(lambda key: key[:2] == ("scan", self))
         self._first_scan_pending = False
         self.flow.show()
         self.flow.clear()

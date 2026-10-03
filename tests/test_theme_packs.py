@@ -154,7 +154,9 @@ class ThemePacksTest(unittest.TestCase):
         with (
             mock.patch.object(pling, "search", return_value=(items, 3)),
             mock.patch.object(
-                cli.peek, "inspect_downloads", side_effect=[{1: result} for result in results]
+                cli.peek,
+                "inspect_downloads",
+                side_effect=[(item, {1: result}) for item, result in zip(items, results)],
             ),
             redirect_stdout(output),
             redirect_stderr(io.StringIO()),

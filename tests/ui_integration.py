@@ -62,7 +62,9 @@ with tempfile.TemporaryDirectory() as temp:
         with (
             mock.patch.object(browse._peeks, "submit") as jobs,
             mock.patch.object(
-                browse.peek, "inspect_downloads", return_value={1: ({"gtk", "gtk-4.0"}, True)}
+                browse.peek,
+                "inspect_downloads",
+                side_effect=lambda item, *_: (item, {1: ({"gtk", "gtk-4.0"}, True)}),
             ),
         ):
             page._preflight([item], lambda: page._add([item]), mock.Mock(), page.generation)
@@ -75,16 +77,16 @@ with tempfile.TemporaryDirectory() as temp:
             assert page.flow.get_visible()
         # HTTP 429 leaves cards visible and pending, then a later success clears the state.
         limited_item = pling.Item("rate", "Rate limited", "author", "", "", "", 0, 0, "", files=[pling.Download(1, "rate.zip", "url", 1, "")])
-        with mock.patch.object(browse._peeks, "submit") as jobs, mock.patch.object(browse.peek, "fresh_item", return_value=limited_item), mock.patch.object(browse.peek, "inspect_downloads", side_effect=[browse.peek.RateLimited(12, checks={1: None}), {1: ({"gtk", "gtk-3.0"}, True)}]), mock.patch.object(GLib, "timeout_add_seconds") as retry:
+        with mock.patch.object(browse._peeks, "submit") as jobs, mock.patch.object(browse, "_retries") as retry, mock.patch.object(browse.peek, "inspect_downloads", side_effect=[browse.peek.RateLimited(12, checks={1: None}, host="files.test"), (limited_item, {1: ({"gtk", "gtk-3.0"}, True)})]):
             page._preflight([limited_item], lambda: page._add([limited_item]), mock.Mock(), page.generation)
             jobs.call_args.args[0]()
             pump(0.25)
             card = next(card for card in page.cards() if card.item.id == "rate")
             assert card.get_child_visible() and card.compatibility_pending
             assert "rate-limited" in card.compatibility_note.get_text()
-            assert retry.call_args.args[0] == 12
-            retry.call_args.args[1]()
-            jobs.call_args.args[0]()
+            host, key, job, delay = retry.add.call_args.args
+            assert (host, delay) == ("files.test", 12)
+            job()
             pump(0.25)
             assert card.compatible and not card.compatibility_pending and not card._rate_limited
         win.remove(page)

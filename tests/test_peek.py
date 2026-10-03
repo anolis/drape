@@ -1,6 +1,7 @@
 import unittest
 import json
 import tempfile
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -103,6 +104,69 @@ class ClassifyTest(unittest.TestCase):
                 peek.contents("1", "https://example.test/theme.zip", "theme.zip")
             self.assertEqual(error.exception.retry_after, 30)
             self.assertFalse(peek.CACHE.exists())
+
+    def test_refused_link_is_reported_as_expired(self):
+        refused = mock.Mock(status_code=403)
+        for wrapped in (False, True):
+            error = requests.HTTPError("403", response=refused)
+            if wrapped:  # as zipfile reports a failure while reading the end record
+                bad = zipfile.BadZipFile("bad")
+                bad.__context__ = error
+                error = bad
+            with (
+                tempfile.TemporaryDirectory() as tmp,
+                mock.patch.object(peek, "CACHE", Path(tmp) / "peek.json"),
+                mock.patch.object(peek, "list_archive", side_effect=error),
+            ):
+                with self.assertRaises(peek.LinkExpired):
+                    peek.contents("1", "url", "theme.zip")
+                self.assertFalse(peek.CACHE.exists())
+
+    def test_server_error_is_a_plain_failure(self):
+        error = requests.HTTPError("500", response=mock.Mock(status_code=500))
+        with mock.patch.object(peek, "list_archive", side_effect=error):
+            with self.assertRaises(peek.InspectionFailed) as caught:
+                peek.contents("1", "url", "theme.zip", use_cache=False)
+            self.assertNotIsInstance(caught.exception, peek.LinkExpired)
+
+    def test_expired_link_refreshes_item_once_and_retries(self):
+        from drape import pling
+
+        old = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "old", 1, "")])
+        new = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "new", 1, "")])
+        result = ({"gtk"}, True)
+        with (
+            mock.patch.object(peek, "contents", side_effect=[peek.LinkExpired("403"), result]) as contents,
+            mock.patch.object(peek, "fresh_item", return_value=new) as refresh,
+        ):
+            self.assertEqual(peek.contents_refreshing(old, old.files[0]), (new, result))
+        refresh.assert_called_once_with(old)
+        self.assertEqual([c.args[1] for c in contents.call_args_list], ["old", "new"])
+
+    def test_link_still_refused_after_refresh_is_a_failure(self):
+        from drape import pling
+
+        item = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "u", 1, "")])
+        with (
+            mock.patch.object(peek, "contents", side_effect=peek.LinkExpired("403")),
+            mock.patch.object(peek, "fresh_item", return_value=item) as refresh,
+        ):
+            with self.assertRaises(peek.InspectionFailed):
+                peek.contents_refreshing(item, item.files[0])
+        refresh.assert_called_once()
+
+    def test_rate_limit_after_refresh_carries_the_fresh_item(self):
+        from drape import pling
+
+        old = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "old", 1, "")])
+        new = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "new", 1, "")])
+        with (
+            mock.patch.object(peek, "contents", side_effect=[peek.LinkExpired("403"), peek.RateLimited(30)]),
+            mock.patch.object(peek, "fresh_item", return_value=new),
+        ):
+            with self.assertRaises(peek.RateLimited) as caught:
+                peek.contents_refreshing(old, old.files[0])
+        self.assertIs(caught.exception.item, new)
 
     def test_parts_from_paths(self):
         self.assertEqual(

@@ -14,27 +14,20 @@ MAX_RETRY_AFTER = 86400  # an absurd Retry-After must not block a host forever o
 
 _rate_lock = threading.Lock()
 _blocked_until = {}
-_retry_slots = {}
 
 
 class RateLimited(requests.RequestException):
-    """The server deferred a request; this supplies no compatibility evidence."""
+    """The server deferred a request; this supplies no compatibility evidence.
 
-    def __init__(self, retry_after=60, checks=None, host=None):
+    `host` is the cooldown it belongs to; `item` is set when download links were refreshed
+    before the limit hit, so the retry can start from the fresh links."""
+
+    def __init__(self, retry_after=60, checks=None, host=None, item=None):
         super().__init__("HTTP 429: server rate-limited requests; retry later.")
         self.retry_after = retry_after
         self.checks = checks or {}
         self.host = host
-
-    def retry_delay(self):
-        """Spread background retries for one host without sleeping in scan workers."""
-        if self.host is None:
-            return self.retry_after
-        with _rate_lock:
-            now = time.monotonic()
-            slot = max(now + self.retry_after, _retry_slots.get(self.host, 0))
-            _retry_slots[self.host] = slot + 2
-        return slot - now
+        self.item = item
 
 
 def _retry_after(value):

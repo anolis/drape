@@ -64,9 +64,24 @@ class CompatibilityIndexTest(unittest.TestCase):
             mock.patch.object(compatibility, "Index", return_value=self.index),
             mock.patch.object(peek, "contents", side_effect=peek.InspectionFailed("failed")),
         ):
-            self.assertEqual(peek.inspect_downloads(self.item, "gtk"), {1: None})
+            self.assertEqual(peek.inspect_downloads(self.item, "gtk")[1], {1: None})
         self.assertEqual(self.index.export()["observations"], [])
         self.assertIsNone(self.index.inspection(self.item, self.file))
+
+    def test_expired_link_is_refreshed_and_fresh_item_returned(self):
+        fresh = replace(self.item, files=[replace(self.file, url="https://example.test/fresh")])
+        with (
+            mock.patch.object(compatibility, "Index", return_value=self.index),
+            mock.patch.object(
+                peek, "contents", side_effect=[peek.LinkExpired("403"), self.result]
+            ) as contents,
+            mock.patch.object(peek, "fresh_item", return_value=fresh),
+        ):
+            item, checks = peek.inspect_downloads(self.item, "gtk")
+        self.assertIs(item, fresh)
+        self.assertEqual(checks, {1: self.result})
+        self.assertEqual(contents.call_args_list[-1].args[1], "https://example.test/fresh")
+        self.assertEqual(self.index.inspection(fresh, fresh.files[0]), self.result)
 
     def test_diff_cursor_only_advances_for_changes(self):
         self.record()
@@ -114,7 +129,7 @@ class CompatibilityIndexTest(unittest.TestCase):
             mock.patch.object(peek, "contents") as contents,
             mock.patch.object(desktop, "supported", return_value=True),
         ):
-            self.assertEqual(peek.inspect_downloads(self.item, "gtk"), {1: self.result})
+            self.assertEqual(peek.inspect_downloads(self.item, "gtk")[1], {1: self.result})
             contents.assert_not_called()
 
     def test_rate_limit_never_becomes_compatibility_evidence(self):
@@ -137,7 +152,7 @@ class CompatibilityIndexTest(unittest.TestCase):
             mock.patch.object(peek, "contents", side_effect=[peek.RateLimited(60), self.result]),
             mock.patch.object(desktop, "supported", return_value=True),
         ):
-            self.assertEqual(peek.inspect_downloads(item, "gtk"), {1: None, 2: self.result})
+            self.assertEqual(peek.inspect_downloads(item, "gtk")[1], {1: None, 2: self.result})
 
     def test_installed_bundle_proof_requires_matching_download(self):
         entry = {"file": self.file.name, "changed": self.item.changed, "components": []}
@@ -150,7 +165,7 @@ class CompatibilityIndexTest(unittest.TestCase):
             mock.patch.object(desktop, "supported", return_value=True),
         ):
             self.assertEqual(
-                peek.inspect_downloads(self.item, "packs", {"1": entry}), {1: (parts, False)}
+                peek.inspect_downloads(self.item, "packs", {"1": entry})[1], {1: (parts, False)}
             )
             contents.assert_not_called()
             peek.inspect_downloads(replace(self.item, changed="2026-02-01"), "packs", {"1": entry})
