@@ -671,12 +671,8 @@ def _is_pack(parts):
     )
 
 
-def pack_components(components):
+def pack_components(components, usable=None):
     """Qualify extracted/installed bundles using real formats and current capabilities."""
-    usable = {
-        part
-        for component in components
-        for part in compatible_parts(component)
-        if part in PACK_PARTS
-    }
-    return _is_pack(usable)
+    if usable is None:
+        usable = {part for component in components for part in compatible_parts(component)}
+    return _is_pack(usable & PACK_PARTS)

@@ -49,14 +49,7 @@ class InstalledCard(FadingCard):
     def __init__(self, window, kind, key, entry, update=None, wallpaper=None):
         super().__init__()
         self.win, self.kind, self.key, self.entry = window, kind, key, entry
-        comps = (
-            [wallpaper]
-            if wallpaper
-            else [c for c in entry["components"] if matches(kind, c)] or entry["components"]
-        )
-        using = [c for c in comps if in_use(c)]
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
+        self.update, self.wallpaper = update, wallpaper
         self.selection_id = (key, wallpaper["path"] if wallpaper else None)
         self.select_check = Gtk.CheckButton(
             label="Select wallpaper" if wallpaper else "Select pack"
@@ -65,6 +58,50 @@ class InstalledCard(FadingCard):
         self.select_check.connect(
             "toggled", lambda b: window.installed.select_card(self.selection_id, b.get_active())
         )
+        # Reserve a full card's space; hidden cards need neither previews nor apply controls.
+        self.set_size_request(CARD_W + 16, CARD_H + 190)
+        placeholder = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin=8)
+        placeholder.pack_start(self.select_check, False, False, 0)
+        placeholder.pack_start(
+            Gtk.Label(label=entry["title"], ellipsize=Pango.EllipsizeMode.END), False, False, 0
+        )
+        self.add(placeholder)
+        self._populate_queued = False
+        self._draw_handler = self.connect("draw", self._first_draw)
+
+    def _first_draw(self, *_):
+        parent = self.get_parent()
+        if not self._populate_queued and isinstance(parent, CardFlow) and parent.in_view(self):
+            self._populate_queued = True
+            GLib.idle_add(self._populate)
+        return False
+
+    def _populate(self):
+        self._populate_queued = False
+        parent = self.get_parent()
+        if (
+            self.in_destruction()
+            or self.departing
+            or not isinstance(parent, CardFlow)
+            or not parent.in_view(self)
+        ):
+            return False
+        self.disconnect(self._draw_handler)
+        self._draw_handler = None
+        placeholder = self.get_child()
+        placeholder.remove(self.select_check)
+        self.remove(placeholder)
+        placeholder.destroy()
+        window, kind, key, entry = self.win, self.kind, self.key, self.entry
+        update, wallpaper = self.update, self.wallpaper
+        comps = (
+            [wallpaper]
+            if wallpaper
+            else [c for c in entry["components"] if matches(kind, c)] or entry["components"]
+        )
+        using = [c for c in comps if in_use(c)]
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         box.pack_start(self.select_check, False, False, 0)
         frame = Gtk.Frame()
         frame.get_style_context().add_class("view")
@@ -137,7 +174,7 @@ class InstalledCard(FadingCard):
             b.connect("clicked", lambda _b: window.apply(wallpaper))
             actions.pack_start(b, False, False, 0)
         else:
-            actions.pack_start(ApplyControl(window, key, kind), False, False, 0)
+            actions.pack_start(ApplyControl(window, key, kind, entry=entry), False, False, 0)
         if update:
             ub = Gtk.Button(label="Update")
             ub.connect("clicked", lambda _b: window.install(update))
@@ -182,6 +219,8 @@ class InstalledCard(FadingCard):
         actions.pack_end(rm, False, False, 0)
         box.pack_start(actions, False, False, 0)
         self.add(box)
+        box.show_all()
+        return False
 
 
 class InstalledPage(Gtk.Box):
@@ -194,6 +233,7 @@ class InstalledPage(Gtk.Box):
         self.selected = set()
         self.tabs = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, hhomogeneous=False)
         self.grids = {}
+        self._entries = {}
         for k in [pling.Kind("active", "In use", "")] + kinds + [pling.Kind("other", "Other", "")]:
             k = pling.Kind(k.key, desktop.category_label(k.key, k.label), k.categories)
             flow = CardFlow(
@@ -329,6 +369,12 @@ class InstalledPage(Gtk.Box):
         rb = self.chip.get(name)
         if rb and not rb.get_active():
             rb.set_active(True)
+        self._show_category(name)
+
+    def _show_category(self, name):
+        if name in self._entries:
+            entries = self._entries.pop(name)
+            self.grids[name][2].reconcile(entries)
 
     # Reconcile records with visible desktop-compatible cards
 
@@ -349,6 +395,12 @@ class InstalledPage(Gtk.Box):
         self._selection_changed()
         self._load_revision = getattr(self, "_load_revision", 0) + 1
         revision = self._load_revision
+        # CSS/format checks are shared by all categories during this refresh only.
+        compatible = {
+            id(c): set(desktop.compatible_parts(c))
+            for entry in m.values()
+            for c in entry["components"]
+        }
         hidden_incompatible = {
             key
             for key, entry in m.items()
@@ -356,12 +408,14 @@ class InstalledPage(Gtk.Box):
             and not any(
                 desktop.system_part_compatible(c["system"])
                 if c.get("system")
-                else desktop.compatible_parts(c)
+                else compatible[id(c)]
                 for c in entry["components"]
             )
         }
         placed = set()
         counts = {}
+        self._entries = {}
+        ordered = sorted(m.items(), key=lambda kv: kv[1]["title"].lower())
         for key_name, (k, sw, flow, empty) in self.grids.items():
             entries = []
             if key_name not in ("active", "other") and not desktop.category_visible(key_name):
@@ -375,28 +429,34 @@ class InstalledPage(Gtk.Box):
                             (
                                 part,
                                 object(),
-                                lambda part=part: ActiveCard(
+                                lambda part=part, label=label: ActiveCard(
                                     self.win, part, desktop.category_label(part, label)
                                 ),
                             )
                         )
-                flow.reconcile(entries)
+                self._entries[key_name] = entries
                 counts["active"] = len(entries)
                 continue
             n = 0
-            for key, e in sorted(m.items(), key=lambda kv: kv[1]["title"].lower()):
+            for key, e in ordered:
                 if key in hidden_incompatible:
                     continue
-                if key_name == "packs" and not desktop.pack_components(e["components"]):
+                usable = set().union(*(compatible[id(c)] for c in e["components"]))
+                if key_name == "packs" and not desktop.pack_components(e["components"], usable):
                     continue
                 if key_name == "other":
                     if key in placed:
                         continue
-                elif not any(matches(key_name, c) for c in e["components"]):
+                elif not any(
+                    bool(compatible[id(c)] & desktop.PACK_PARTS)
+                    if key_name == "packs"
+                    else matches(key_name, c)
+                    for c in e["components"]
+                ):
                     continue
                 elif settings.get("only_applicable") and key_name not in ("login", "boot", "packs"):
                     target = desktop.theme_part(key_name)
-                    if not any(target in desktop.compatible_parts(c) for c in e["components"]):
+                    if not any(target in compatible[id(c)] for c in e["components"]):
                         continue
                 placed.add(key)
                 if key_name == "wallpapers":
@@ -406,7 +466,7 @@ class InstalledPage(Gtk.Box):
                                 (
                                     (key, c["path"]),
                                     (e, self.updates.get(key)),
-                                    lambda key=key, e=e, c=c: InstalledCard(
+                                    lambda key=key, e=e, c=c, key_name=key_name: InstalledCard(
                                         self.win, key_name, key, e, wallpaper=c
                                     ),
                                 )
@@ -417,7 +477,7 @@ class InstalledPage(Gtk.Box):
                         (
                             (key, None),
                             (e, self.updates.get(key)),
-                            lambda key=key, e=e: InstalledCard(
+                            lambda key=key, e=e, key_name=key_name: InstalledCard(
                                 self.win, key_name, key, e, self.updates.get(key)
                             ),
                         )
@@ -426,7 +486,7 @@ class InstalledPage(Gtk.Box):
             counts[key_name] = n
             self.tabs.child_set_property(sw, "title", f"{k.label} ({n})" if n else k.label)
             self.chip[key_name].set_label(f"{k.label} ({n})" if n else k.label)
-            flow.reconcile(entries)
+            self._entries[key_name] = entries
             if n == 0 and any(card.get_mapped() for card in flow.get_children()):
 
                 def show_empty(empty=empty):
@@ -469,6 +529,7 @@ class InstalledPage(Gtk.Box):
                     GLib.timeout_add(200, land)
                 else:
                     land()
+        self._show_category(self.tabs.get_visible_child_name())
 
     def check_updates(self, _btn):
         keys = [k for k in installer.load_manifest() if k.isdigit()]

@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from unittest import mock
 from drape import desktop, installer, pling, settings
-from drape.ui import browse, packs, profile, theme_actions
+from drape.ui import browse, installed, packs, profile, theme_actions
 from drape.ui.gtk import Gtk, GLib
 from drape.ui.scroll_state import ScrollState
 
@@ -252,6 +252,57 @@ with tempfile.TemporaryDirectory() as temp:
         with mock.patch.object(Gtk.MessageDialog, "run", return_value=Gtk.ResponseType.CANCEL):
             assert theme_actions.ThemeActions.choose_installed_components(win, "1", entry, "gtk")
     win.destroy()
+
+    # Large Installed collections must not hydrate hidden tabs or off-screen cards.
+    large = {
+        str(i): dict(title=f"Theme {i:04}", components=[dict(name=f"Theme {i}", path=f"/themes/{i}", provides=["icons", "cursors"])])
+        for i in range(500)
+    }
+    with (
+        mock.patch.object(installer, "load_manifest", return_value=large) as records,
+        mock.patch.object(desktop, "category_visible", return_value=True),
+        mock.patch.object(desktop, "supported", return_value=True),
+        mock.patch.object(desktop, "compatible_parts", side_effect=lambda c: c["provides"]) as compatibility,
+        mock.patch.object(installed, "in_use", return_value=False),
+        mock.patch.object(installed, "entry_image") as pictures,
+    ):
+        window = Gtk.Window()
+        window.set_default_size(800, 500)
+        settings.set("scroll_positions", {"installed:cursors": 8000})
+        window.installed = installed.InstalledPage(window, [pling.Kind("icons", "Icons", ""), pling.Kind("cursors", "Cursors", "")])
+        window.add(window.installed)
+        window.installed.tabs.set_visible_child_name("icons")
+        started = time.monotonic()
+        window.installed.load()
+        load_seconds = time.monotonic() - started
+        assert records.call_count == 1
+        assert compatibility.call_count == 500
+        assert len(window.installed.grids["icons"][2].cards()) == 500
+        assert not window.installed.grids["cursors"][2].cards()
+        assert not window.installed.grids["active"][2].cards()
+        assert pictures.call_count == 0
+        window.show_all()
+        pump(0.4)
+        assert 0 < pictures.call_count < 30, pictures.call_count
+        assert records.call_count == 1, records.call_count
+        flow = window.installed.grids["icons"][2]
+        visible = [card for card in flow.cards() if flow.in_view(card)]
+        assert visible and all(card._draw_handler is None for card in visible)
+        images_before = pictures.call_count
+        adjustment = window.installed.grids["icons"][1].get_vadjustment()
+        adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
+        pump(0.3)
+        assert pictures.call_count > images_before
+        window.installed.select_all()
+        assert len(window.installed.selected) == 500
+        window.installed.tabs.set_visible_child_name("cursors")
+        pump(0.3)
+        assert abs(window.installed.grids["cursors"][1].get_vadjustment().get_value() - 8000) < 2
+        assert len(window.installed.grids["cursors"][2].cards()) == 500
+        assert all(card.select_check.get_active() for card in window.installed.grids["cursors"][2].cards())
+        assert records.call_count == 1
+        window.destroy()
+        print(f"Installed stress check: 500 items loaded in {load_seconds:.3f}s; only viewport cards hydrated.")
 print(
     "GTK smoke passed: immediate cards, deferred off-screen removals, rate-limit recovery, uploader pagination, scroll persistence, four component chooser."
 )

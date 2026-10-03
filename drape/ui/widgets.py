@@ -291,7 +291,7 @@ class VariantPicker(Gtk.Popover):
 class ApplyControl(Gtk.Box):
     """[Apply | ▾]: Apply uses the variant in use or last picked; ▾ lists variants with previews."""
 
-    def __init__(self, window, key, kind):
+    def __init__(self, window, key, kind, entry=None):
         super().__init__()
         self.win, self.key, self.kind = window, key, kind
         self.get_style_context().add_class("linked")
@@ -299,7 +299,7 @@ class ApplyControl(Gtk.Box):
         apply.get_style_context().add_class("suggested-action")
         apply.connect("clicked", self._apply)
         self.pack_start(apply, False, False, 0)
-        comps = self._components()
+        comps = self._components(entry)
         apply.set_sensitive(bool(comps))
         if not comps:
             apply.set_tooltip_text("No supported components for this desktop and window manager")
@@ -311,12 +311,13 @@ class ApplyControl(Gtk.Box):
             more.set_tooltip_text(f"Choose from {len(comps)} variants")
             more.connect("clicked", self._pick)
             self.pack_start(more, False, False, 0)
-            apply.set_tooltip_text(f"Apply {self._target(comps)['name']}")
+            apply.set_tooltip_text(f"Apply {self._target(comps, entry)['name']}")
 
     # Compatible variants available to this apply control
 
-    def _components(self):
-        entry = installer.load_manifest().get(self.key)
+    def _components(self, entry=None):
+        if entry is None:
+            entry = installer.load_manifest().get(self.key)
         if not entry:
             return []
         comps = entry["components"]
@@ -336,11 +337,13 @@ class ApplyControl(Gtk.Box):
             )
         ]
 
-    def _target(self, comps):
+    def _target(self, comps, entry=None):
         using = [c for c in comps if in_use(c)]
         if using:
             return using[0]
-        chosen = installer.load_manifest().get(self.key, {}).get("chosen", {}).get(self.kind)
+        if entry is None:
+            entry = installer.load_manifest().get(self.key, {})
+        chosen = entry.get("chosen", {}).get(self.kind)
         return next((c for c in comps if c["name"] == chosen), comps[0])
 
     def _apply(self, _btn):
