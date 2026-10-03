@@ -200,7 +200,7 @@
     <div class="grid two-up">
       <div class="card"><h3>Boot splash</h3><p>Browse Plymouth themes and apply one in a click. drape installs it and rebuilds the boot image for you.</p></div>
       <div class="card"><h3>Login screen</h3><p>SDDM and LightDM web greeter themes, or your own wallpaper, Controls theme, icons and cursor on the LightDM login screen. <em>Use my current desktop look</em> does it all at once.</p></div>
-      <div class="card"><h3>Missing a login screen?</h3><p>Theme meant for one you don't have? drape offers to install it and switch to it. Or keep <em>Only show themes that work on this computer</em> on and never see them.</p></div>
+      <div class="card"><h3>Missing a login screen?</h3><p>Theme meant for one you don't have? drape offers to install it and switch to it. Or keep <em>Hide incompatible themes for this desktop</em> on and never see them.</p></div>
       <div class="card"><h3>Lock screen</h3><p>Set Cinnamon's lock screen clock, date format, fonts and message, and see whether your Controls theme styles it. On GNOME, give it its own wallpaper.</p></div>
     </div>
     <div class="gallery" style="margin-top:24px">
@@ -254,8 +254,8 @@ git pull --ff-only
 ./install.sh
 ./bin/drape</code></pre>
         <p class="note">Replace <code>/path/to/drape</code> with your checkout location. Installed themes and preferences are kept. If Git reports local changes, save or commit them before updating.</p>
-        <p class="note">On CachyOS or Arch, a <code>No module named 'PIL'</code> error means Pillow is missing. Install the runtime dependencies below, then launch Drape again. Current versions offer to install missing packages for you.</p>
-<pre><code>sudo pacman -S --needed python-pillow python-gobject gtk3 python-requests</code></pre>
+        <p class="note">On CachyOS or Arch, a <code>No module named 'PIL'</code> error means Pillow is missing. Install the runtime dependencies below, then launch Drape again. This command refreshes package databases and upgrades the system as well, so it works when a fresh live session has no repository databases. Drape's dependency prompt explains the full upgrade before asking for permission when those databases are missing.</p>
+<pre><code>sudo pacman -Syu --needed python-pillow python-gobject gtk3 python-requests</code></pre>
       </div>
       <div>
         <h3>Or use the command line</h3>

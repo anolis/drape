@@ -32,6 +32,9 @@ PACKAGES = {
 }
 
 
+# Dependency detection
+
+
 def missing():
     result = []
     for key, module in (("pillow", "PIL.Image"), ("requests", "requests"), ("gi", "gi")):
@@ -59,6 +62,9 @@ def missing():
     return result
 
 
+# Distribution package commands
+
+
 def install_command(keys):
     try:
         release = platform.freedesktop_os_release()
@@ -75,6 +81,28 @@ def install_command(keys):
     # Use the installed repository database; don't refresh it without a full upgrade.
     options = ["-S", "--needed", "--noconfirm"] if family == "arch" else ["install", "-y"]
     return [manager, *options, *packages]
+
+
+def pacman_database_missing(command):
+    """Resolve the packages without installing anything to detect absent sync DBs."""
+    if command[0] != "pacman":
+        return False
+    packages = [arg for arg in command[1:] if not arg.startswith("-")]
+    try:
+        probe = subprocess.run(
+            ["pacman", "-Sp", "--print-format", "%n", *packages],
+            env=dict(os.environ, LC_ALL="C"),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "database file for" in probe.stdout and "does not exist" in probe.stdout
+
+
+# Desktop consent and installation progress
 
 
 class Dialogs:
@@ -172,6 +200,9 @@ class Dialogs:
         return result[0]
 
 
+# Package-manager execution
+
+
 def run_install(command, terminal=False):
     try:
         proc = subprocess.run(
@@ -185,6 +216,9 @@ def run_install(command, terminal=False):
         ]
     except OSError as exc:
         return False, str(exc)
+
+
+# Startup consent, verification and restart
 
 
 def ensure():
@@ -208,6 +242,13 @@ def ensure():
             + "\nInstall these through your distribution's package manager, then launch Drape again."
         )
         return False
+    if pacman_database_missing(command):
+        command = ["-Syu" if arg == "-S" else arg for arg in command]
+        description += (
+            "\n\nPacman's repository databases are missing. To install these packages, "
+            "Drape must refresh the databases and upgrade all installed system packages. "
+            "This may download much more than the missing dependencies."
+        )
     privilege = "sudo" if terminal else "pkexec"
     if os.geteuid() != 0:
         if not shutil.which(privilege):

@@ -52,6 +52,7 @@ class DependenciesTest(unittest.TestCase):
             mock.patch.object(
                 deps, "install_command", return_value=["pacman", "-S", "python-pillow"]
             ),
+            mock.patch.object(deps, "pacman_database_missing", return_value=False),
             mock.patch.object(deps.sys.stdin, "isatty", return_value=terminal),
             mock.patch.object(deps.sys.stderr, "isatty", return_value=terminal),
             mock.patch.object(deps.os, "geteuid", return_value=1000),
@@ -60,6 +61,61 @@ class DependenciesTest(unittest.TestCase):
         for patch in patches:
             patch.start()
             self.addCleanup(patch.stop)
+
+    def test_missing_database_probe_only_prints_package_resolution(self):
+        output = "warning: database file for 'extra' does not exist (use '-Sy' to download)\nerror: target not found: python-pillow"
+        with mock.patch.object(
+            deps.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, output)
+        ) as run:
+            self.assertTrue(
+                deps.pacman_database_missing(
+                    ["pacman", "-S", "--needed", "--noconfirm", "python-pillow"]
+                )
+            )
+            self.assertEqual(
+                run.call_args.args[0], ["pacman", "-Sp", "--print-format", "%n", "python-pillow"]
+            )
+            self.assertEqual(run.call_args.kwargs["env"]["LC_ALL"], "C")
+        for output in ("python-pillow\n", "error: failed to initialize alpm library"):
+            with mock.patch.object(
+                deps.subprocess, "run", return_value=subprocess.CompletedProcess([], 1, output)
+            ):
+                self.assertFalse(deps.pacman_database_missing(["pacman", "-S", "python-pillow"]))
+        with mock.patch.object(deps.subprocess, "run") as run:
+            self.assertFalse(deps.pacman_database_missing(["apt-get", "install", "python3-pil"]))
+            run.assert_not_called()
+
+    def test_fresh_cachyos_gui_explains_upgrade_before_acceptance(self):
+        self.setup_prompt(terminal=False)
+        with (
+            mock.patch.object(deps, "pacman_database_missing", return_value=True),
+            mock.patch.object(deps, "Dialogs") as dialogs,
+            mock.patch.object(
+                deps.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "", "")
+            ),
+            mock.patch.object(deps.os, "execv") as restart,
+        ):
+            dialogs.return_value.message.return_value = True
+            dialogs.return_value.install.return_value = (True, "")
+            deps.ensure()
+            self.assertIn(
+                "upgrade all installed system packages",
+                dialogs.return_value.message.call_args.args[0],
+            )
+            dialogs.return_value.install.assert_called_once_with(
+                ["pkexec", "pacman", "-Syu", "python-pillow"]
+            )
+            restart.assert_called_once()
+
+    def test_fresh_cachyos_terminal_can_decline_full_upgrade(self):
+        self.setup_prompt()
+        with (
+            mock.patch.object(deps, "pacman_database_missing", return_value=True),
+            mock.patch("builtins.input", return_value="n"),
+            mock.patch.object(deps, "run_install") as install,
+        ):
+            self.assertFalse(deps.ensure())
+            install.assert_not_called()
 
     def test_declining_in_terminal_never_installs(self):
         self.setup_prompt()
