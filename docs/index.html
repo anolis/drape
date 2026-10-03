@@ -153,6 +153,7 @@
       <div class="card"><h3>Your whole look, in one view</h3><p>The <em>In use</em> tab previews every active part of your desktop, from controls to boot splash, and where each came from. It works for themes drape didn't install too.</p></div>
       <div class="card"><h3>Puts it in the right place</h3><p>Icons, cursors, themes and wallpapers each land where your desktop looks for them. On Cinnamon, wallpapers also show up in Backgrounds settings.</p></div>
       <div class="card"><h3>Applies in one click</h3><p>Uses the matching settings for Cinnamon, MATE, GNOME, Xfce or KDE Plasma. Theme formats are checked against your desktop and running window manager.</p></div>
+      <div class="card"><h3>Qt apps get themes too</h3><p>Browse and apply Kvantum themes for Qt widget applications on any desktop, including Qt components in theme packs. The Qt appearance page detects Qt 5/6 engines, offers repository installation and can restore the system style.</p></div>
       <div class="card"><h3>See each variant before you pick</h3><p>Packs with Dark, Light or Compact variants get a picker with a live preview drawn from the variant itself: its real icons, cursors, or a sample window in that theme.</p></div>
       <div class="card"><h3>Windows cursors just work</h3><p>Plenty of cursor uploads are Windows <code>.cur</code>/<code>.ani</code> packs. drape converts them to Linux cursors, animations included.</p></div>
       <div class="card"><h3>Your themes, at a glance</h3><p>Installed themes sit in the same tabs and picture grid you browse, marked when in use, with Update and Remove on each.</p></div>
@@ -176,10 +177,12 @@
         <tr><td>GNOME</td><td>GTK controls, icons, cursors and wallpapers</td></tr>
         <tr><td>Xfce</td><td>GTK controls, icons, cursors, wallpapers and Xfwm border previews; panel appearance and layout presets with Undo</td></tr>
         <tr><td>KDE Plasma</td><td>Plasma styles, global themes, colors, Aurorae borders, icons, cursors and wallpapers</td></tr>
+        <tr><td>Qt apps on any desktop</td><td>Kvantum widget themes, with separate Qt 5 and Qt 6 engine detection</td></tr>
       </table>
     </div>
     <p class="note">For Cinnamon's taskbar, choose a <strong>Desktop</strong> theme. For KDE's panel, choose a <strong>Plasma style</strong>. Global themes apply without requesting a panel layout reset. KDE categories follow your Plasma version, and KWin detection supports X11 and Wayland.</p>
-    <p class="note">Xfce panel presets keep existing widgets and affect only the selected panel. Xfce wallpapers apply to configured monitors and workspaces, discovering active displays on X11 even before their wallpaper settings exist, and stop wallpaper cycling. Xfwm previews show the theme's own artwork. Compiz decorators, GNOME Shell themes, compiled Qt/KWin plugins and Kvantum engines are not supported yet. Unknown downloads stay visible until their contents can be checked. <a href="https://github.com/anolis/drape/blob/main/docs/compatibility.md">Read the compatibility guide</a>.</p>
+    <p class="note">Qt theme setup requires logging out and back in once; later theme changes require restarting Qt apps. Custom application stylesheets can override the Qt theme, and sandboxed apps may need their own engine. <a href="https://github.com/anolis/drape/blob/main/docs/qt.md">Read the Qt setup guide</a>.</p>
+    <p class="note">Xfce panel presets keep existing widgets and affect only the selected panel. Xfce wallpapers apply to configured monitors and workspaces, discovering active displays on X11 even before their wallpaper settings exist, and stop wallpaper cycling. Xfwm previews show the theme's own artwork. Compiz decorators, GNOME Shell themes and arbitrary compiled Qt/KWin plugins are not supported yet. Unknown downloads stay visible until their contents can be checked. <a href="https://github.com/anolis/drape/blob/main/docs/compatibility.md">Read the compatibility guide</a>.</p>
     <p class="note">Temporary catalog and download server errors are retried twice. Persistent failures identify the download host so you can try later or use an archive from the author.</p>
   </section>
 

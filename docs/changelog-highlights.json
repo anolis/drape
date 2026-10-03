@@ -2,6 +2,7 @@
   "2026-10-03": {
     "title": "Theme packs, compatibility and reliable browsing",
     "changes": [
+      "Added Qt application themes through Kvantum on any desktop. Qt appearance settings detect Qt 5/6 plugins, offer repository installation and can enable or remove the session style override. Theme packs include Qt companions; first setup explains the required logout/login.",
       "Added a Theme packs category for downloadable bundles that contain usable components for the current desktop. Multi-component installs offer to apply everything, apply the current section or apply later.",
       "Expanded compatibility filtering across desktops, window managers and Cinnamon versions. Background archive checks build a local SQLite index with import/export support while cards load immediately.",
       "Added smooth card transitions. Off-screen cards wait until they re-enter the viewport before disappearing, preserving the rows currently in view.",
