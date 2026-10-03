@@ -43,9 +43,15 @@ class ThemePacksTest(unittest.TestCase):
             ({"icons", "cursors"}, False),
             ({"lookandfeel", "plasma"}, False),
         ]:
+            if "desktop" in parts:
+                parts.add("cinnamon-modern")
             self.assertEqual(desktop.archive_compatible(parts, True, "packs"), expected, parts)
         self.assertFalse(desktop.archive_compatible(set(), False, "packs"))
-        self.assertTrue(desktop.archive_compatible({"gtk", "gtk-3.0", "desktop"}, False, "packs"))
+        self.assertTrue(
+            desktop.archive_compatible(
+                {"gtk", "gtk-3.0", "desktop", "cinnamon-modern"}, False, "packs"
+            )
+        )
         for only in (True, False):
             self.assertEqual(set(desktop.scope("packs", only)[0].split(",")), {"135", "133"})
 
@@ -75,6 +81,8 @@ class ThemePacksTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             (root / "gtk-3.0").mkdir()
+            (root / "cinnamon").mkdir()
+            (root / "cinnamon/cinnamon.css").write_text(".dialog {} .modal-dialog {}")
             components = [
                 dict(name=name, path=str(root), provides=["gtk", "desktop", "wm"])
                 for name in ("Dark", "Light")
@@ -135,7 +143,7 @@ class ThemePacksTest(unittest.TestCase):
             for i, name in enumerate(("Bundle", "Single", "Unknown"))
         ]
         results = [
-            ({"gtk", "gtk-3.0", "desktop"}, True),
+            ({"gtk", "gtk-3.0", "desktop", "cinnamon-modern"}, True),
             ({"gtk", "gtk-3.0"}, True),
             (set(), False),
         ]
@@ -145,8 +153,9 @@ class ThemePacksTest(unittest.TestCase):
         output = io.StringIO()
         with (
             mock.patch.object(pling, "search", return_value=(items, 3)),
-            mock.patch.object(cli.peek, "cached", return_value=None),
-            mock.patch.object(cli.peek, "contents", side_effect=results),
+            mock.patch.object(
+                cli.peek, "inspect_downloads", side_effect=[{1: result} for result in results]
+            ),
             redirect_stdout(output),
             redirect_stderr(io.StringIO()),
         ):

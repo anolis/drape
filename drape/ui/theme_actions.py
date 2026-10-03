@@ -25,6 +25,8 @@ class ThemeActions:
         self.notify(f"Removed {Path(component['path']).name}.")
         self.refresh_item()
 
+    # Installation, retries and completion feedback
+
     def install(self, item, file_index=None, apply_kind=None, required_kind=None):
         if item.id in self.busy:
             return
@@ -205,21 +207,20 @@ class ThemeActions:
 
         apply_pack(self, key)
 
+    # Revalidate against the current desktop before applying
+
     def apply(self, component, kind=None):
         if component.get("system"):
             self.apply_system(component)
             return
         only = [desktop.theme_part(kind)] if kind else None
         parts = only or component["provides"]
-        if (
-            "desktop" in parts
-            and desktop.cinnamon_theme_outdated(component["path"])
-            and not self.ask(
-                f"{component['name']} was made for an older Cinnamon",
-                f"It'll work, but it was {desktop.OUTDATED_NOTE}: they'll look see-through and unstyled.",
-                "Apply anyway",
+        # Visibility preferences never bypass the current desktop's apply requirements.
+        if not set(parts) & set(desktop.compatible_parts(component)):
+            self.notify(
+                f"{component['name']} has no compatible component for this desktop and version.",
+                Gtk.MessageType.WARNING,
             )
-        ):
             return
         try:
             applied = desktop.apply_component(component, only)
@@ -251,6 +252,8 @@ class ThemeActions:
             path = d.get_filename()
             self.apply({"provides": ["wallpapers"], "name": Path(path).name, "path": path})
         d.destroy()
+
+    # Confirmed bulk removal and privileged system copies
 
     def remove_selected(self, selection):
         if not selection:

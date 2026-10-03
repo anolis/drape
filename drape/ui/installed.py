@@ -315,6 +315,8 @@ class InstalledPage(Gtk.Box):
         if rb and not rb.get_active():
             rb.set_active(True)
 
+    # Reconcile records with visible desktop-compatible cards
+
     def load(self):
         self._sync_category_visibility()
         try:
@@ -330,11 +332,16 @@ class InstalledPage(Gtk.Box):
         self._selection_changed()
         self._load_revision = getattr(self, "_load_revision", 0) + 1
         revision = self._load_revision
-        hidden_old = {
+        hidden_incompatible = {
             key
             for key, entry in m.items()
-            if desktop.hide_outdated_cinnamon()
-            and desktop.cinnamon_entry_outdated(entry["components"])
+            if settings.get("only_applicable")
+            and not any(
+                desktop.system_part_compatible(c["system"])
+                if c.get("system")
+                else desktop.compatible_parts(c)
+                for c in entry["components"]
+            )
         }
         placed = set()
         counts = {}
@@ -361,11 +368,7 @@ class InstalledPage(Gtk.Box):
                 continue
             n = 0
             for key, e in sorted(m.items(), key=lambda kv: kv[1]["title"].lower()):
-                if key in hidden_old:
-                    continue
-                if settings.get("only_applicable") and not any(
-                    c.get("system") or desktop.compatible_parts(c) for c in e["components"]
-                ):
+                if key in hidden_incompatible:
                     continue
                 if key_name == "packs" and not desktop.pack_components(e["components"]):
                     continue
@@ -426,9 +429,9 @@ class InstalledPage(Gtk.Box):
             self.note.set_text(f"{len(self.updates)} update(s) available")
         else:
             self.note.set_text(f"{len(m)} item(s) installed")
-        if hidden_old:
+        if hidden_incompatible:
             self.note.set_text(
-                self.note.get_text() + f" · {len(hidden_old)} older Cinnamon theme(s) hidden"
+                self.note.get_text() + f" · {len(hidden_incompatible)} incompatible theme(s) hidden"
             )
         # land on a tab that has something in it
         current = self.tabs.get_visible_child_name()

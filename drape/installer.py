@@ -11,7 +11,7 @@ import tempfile
 import time
 import urllib.parse
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import wraps
 from pathlib import Path
 
@@ -64,6 +64,9 @@ class ConflictError(InstallError):
         super().__init__(f"{title} has the same name as something already installed: {clash}.")
 
 
+# Classified components and installation records
+
+
 @dataclass
 class Component:
     """One installable thing found inside a download."""
@@ -110,6 +113,9 @@ def _owner_of(path, manifest):
 def _report_status(status, text, fraction=None):
     if status:
         status(text, fraction)
+
+
+# Download verification and archive extraction
 
 
 def download(url, dest_dir, filename=None, md5=None, progress=None, status=None):
@@ -392,6 +398,35 @@ def _dest_for(comp, wallpaper_dir):
     return THEMES_DIR / comp.name
 
 
+def _unique_names(comps, root, wall_dir):
+    """Rename components that would be installed to the same place, e.g. 4k/bg.png and
+    1080p/bg.png, so one doesn't overwrite the other."""
+    taken, unique = set(), []
+    for c in comps:
+        stem, suffix = (
+            (Path(c.name).stem, Path(c.name).suffix) if c.path.is_file() else (c.name, "")
+        )
+        candidates = [c.name]
+        if c.provides == ("wallpapers",) and c.path.parent != root:
+            candidates.append(f"{c.path.parent.name} - {c.name}")
+        candidates += (f"{stem}-{n}{suffix}" for n in range(2, len(comps) + 2))
+        for name in candidates:
+            renamed = replace(c, name=name)
+            dest = _dest_for(renamed, wall_dir)
+            if dest not in taken:
+                taken.add(dest)
+                unique.append(renamed)
+                break
+    return unique
+
+
+def _delete(p):
+    if p.is_dir() and not p.is_symlink():
+        shutil.rmtree(p)
+    elif p.exists() or p.is_symlink():
+        p.unlink()
+
+
 def _register_wallpaper_folder(folder):
     """Make Cinnamon's Backgrounds settings list the folder."""
     try:
@@ -402,6 +437,9 @@ def _register_wallpaper_folder(folder):
             CINNAMON_BG_FOLDERS.write_text("\n".join(lines) + "\n")
     except OSError:
         pass
+
+
+# Validated installation transaction
 
 
 @_serialized_files
@@ -439,13 +477,6 @@ def install_file(
             )
         from . import desktop, settings
 
-        if desktop.hide_outdated_cinnamon() and desktop.cinnamon_entry_outdated(
-            [{"provides": c.provides, "path": str(c.path)} for c in comps]
-        ):
-            raise IncompatibleError(
-                "This theme was made for older Cinnamon and is hidden by your filter. "
-                "Turn off 'Hide themes made for older Cinnamon' in the menu to install it."
-            )
         if required_kind == "packs":
             only_applicable = True
         if only_applicable is None:
@@ -455,8 +486,11 @@ def install_file(
             desktop.running_wm(refresh=True)
             usable = []
             for c in comps:
-                if c.provides[0] in SYSTEM_KINDS or desktop.compatible_parts(
-                    {"provides": c.provides, "path": str(c.path)}
+                if (
+                    c.provides[0] in SYSTEM_KINDS and desktop.system_part_compatible(c.provides[0])
+                ) or (
+                    c.provides[0] not in SYSTEM_KINDS
+                    and desktop.compatible_parts({"provides": c.provides, "path": str(c.path)})
                 ):
                     usable.append(c)
                 else:
@@ -467,7 +501,7 @@ def install_file(
                     "This download has no supported themes for "
                     f"{desktop.current_desktop() or 'this desktop'} / "
                     f"{desktop.running_wm() or 'unknown window manager'}. "
-                    "Nothing was installed. Turn off 'Only show themes that work on this computer' "
+                    "Nothing was installed. Turn off 'Hide incompatible themes for this desktop' "
                     "to install themes for another session."
                 )
         if required_kind == "packs" and not desktop.pack_components(
@@ -477,6 +511,7 @@ def install_file(
                 "This download is not a theme pack for the current desktop. "
                 "It needs multiple supported appearance parts or a compatible KDE global theme."
             )
+        comps = _unique_names(comps, root, wall_dir)
         # check every name before copying anything, so a clash can't leave a half-installed pack
         _report_status(status, "Checking installed themes…", 0.65)
         conflicts, foreign = {}, []
@@ -512,37 +547,62 @@ def install_file(
             remove(owner)
         manifest = load_manifest()
 
-        for index, c in enumerate(comps):
-            dest = _dest_for(c, wall_dir)
-            _report_status(status, f"Installing {c.name}…", 0.68 + 0.22 * index / len(comps))
-            if dest.exists() or dest.is_symlink():
-                shutil.rmtree(dest) if dest.is_dir() and not dest.is_symlink() else dest.unlink()
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            if c.windows:
+        # existing copies are moved aside rather than deleted, so a failure part-way through
+        # can put everything back the way it was
+        copied, backups = [], []
+        try:
+            for index, c in enumerate(comps):
+                dest = _dest_for(c, wall_dir)
+                _report_status(status, f"Installing {c.name}…", 0.68 + 0.22 * index / len(comps))
+                if dest.exists() or dest.is_symlink():
+                    backup = dest.with_name(f".{dest.name}.drape-old")
+                    _delete(backup)
+                    dest.rename(backup)
+                    backups.append((backup, dest))
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                copied.append(dest)
+                if c.windows:
+                    try:
+                        wincursors.convert_theme(c.path, dest, c.name)
+                    except wincursors.ConversionError as e:
+                        raise InstallError(str(e)) from e
+                elif c.path.is_dir():
+                    shutil.copytree(
+                        c.path, dest, symlinks=True, ignore=shutil.ignore_patterns(".git")
+                    )
+                else:
+                    shutil.copy2(c.path, dest)
+                installed.append(str(dest))
+                comp = {"provides": list(c.provides), "name": c.name, "path": str(dest)}
+                if c.provides[0] in SYSTEM_KINDS:
+                    comp["name"] = dest.name
+                    comp["system"] = c.provides[
+                        0
+                    ]  # still needs copying into /usr/share by the helper
+                provides.append(comp)
+                if "icons" in c.provides and shutil.which("gtk-update-icon-cache"):
+                    _report_status(
+                        status,
+                        f"Updating icon cache for {c.name}…",
+                        0.68 + 0.22 * (index + 0.8) / len(comps),
+                    )
+                    subprocess.run(
+                        ["gtk-update-icon-cache", "-q", "-f", "-t", str(dest)], capture_output=True
+                    )
+        except BaseException:
+            for dest in reversed(copied):
                 try:
-                    wincursors.convert_theme(c.path, dest, c.name)
-                except wincursors.ConversionError as e:
-                    shutil.rmtree(dest, ignore_errors=True)
-                    raise InstallError(str(e)) from e
-            elif c.path.is_dir():
-                shutil.copytree(c.path, dest, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-            else:
-                shutil.copy2(c.path, dest)
-            installed.append(str(dest))
-            comp = {"provides": list(c.provides), "name": c.name, "path": str(dest)}
-            if c.provides[0] in SYSTEM_KINDS:
-                comp["name"] = dest.name
-                comp["system"] = c.provides[0]  # still needs copying into /usr/share by the helper
-            provides.append(comp)
-            if "icons" in c.provides and shutil.which("gtk-update-icon-cache"):
-                _report_status(
-                    status,
-                    f"Updating icon cache for {c.name}…",
-                    0.68 + 0.22 * (index + 0.8) / len(comps),
-                )
-                subprocess.run(
-                    ["gtk-update-icon-cache", "-q", "-f", "-t", str(dest)], capture_output=True
-                )
+                    _delete(dest)
+                except OSError:
+                    pass
+            for backup, dest in reversed(backups):
+                try:
+                    backup.rename(dest)
+                except OSError:
+                    pass
+            raise
+        for backup, _ in backups:
+            _delete(backup)
 
         if any(c.provides == ("wallpapers",) for c in comps):
             if desktop.current_desktop() == "cinnamon":
@@ -578,6 +638,9 @@ def install_file(
             entry["preview"] = current["preview"]
         latest[key] = entry
     return entry
+
+
+# Catalog downloads and variant fallback
 
 
 def install_item(
@@ -623,6 +686,19 @@ def install_item(
         raise last_error
 
 
+def _url_key(url, filename):
+    """Reuse the record of an earlier install from this URL; otherwise pick a key no other URL
+    has, since unrelated downloads often share a file name like theme.tar.gz."""
+    manifest = load_manifest()
+    for key, entry in manifest.items():
+        if key.startswith("url:") and entry.get("source") == url:
+            return key
+    key = f"url:{filename}"
+    if key in manifest:
+        key += "-" + hashlib.sha1(url.encode()).hexdigest()[:8]
+    return key
+
+
 def install_url(
     url, progress=None, replace_foreign=False, replace_items=False, only_applicable=None
 ):
@@ -637,7 +713,7 @@ def install_url(
         raise InstallError("This link doesn't contain a download address.")
     with tempfile.TemporaryDirectory(prefix="drape-dl-") as tmp:
         path = download(url, tmp, filename, progress=progress)
-        key = f"url:{path.name}"
+        key = _url_key(url, path.name)
         title = re.sub(r"(\.(tar|zip|tgz|gz|xz|bz2|zst|7z))+$", "", path.name, flags=re.I)
         return key, install_file(
             path,
@@ -649,6 +725,9 @@ def install_url(
             replace_items=replace_items,
             only_applicable=only_applicable,
         )
+
+
+# Record-only metadata updates
 
 
 def set_chosen(key, kind, name):
@@ -663,6 +742,9 @@ def set_preview(key, url):
     with ManifestStore(MANIFEST).edit() as m:
         if key in m:
             m[key]["preview"] = url
+
+
+# Owned-file removal and removal plans
 
 
 def _remove_path(p):
@@ -680,10 +762,7 @@ def _remove_path(p):
         for a in allowed
     ):
         raise InstallError(f"Refusing to delete outside drape's install folders: {p}")
-    if p.is_dir() and not p.is_symlink():
-        shutil.rmtree(p)
-    elif p.exists() or p.is_symlink():
-        p.unlink()
+    _delete(p)
 
 
 def removal_plan(selection, manifest):

@@ -56,6 +56,9 @@ XFCE_KEYS = {
 _wm_cache = (None, 0.0)
 
 
+# Desktop and window-manager detection
+
+
 def running_wm(refresh=False):
     """Read the actual X11 window manager, never infer it from installed packages."""
     global _wm_cache
@@ -169,6 +172,9 @@ def supported(part):
     return _key(part) is not None
 
 
+# Desktop settings backends
+
+
 def _xfce_key(part):
     if part == "wm" and border_part() == "xfwm":
         part = "xfwm"
@@ -246,6 +252,9 @@ def _set_default_cursor(name):
         pass
 
 
+# Applying and validating extracted components
+
+
 def apply_component(component, only=None):
     """Apply one manifest component (dict with provides/name/path). Returns the parts applied."""
     applied = []
@@ -266,7 +275,15 @@ def compatible_parts(component):
     result = []
     path = Path(component["path"])
     for part in component["provides"]:
-        if part == "desktop" and hide_outdated_cinnamon() and cinnamon_theme_outdated(path):
+        if (
+            part == "desktop"
+            and current_desktop() == "cinnamon"
+            and settings.get("only_applicable")
+        ):
+            # Unknown version or unresolved CSS cannot satisfy a strict filter.
+            if cinnamon_version() is None or _cinnamon_theme_css(path) is None:
+                continue
+        if part == "desktop" and cinnamon_filter_active() and cinnamon_theme_incompatible(path):
             continue
         if part == "desktop" and current_desktop() == "kde":
             continue  # this format means Cinnamon, even though the UI tab also hosts Plasma
@@ -282,6 +299,9 @@ def compatible_parts(component):
             continue
         result.append(part)
     return result
+
+
+# Catalog scope and archive compatibility
 
 
 def scope(kind, only=True):
@@ -324,27 +344,88 @@ def scope(kind, only=True):
     return None, label
 
 
-def archive_compatible(parts, complete, kind):
-    """Scope downloads by format; theme packs require positive bundle identification."""
-    if hide_outdated_cinnamon() and "cinnamon-legacy" in parts:
-        return False
+def archive_status(parts, complete, kind):
+    """Contextual format checks, retaining an explicit state for unverified downloads."""
     if kind == "packs":
         usable = {p for p in parts if p in PACK_PARTS and supported(p)}
         if "wm" in usable and border_part() != "wm":
             usable.remove("wm")
         if "desktop" in usable and current_desktop() == "kde":
             usable.remove("desktop")
+        if (
+            "desktop" in usable
+            and cinnamon_filter_active()
+            and _cinnamon_archive_status(parts) != "compatible"
+        ):
+            usable.remove("desktop")
         if "gtk" in usable and "gtk-3.0" not in parts:
             usable.remove("gtk")
-        return _is_pack(usable)
-    if not complete or not parts or kind in ("login", "boot"):
-        return True
+        return "compatible" if _is_pack(usable) else "incompatible" if complete else "unknown"
+    if kind in ("login", "boot"):
+        target = "login" if kind == "login" else "plymouth"
+        if target in parts:
+            if kind == "login":
+                system_parts = parts & {"sddm", "webgreeter"}
+                if system_parts and not any(system_part_compatible(p) for p in system_parts):
+                    return "incompatible"
+                if not system_parts:
+                    return "unknown"
+            return "compatible"
+        return "incompatible" if complete else "unknown"
     target = theme_part(kind)
-    if not target or not supported(target) or target not in parts:
-        return False
-    if target == "gtk" and parts & {"gtk-2.0", "gtk-3.0", "gtk-4.0"}:
-        return "gtk-3.0" in parts
+    if not target or not supported(target):
+        return "incompatible"
+    if target not in parts:
+        return "incompatible" if complete else "unknown"
+    if target == "desktop" and cinnamon_filter_active():
+        return _cinnamon_archive_status(parts)
+    if target == "gtk" and "gtk-3.0" not in parts:
+        return "incompatible" if complete and parts & {"gtk-2.0", "gtk-4.0"} else "unknown"
+    return "compatible"
+
+
+def archive_compatible(parts, complete, kind):
+    # Unverified downloads are only visible when the user disables filtering.
+    return archive_status(parts, complete, kind) == "compatible"
+
+
+def download_status(checks, kind):
+    """A card can offer several downloads; one usable variant keeps it available."""
+    states = [archive_status(*hit, kind) if hit is not None else "unknown" for hit in checks]
+    return (
+        "compatible"
+        if "compatible" in states
+        else "unknown"
+        if not states or "unknown" in states
+        else "incompatible"
+    )
+
+
+# Login-manager and Cinnamon version rules
+
+
+def system_part_compatible(part):
+    from . import system
+
+    manager = system.display_manager()
+    if part == "sddm":
+        return manager in (None, "sddm")
+    if part == "webgreeter":
+        return manager is None or (
+            manager == "lightdm" and system.lightdm_greeter() in ("web-greeter", "nody-greeter")
+        )
     return True
+
+
+def _cinnamon_archive_status(parts):
+    # The supported CSS generation follows the running release in both directions.
+    if cinnamon_version() >= (5, 4):
+        if "cinnamon-legacy" in parts:
+            return "incompatible"
+        return "compatible" if "cinnamon-modern" in parts else "unknown"
+    if "cinnamon-modern-only" in parts:
+        return "incompatible"
+    return "compatible" if "cinnamon-pre54" in parts else "unknown"
 
 
 def theme_part(kind):
@@ -405,6 +486,7 @@ def find_theme_dir(name):
 # Cinnamon 5.4 moved its dialogs (password prompts, logout, ...) from .modal-dialog to .dialog /
 # .prompt-dialog. Themes that only style the old names leave those dialogs without a background.
 NEW_DIALOG_RE = re.compile(r"(^|[\s,}>])\.(dialog|prompt-dialog)\b", re.M)
+OLD_DIALOG_RE = re.compile(r"(^|[\s,}>])\.modal-dialog\b", re.M)
 
 
 def cinnamon_css_imports(css):
@@ -418,18 +500,47 @@ def cinnamon_css_outdated(css):
 
 
 def hide_outdated_cinnamon():
-    if current_desktop() != "cinnamon" or not settings.get("hide_outdated_cinnamon"):
+    return (
+        settings.get("only_applicable")
+        and cinnamon_filter_active()
+        and cinnamon_version() >= (5, 4)
+    )
+
+
+def cinnamon_filter_active():
+    # Context is independent of the visibility toggle. Showing a theme does not make
+    # its unsupported components safe to apply.
+    if current_desktop() != "cinnamon":
         return False
     version = cinnamon_version()
-    return version is not None and version >= (5, 4)
+    return version is not None
 
 
 def cinnamon_theme_outdated(theme_dir):
     """Detect missing modern dialog styles, including styles in imported CSS files."""
-    css = Path(theme_dir) / "cinnamon" / "cinnamon.css"
     version = cinnamon_version()
-    if not css.is_file() or version is None or version < (5, 4):
+    if version is None or version < (5, 4):
         return False
+    content = _cinnamon_theme_css(theme_dir)
+    return content is not None and cinnamon_css_outdated(content)
+
+
+def cinnamon_theme_incompatible(theme_dir):
+    content = _cinnamon_theme_css(theme_dir)
+    version = cinnamon_version()
+    if content is None or version is None:
+        return False
+    if version >= (5, 4):
+        return cinnamon_css_outdated(content)
+    clean = re.sub(r"/\*.*?\*/", "", content, flags=re.S)
+    return bool(NEW_DIALOG_RE.search(clean)) and not OLD_DIALOG_RE.search(clean)
+
+
+def _cinnamon_theme_css(theme_dir):
+    """Unresolved imports are unknown; absence of a selector cannot prove a mismatch."""
+    css = Path(theme_dir) / "cinnamon" / "cinnamon.css"
+    if not css.is_file():
+        return None
     try:
         content = css.read_text(errors="replace")
         if "@import" in content:
@@ -439,15 +550,15 @@ def cinnamon_theme_outdated(theme_dir):
                 or not (css.parent / ref).resolve().is_relative_to(css.parent.resolve())
                 for ref in imports
             ):
-                return False
+                return None
             content += "\n" + "\n".join(
                 p.read_text(errors="replace")
                 for p in css.parent.rglob("*.css")
                 if p != css and not p.is_symlink()
             )
     except OSError:
-        return False  # unreadable styles are unverified, not proven incompatible
-    return cinnamon_css_outdated(content)
+        return None
+    return content
 
 
 def cinnamon_entry_outdated(components):

@@ -44,22 +44,20 @@ class CinnamonFilterTest(unittest.TestCase):
     def test_unknown_or_partial_imports_are_not_rejected(self):
         names = ["Theme/cinnamon/cinnamon.css", "Theme/cinnamon/dialogs.css"]
         styles = {names[0]: '@import "dialogs.css"; .modal-dialog {}'}
-        self.assertEqual(
-            peek._cinnamon_markers(names, styles, False), ["__drape_cinnamon-unknown__"]
-        )
+        self.assertIn("__drape_cinnamon-unknown__", peek._cinnamon_markers(names, styles, False))
         styles[names[1]] = ".prompt-dialog {}"
-        self.assertEqual(peek._cinnamon_markers(names, styles, True), ["__drape_cinnamon-modern__"])
+        self.assertIn("__drape_cinnamon-modern__", peek._cinnamon_markers(names, styles, True))
         self.assertFalse(
             desktop.archive_compatible({"desktop", "cinnamon-legacy"}, True, "desktop")
         )
-        self.assertTrue(
+        self.assertFalse(
             desktop.archive_compatible({"desktop", "cinnamon-unknown"}, False, "desktop")
         )
         with (
             mock.patch.object(settings, "get", return_value=False),
             mock.patch.object(desktop, "supported", return_value=True),
         ):
-            self.assertTrue(
+            self.assertFalse(
                 desktop.archive_compatible({"desktop", "cinnamon-legacy"}, True, "desktop")
             )
 
@@ -117,7 +115,7 @@ class CinnamonFilterTest(unittest.TestCase):
                 mock.patch.object(installer, "THEMES_DIR", root / "themes"),
             ):
                 with self.assertRaises(installer.IncompatibleError):
-                    installer.install_file(archive, "1", "Theme", only_applicable=False)
+                    installer.install_file(archive, "1", "Theme", only_applicable=True)
                 self.assertFalse((root / "themes").exists())
                 with mock.patch.object(settings, "get", return_value=False):
                     installer.install_file(archive, "1", "Theme", only_applicable=False)
@@ -134,17 +132,15 @@ class CinnamonFilterTest(unittest.TestCase):
         )
         item = SimpleNamespace(get_active=lambda: False)
         with mock.patch.object(settings, "set") as save:
-            Window._toggle_outdated_cinnamon(window, item)
-        save.assert_called_once_with("hide_outdated_cinnamon", False)
+            Window._toggle_applicable(window, item)
+        save.assert_called_once_with("only_applicable", False)
         window.reload_all.assert_called_once()
         page.load.assert_called_once()
 
     def test_unresolved_imports_are_unknown_not_old(self):
         names = ["Theme/cinnamon/cinnamon.css"]
         styles = {names[0]: '@import "../shared/dialogs.css"; .modal-dialog {}'}
-        self.assertEqual(
-            peek._cinnamon_markers(names, styles, True), ["__drape_cinnamon-unknown__"]
-        )
+        self.assertIn("__drape_cinnamon-unknown__", peek._cinnamon_markers(names, styles, True))
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp) / "cinnamon"
             folder.mkdir()

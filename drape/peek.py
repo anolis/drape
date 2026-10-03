@@ -24,7 +24,7 @@ import requests
 
 from .pling import USER_AGENT
 
-CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "peek-v3.json"
+CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "peek-v4.json"
 TAR_BUDGETS = (
     64 * 1024,
     256 * 1024,
@@ -50,13 +50,13 @@ def classify_names(names):
     if has(r"\.plymouth$"):
         parts.add("plymouth")
     if has(r"(^|/)metadata\.desktop$") and has(r"(^|/)main\.qml$"):
-        parts.add("login")
+        parts.update(("login", "sddm"))
     if (
         has(r"(^|/)index\.html$")
         and has(r"(^|/)(index\.theme|index\.yml|theme\.json)$")
         and not has(r"/gtk-3\.0/")
     ):
-        parts.add("login")
+        parts.update(("login", "webgreeter"))
     if has(r"(^|/)gtk-[234]\.0(/|$)"):
         parts.add("gtk")
         parts.update(f"gtk-{v}.0" for v in (2, 3, 4) if has(rf"(^|/)gtk-{v}\.0(/|$)"))
@@ -179,7 +179,16 @@ def _size(url):
 
 
 CSS_LIMIT = 512 * 1024
-CINNAMON_MARKERS = {"cinnamon-legacy", "cinnamon-modern", "cinnamon-unknown"}
+CINNAMON_MARKERS = {
+    "cinnamon-legacy",
+    "cinnamon-modern",
+    "cinnamon-unknown",
+    "cinnamon-modern-only",
+    "cinnamon-pre54",
+}
+
+
+# Cinnamon stylesheet generation checks
 
 
 def _css_root(name):
@@ -189,12 +198,14 @@ def _css_root(name):
 
 def _cinnamon_markers(names, styles, complete):
     """Tag inspected CSS; partial imported styles remain unknown, not old."""
-    from .desktop import cinnamon_css_outdated, cinnamon_css_imports
+    from .desktop import cinnamon_css_outdated, cinnamon_css_imports, OLD_DIALOG_RE
 
     roots = {_css_root(name) for name in names if name.lower().endswith("cinnamon/cinnamon.css")}
     if not roots:
         return []
     states = []
+    old_supported = False
+    modern_only = True
     for root in roots:
         main = next(
             (styles[name] for name in styles if name.lower() == (root + "cinnamon.css").lower()),
@@ -202,6 +213,24 @@ def _cinnamon_markers(names, styles, complete):
         )
         texts = [text for name, text in styles.items() if _css_root(name) == root]
         all_read = all(name in styles for name in names if _css_root(name) == root)
+        clean = re.sub(r"/\*.*?\*/", "", "\n".join(texts), flags=re.S)
+        old_supported = old_supported or bool(OLD_DIALOG_RE.search(clean))
+        imports = cinnamon_css_imports(main or "")
+        imports_resolved = "@import" not in (main or "") or (
+            bool(imports)
+            and all(
+                posixpath.normpath(root + ref) in {posixpath.normpath(name) for name in styles}
+                for ref in imports
+            )
+        )
+        modern_only = (
+            modern_only
+            and complete
+            and all_read
+            and main is not None
+            and imports_resolved
+            and not OLD_DIALOG_RE.search(clean)
+        )
         if main is None:
             states.append("unknown")
         elif not cinnamon_css_outdated("\n".join(texts)):
@@ -225,7 +254,12 @@ def _cinnamon_markers(names, styles, complete):
         if all(s == "legacy" for s in states)
         else "unknown"
     )
-    return ["__drape_" + "cinnamon-" + status + "__"]
+    markers = ["__drape_" + "cinnamon-" + status + "__"]
+    if old_supported:
+        markers.append("__drape_cinnamon-pre54__")
+    if status == "modern" and modern_only:
+        markers.append("__drape_cinnamon-modern-only__")
+    return markers
 
 
 def list_archive(url, filename, budget=TAR_BUDGETS[0]):
@@ -301,9 +335,9 @@ def cached(item_id, filename):
         return None
     parts = set(entry["parts"])
     if "desktop" in parts:
-        from .desktop import hide_outdated_cinnamon
+        from .desktop import cinnamon_filter_active
 
-        if hide_outdated_cinnamon() and (
+        if cinnamon_filter_active() and (
             not parts & CINNAMON_MARKERS
             or time.time() - entry.get("cinnamon_checked_at", 0) > 7 * 86400
         ):
@@ -311,9 +345,9 @@ def cached(item_id, filename):
     return parts, entry["complete"]
 
 
-def contents(item_id, url, filename):
+def contents(item_id, url, filename, use_cache=True):
     """(parts, complete) for a download, from cache or by peeking. Blocking; call from a worker."""
-    hit = cached(item_id, filename)
+    hit = cached(item_id, filename) if use_cache else None
     if hit is not None:
         return hit
     try:
@@ -325,10 +359,10 @@ def contents(item_id, url, filename):
                 for n in names
             ):
                 complete = False  # an outer listing cannot prove what's in nested archives
-            from .desktop import hide_outdated_cinnamon
+            from .desktop import cinnamon_filter_active
 
             needs_css = (
-                hide_outdated_cinnamon()
+                cinnamon_filter_active()
                 and "desktop" in parts
                 and not parts & {"cinnamon-modern", "cinnamon-legacy"}
             )
@@ -355,3 +389,71 @@ def contents(item_id, url, filename):
         except OSError:
             pass
     return parts, complete
+
+
+def installed_parts(entry):
+    """Files already installed are stronger evidence than an incomplete remote listing."""
+    from . import desktop
+
+    parts = {p for c in entry["components"] for p in desktop.compatible_parts(c)}
+    if "gtk" in parts:
+        parts.add("gtk-3.0")
+    if "desktop" in parts and desktop.current_desktop() == "cinnamon":
+        parts.update({"cinnamon-modern", "cinnamon-pre54"})
+    return parts
+
+
+def inspect_downloads(item, kind, installed=None):
+    """Build the local index as downloads arrive, before publishing filtered cards."""
+    from . import compatibility, desktop
+    import sqlite3
+    import sys
+
+    best = item.best_file()
+    if best is None:
+        return {}
+    index = compatibility.Index()
+    context = compatibility.context()
+    results = {}
+    for file in [best, *(file for file in item.files if file != best)]:
+        entry = (installed or {}).get(item.id)
+        if (
+            kind == "packs"
+            and entry
+            and entry.get("file") == file.name
+            and entry.get("changed") == item.changed
+        ):
+            parts = installed_parts(entry)
+            if desktop.archive_compatible(parts, False, kind):
+                result = (parts, False)
+                try:
+                    index.record(
+                        item,
+                        file,
+                        result,
+                        kind,
+                        context,
+                        "compatible",
+                        basis="installed-components",
+                    )
+                except (OSError, sqlite3.Error):
+                    pass
+                return {file.index: result}
+        try:
+            result = index.inspection(item, file)
+        except (OSError, sqlite3.Error, ValueError) as exc:
+            print(f"drape: compatibility index unavailable: {exc}", file=sys.stderr)
+            result = None
+        # The legacy cache lacks a checksum/revision key, so it must not seed this
+        # index with stale evidence for a newly uploaded file of the same name.
+        if result is None:
+            result = contents(item.id, file.url, file.name, use_cache=False)
+        results[file.index] = result
+        status = desktop.archive_status(*result, kind)
+        try:
+            index.record(item, file, result, kind, context, status)
+        except (OSError, sqlite3.Error) as exc:
+            print(f"drape: could not save compatibility evidence: {exc}", file=sys.stderr)
+        if status == "compatible":
+            break
+    return results

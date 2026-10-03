@@ -356,6 +356,62 @@ class InstallerTest(unittest.TestCase):
         self.assertNotIn("40", installer.load_manifest())
         self.assertFalse((self.p["WALLPAPER_DIR"] / "Two Walls").exists())
 
+    def test_wallpapers_with_the_same_file_name_are_all_kept(self):
+        a = self.src / "walls.zip"
+        make_zip(a, {"bg.png": b"r", "4k/bg.png": b"a", "1080p/bg.png": b"b", "x/4k/bg.png": b"c"})
+        e = installer.install_file(a, "41", "Sizes")
+        paths = [c["path"] for c in e["components"]]
+        self.assertEqual(len(set(paths)), 4)
+        self.assertEqual(sorted(Path(p).read_bytes() for p in paths), [b"a", b"b", b"c", b"r"])
+
+    def test_theme_folders_with_the_same_name_are_all_kept(self):
+        a = self.src / "t.zip"
+        make_zip(a, {"a/T/gtk-3.0/gtk.css": b"a", "b/T/gtk-3.0/gtk.css": b"b"})
+        e = installer.install_file(a, "42", "Twins")
+        self.assertEqual(sorted(c["name"] for c in e["components"]), ["T", "T-2"])
+
+    def test_failed_install_leaves_nothing_behind_and_keeps_previous_version(self):
+        old = self.src / "old.zip"
+        make_zip(old, {"A/gtk-3.0/gtk.css": b"old"})
+        installer.install_file(old, "43", "Pair")
+        new = self.src / "new.zip"
+        make_zip(new, {"A/gtk-3.0/gtk.css": b"new", "B/gtk-3.0/gtk.css": b"new"})
+        real_copytree = installer.shutil.copytree
+
+        def copytree(src, dst, *args, **kw):
+            if Path(dst).name == "B":
+                raise OSError("disk full")
+            return real_copytree(src, dst, *args, **kw)
+
+        with mock.patch.object(installer.shutil, "copytree", copytree):
+            with self.assertRaises(OSError):
+                installer.install_file(new, "43", "Pair")
+        themes = self.p["THEMES_DIR"]
+        self.assertEqual(sorted(p.name for p in themes.iterdir()), ["A"])
+        self.assertEqual((themes / "A/gtk-3.0/gtk.css").read_bytes(), b"old")
+        installer.install_file(new, "43", "Pair")
+        self.assertEqual(sorted(p.name for p in themes.iterdir()), ["A", "B"])
+
+    def test_install_url_keeps_records_for_different_urls_apart(self):
+        a = self.src / "theme.tar.gz"
+        make_tar(a, {"T/gtk-3.0/gtk.css": b""})
+        b = self.src / "other.tar.gz"
+        make_tar(b, {"U/gtk-3.0/gtk.css": b""})
+
+        def download(url, tmp, filename=None, progress=None):
+            out = Path(tmp) / "theme.tar.gz"
+            out.write_bytes((a if "one" in url else b).read_bytes())
+            return out
+
+        with mock.patch.object(installer, "download", download):
+            k1, _ = installer.install_url("https://one.example/theme.tar.gz")
+            k2, _ = installer.install_url("https://two.example/theme.tar.gz")
+            again, _ = installer.install_url("https://one.example/theme.tar.gz")
+        self.assertNotEqual(k1, k2)
+        self.assertEqual(again, k1)
+        self.assertEqual(set(installer.load_manifest()), {k1, k2})
+        self.assertTrue((self.p["THEMES_DIR"] / "T").is_dir())
+
     def test_single_image_download(self):
         img = self.src / "sunset.png"
         img.write_bytes(b"\x89PNG")

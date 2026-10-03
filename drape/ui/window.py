@@ -52,18 +52,14 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         self.sort_combo.connect("changed", lambda _c: self.reload_all())
         menu = Gtk.Menu()
         only = Gtk.CheckMenuItem(
-            label="Only show themes that work on this computer",
+            label="Hide incompatible themes for this desktop",
             active=settings.get("only_applicable"),
+        )
+        only.set_tooltip_text(
+            "Checks the desktop, window manager and known version requirements. Unverified downloads are labeled."
         )
         only.connect("toggled", self._toggle_applicable)
         menu.append(only)
-        if desktop.current_desktop() == "cinnamon":
-            legacy = Gtk.CheckMenuItem(
-                label="Hide themes made for older Cinnamon",
-                active=settings.get("hide_outdated_cinnamon"),
-            )
-            legacy.connect("toggled", self._toggle_outdated_cinnamon)
-            menu.append(legacy)
         self.window_check_item = Gtk.CheckMenuItem(
             label="Check open windows on the Window borders tab automatically",
             active=settings.get("window_check") == "always",
@@ -196,6 +192,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             return getattr(ccsm, name)
         raise AttributeError(name)
 
+    # Sidebar and page visibility
+
     def _sidebar(self):
         """Like Gtk.StackSidebar, plus a labelled divider between theme pages and settings pages."""
         lb = Gtk.ListBox(selection_mode=Gtk.SelectionMode.BROWSE)
@@ -260,6 +258,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         sw.add(lb)
         return sw
 
+    # Background work and foreground-load coordination
+
     def _start_prefetch(self):
         """Quietly cache the first results and previews of every tab, so opening one is instant.
         One download at a time, and paused whenever previews on screen are still loading."""
@@ -303,6 +303,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         threading.Thread(target=run, daemon=True).start()
         return False
 
+    # Preferences and desktop-session refresh
+
     def sync_menu(self):
         self.window_check_item.set_active(settings.get("window_check") == "always")
 
@@ -316,15 +318,11 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             "over them. Change this in the ☰ menu."
         )
 
-    def _toggle_outdated_cinnamon(self, item):
-        settings.set("hide_outdated_cinnamon", item.get_active())
-        self.reload_all()
-        if self.stack.get_visible_child() is self.installed:
-            self.installed.load()
-
     def _toggle_applicable(self, item):
         settings.set("only_applicable", item.get_active())
         self.reload_all()
+        if self.stack.get_visible_child() is self.installed:
+            self.installed.load()
 
     def _check_theme_session(self):
         if self._closing.is_set():
@@ -350,6 +348,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
 
     def sort(self):
         return self.sort_combo.get_active_id()
+
+    # User feedback and page navigation
 
     def notify(self, text, kind=Gtk.MessageType.INFO, action=None):
         """Show a message in the bar at the top; action=(label, callback) adds a button."""
@@ -403,6 +403,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         for p in self.pages.values():
             p.loaded = False
         self.on_page()
+
+    # Installed-item actions and details
 
     def refresh_item(self, item_id=None):
         for p in self.pages.values():

@@ -3,12 +3,39 @@ from types import SimpleNamespace
 from unittest import mock
 
 from drape import cli, desktop, installer, settings
-from drape.ui.browse import BrowsePage
+from drape.ui.browse import BrowsePage, Card
 from drape.ui.installed import InstalledPage
 from drape.ui.widgets import ApplyControl
 
 
 class CompatibilityUiTest(unittest.TestCase):
+    def test_bad_download_with_unchecked_alternative_does_not_pass_filter(self):
+        card = SimpleNamespace(
+            kind="gtk",
+            _checks=None,
+            item=SimpleNamespace(
+                id="test-theme",
+                files=[SimpleNamespace(name="old.zip"), SimpleNamespace(name="unknown.zip")],
+            ),
+            in_destruction=lambda: False,
+            departing=False,
+            get_parent=lambda: None,
+            compatibility_note=mock.Mock(),
+            glyphs=mock.Mock(),
+            misfiled=mock.Mock(),
+        )
+        card.glyphs.show_parts.return_value = False
+        with (
+            mock.patch(
+                "drape.ui.browse.peek.cached", side_effect=[({"gtk", "gtk-4.0"}, True), None]
+            ),
+            mock.patch.object(desktop, "supported", return_value=True),
+        ):
+            Card._show_glyphs(card, {"gtk", "gtk-4.0"}, True, checked=True)
+        self.assertFalse(card.compatible)
+        self.assertFalse(card.compatibility_pending)
+        card.compatibility_note.set_text.assert_called_once_with("Compatibility unverified")
+
     def test_unsupported_categories_stay_hidden_in_installed(self):
         kinds = ("wm", "gtk", "desktop", "lookandfeel", "colors", "icons", "cursors", "wallpapers")
         panels = {kind: mock.Mock() for kind in kinds}

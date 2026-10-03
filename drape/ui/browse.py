@@ -12,9 +12,7 @@ from .images import _ui_busy_until, load_image
 from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 
 
-_peeks = ThreadPoolExecutor(
-    max_workers=1
-)  # small and gentle: one listing at a time, after pictures
+_peeks = ThreadPoolExecutor(max_workers=3)  # bounded scans for incoming catalog batches
 
 
 CHUNK = 10  # results per request: small batches paint sooner on slow connections
@@ -23,12 +21,14 @@ FIRST_CHUNKS = 3  # batches requested up front when a tab opens
 
 
 class Card(FadingCard):
-    def __init__(self, window, kind, item):
+    def __init__(self, window, kind, item, checks=None):
         super().__init__()
         self.win, self.kind, self.item = window, kind, item
-        self.cinnamon_legacy = False
-        self.compatible = kind != "packs"
+        self.compatible = False
         self.pack_pending = kind == "packs" and bool(item.files)
+        self.compatibility_pending = bool(item.files)
+        self._peek_started = False
+        self._checks = checks
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         frame = Gtk.Frame()
@@ -41,7 +41,7 @@ class Card(FadingCard):
         overlay.add(self.image)
         ev = Gtk.EventBox()
         ev.add(overlay)
-        ev.connect("button-release-event", lambda *_: window.show_details(kind, item))
+        ev.connect("button-release-event", lambda *_: window.show_details(kind, self.item))
         frame.add(ev)
         self.glyphs = Glyphs()
         overlay.add_overlay(self.glyphs)
@@ -89,16 +89,35 @@ class Card(FadingCard):
             xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34, no_show_all=True
         )
         box.pack_start(self.misfiled, False, False, 0)
-        if not item.previews or kind == "packs":
+        self.compatibility_note = Gtk.Label(
+            label="Compatibility unverified", xalign=0, no_show_all=True
+        )
+        self.compatibility_note.get_style_context().add_class("dim-label")
+        self.compatibility_note.set_tooltip_text(
+            "The archive has not provided enough information to verify compatibility with this desktop."
+        )
+        box.pack_start(self.compatibility_note, False, False, 0)
+        self.compatibility_note.show()
+
+        # Filtering must run even when a preview fails or the card is off screen.
+        if checks is None:
             self._peek(None)
+        else:
+            best = item.best_file()
+            parts, complete = checks.get(best.index, (set(), False)) if best else (set(), False)
+            self._show_glyphs(parts, complete, checked=bool(checks))
 
         self.actions = Gtk.Box(spacing=6)
         box.pack_start(self.actions, False, False, 0)
         self.add(box)
         self.refresh()
 
+    # Archive checks independent of image previews
+
     def _peek(self, alive):
         """Find out what the download contains (cached, or a small partial read) and show glyphs."""
+        if self._checks is not None:
+            return
         f = self.item.best_file()
         if not f:
             return
@@ -109,6 +128,10 @@ class Card(FadingCard):
                 peek.cached(self.item.id, other.name) is not None for other in self.item.files
             ):
                 return
+
+        if self._peek_started:
+            return
+        self._peek_started = True
 
         def work():
             if self.departing or (alive is not None and not alive.is_set()):
@@ -127,17 +150,20 @@ class Card(FadingCard):
     def _show_glyphs(self, parts, complete, checked=False):
         if self.in_destruction() or self.departing:
             return False
-        checks = [peek.cached(self.item.id, f.name) for f in self.item.files]
-        self.compatible = (self.kind != "packs" and not checks) or any(
-            (hit is None and self.kind != "packs")
-            or (hit is not None and desktop.archive_compatible(*hit, self.kind))
-            for hit in checks
+        checks = [
+            self._checks.get(f.index)
+            if self._checks is not None
+            else peek.cached(self.item.id, f.name)
+            for f in self.item.files
+        ]
+        state = desktop.download_status(checks, self.kind)
+        self.compatible = state == "compatible"
+        self.compatibility_note.set_text(
+            "Incompatible with this desktop"
+            if state == "incompatible"
+            else "Compatibility unverified"
         )
-        self.cinnamon_legacy = (
-            desktop.hide_outdated_cinnamon()
-            and bool(checks)
-            and all(hit is not None and "cinnamon-legacy" in hit[0] for hit in checks)
-        )
+        self.compatibility_note.set_visible(state != "compatible")
         self.pack_pending = (
             self.kind == "packs"
             and not self.compatible
@@ -145,6 +171,9 @@ class Card(FadingCard):
             and any(hit is None for hit in checks)
         )
         parent = self.get_parent()
+        self.compatibility_pending = (
+            state != "compatible" and not checked and any(hit is None for hit in checks)
+        )
         if isinstance(parent, Gtk.FlowBox):
             parent.refilter()
             page = self.win.pages.get(self.kind)
@@ -167,6 +196,8 @@ class Card(FadingCard):
             self.misfiled.show()
         return False
 
+    # Install and apply controls
+
     def refresh(self):
         for c in self.actions.get_children():
             c.destroy()
@@ -188,14 +219,16 @@ class Card(FadingCard):
             b.connect(
                 "clicked",
                 lambda _b: self.win.install(
-                    self.item, required_kind="packs" if self.kind == "packs" else None
+                    self.item,
+                    required_kind="packs" if self.kind == "packs" else None,
                 ),
             )
             self.actions.pack_start(b, False, False, 0)
-            b2 = Gtk.Button(label="Install & apply")
-            b2.get_style_context().add_class("suggested-action")
-            b2.connect("clicked", lambda _b: self.win.install(self.item, apply_kind=self.kind))
-            self.actions.pack_start(b2, False, False, 0)
+            if self.kind:
+                b2 = Gtk.Button(label="Install & apply")
+                b2.get_style_context().add_class("suggested-action")
+                b2.connect("clicked", lambda _b: self.win.install(self.item, apply_kind=self.kind))
+                self.actions.pack_start(b2, False, False, 0)
         else:
             l = Gtk.Label(label="External download only")
             l.get_style_context().add_class("dim-label")
@@ -209,6 +242,9 @@ class BrowsePage(Gtk.Box):
     def __init__(self, window, kind):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win, self.kind = window, kind
+        self._scanned_checks = {}
+        self._first_scan_pending = False
+        self._initial_fetching = False
         self.generation = 0
         self.total = 0
         self.next_chunk = 0
@@ -226,8 +262,9 @@ class BrowsePage(Gtk.Box):
         )
         self.flow.set_card_filter(
             lambda card: (
-                ((self.kind != "packs" and not settings.get("only_applicable")) or card.compatible)
-                and not card.cinnamon_legacy
+                (self.kind != "packs" and not settings.get("only_applicable"))
+                or card.compatible
+                or card.compatibility_pending
             )
         )
         # "Asking gnome-look.org…" with a spinner, or a message
@@ -270,23 +307,25 @@ class BrowsePage(Gtk.Box):
     def cards(self):
         return self.flow.cards()
 
+    # Filtered-result feedback
+
     def _filtered_status(self):
         if self.flow.in_destruction():
             return False
         cards = self.cards()
         only = self.kind == "packs" or settings.get("only_applicable")
         visible = [
-            card for card in cards if not card.cinnamon_legacy and (not only or card.compatible)
+            card for card in cards if not only or card.compatible or card.compatibility_pending
         ]
         message = (
             "No compatible theme packs in these results."
             if self.kind == "packs"
             else "No compatible themes in these results."
         )
-        if self.kind != "packs" and any(card.cinnamon_legacy for card in cards):
-            message = "Themes made for older Cinnamon are hidden. Change this in the ☰ menu."
-        checking = "Checking theme packs for this desktop…"
-        if self.kind == "packs" and not visible and any(card.pack_pending for card in cards):
+        if self.kind != "packs" and any(not card.compatible for card in cards):
+            message = "Incompatible and unverified themes are hidden. Turn off the filter in the ☰ menu to see them."
+        checking = "Checking theme compatibility for this desktop…"
+        if only and not visible and any(card.compatibility_pending for card in cards):
             self._set_status(checking, busy=True)
         elif cards and not visible:
             self._set_status(message)
@@ -308,15 +347,61 @@ class BrowsePage(Gtk.Box):
     def _add(self, items):
         _ui_busy_until[0] = time.monotonic() + 2
         for it in items:
-            self.flow.add(Card(self.win, self.kind, it))
+            self.flow.add(Card(self.win, self.kind, it, self._scanned_checks.get(it.id)))
         self.flow.show_all()
-        if self.kind == "packs":
+        if self.kind == "packs" or settings.get("only_applicable"):
             GLib.idle_add(self._filtered_status)
 
+    def _preflight(self, items, ready, failed, generation):
+        """Publish immediately, then fade each card out when its own scan fails."""
+        if generation != self.generation:
+            return
+        if not items:
+            ready()
+            return
+        # An empty result means pending. It suppresses duplicate preview-triggered scans.
+        for item in items:
+            self._scanned_checks[item.id] = {}
+        ready()
+
+        def finished(item, checks):
+            if generation != self.generation or self.flow.in_destruction():
+                return False
+            self._scanned_checks[item.id] = checks
+            for card in self.cards():
+                if card.item.id == item.id:
+                    card.item = item
+                    card._checks = checks
+                    best = item.best_file()
+                    result = checks.get(best.index, (set(), False)) if best else (set(), False)
+                    card._show_glyphs(*result, checked=True)
+            self._filtered_status()
+            self._maybe_more()
+            return False
+
+        def work(item):
+            if generation != self.generation:
+                return
+            try:
+                installed = installer.load_manifest() if self.kind == "packs" else None
+                checks = peek.inspect_downloads(item, self.kind, installed)
+            except Exception:
+                # A failed check stays unverified and can be retried on a later visit.
+                checks = {}
+            GLib.idle_add(finished, item, checks)
+
+        for item in items:
+            _peeks.submit(lambda item=item: work(item))
+
     def load(self):
+        query, sort = self._params()
         self.loaded = True
+        self._initial_fetching = True
         self.generation += 1
         gen = self.generation
+        self._scanned_checks.clear()
+        self._first_scan_pending = False
+        self.flow.show()
         self.flow.clear()
         self.next_chunk, self.total, self.fetching = 0, 0, False
         self.more.hide()
@@ -329,14 +414,17 @@ class BrowsePage(Gtk.Box):
             return
         query, sort = self._params()
 
-        # results from last time show instantly, then get refreshed
+        # Cached cards paint immediately. Scan current signed download metadata as
+        # soon as fresh batches arrive, rather than inspecting expired cached URLs.
         shown = []
         for i in range(FIRST_CHUNKS):
             cached = pling.cached_search(self.kind, query, sort, i, CHUNK, categories)
             if not cached or not cached[0]:
                 break
+            for item in cached[0]:
+                self._scanned_checks[item.id] = {}
             self._add(cached[0])
-            shown += [it.id for it in cached[0]]
+            shown.extend(item.id for item in cached[0])
             self.total = cached[1]
         if shown:
             self._set_status("")
@@ -344,7 +432,12 @@ class BrowsePage(Gtk.Box):
             self._set_status(f"Asking {desktop.catalog_name()}…", busy=True)
 
         def slow():
-            if gen == self.generation and not self.cards() and self.status.get_visible():
+            if (
+                gen == self.generation
+                and not self.cards()
+                and self.status.get_visible()
+                and not self.status_label.get_text().startswith("Checking")
+            ):
                 self._set_status(
                     f"Still waiting for {desktop.catalog_name()} - the connection seems slow. "
                     "Results will show as soon as they arrive.",
@@ -376,26 +469,34 @@ class BrowsePage(Gtk.Box):
                     state["replaced"] = True
             if state["next"]:
                 self._set_status("" if self.cards() else "Nothing found.")
+                self._filtered_status()
+            self._initial_fetching = state["next"] < FIRST_CHUNKS
             self._maybe_more()
 
-        def failed(e):
-            if gen == self.generation and not self.cards():
-                self._set_status(f"Couldn't reach {desktop.catalog_name()}: {e}")
+        def failed(e, i):
+            if gen == self.generation:
+                arrived(i, ([], self.total))
+                if not self.cards():
+                    self._set_status(f"Couldn't load themes: {e}")
 
         for i in range(FIRST_CHUNKS):
             run_async(
                 lambda i=i: pling.search(self.kind, query, sort, i, CHUNK, categories),
-                lambda r, i=i: arrived(i, r),
-                failed,
+                lambda r, i=i: self._preflight(
+                    r[0], lambda: arrived(i, r), lambda e: failed(e, i), gen
+                ),
+                lambda e, i=i: failed(e, i),
             )
         self.next_chunk = FIRST_CHUNKS
 
     def _has_more(self, chunks):
         return chunks * CHUNK < self.total
 
+    # Pagination and visible-page loading
+
     def _maybe_more(self):
         """Infinite scroll: start the next batch when the bottom is within a couple of rows."""
-        if self.kind == "packs" and any(card.pack_pending for card in self.cards()):
+        if self._initial_fetching:
             return
         if (
             self.fetching
@@ -410,7 +511,8 @@ class BrowsePage(Gtk.Box):
         adj = self.scroller.get_vadjustment()
         if adj.get_page_size() <= 0:
             return
-        if adj.get_value() + adj.get_page_size() < adj.get_upper() - 2 * (CARD_H + 120):
+        position = adj.get_value()
+        if position + adj.get_page_size() < adj.get_upper() - 2 * (CARD_H + 120):
             return
         self.fetching = True
         self.more.show()
@@ -435,9 +537,11 @@ class BrowsePage(Gtk.Box):
 
         run_async(
             lambda: pling.search(self.kind, query, sort, chunk, CHUNK, self.categories),
-            done,
+            lambda result: self._preflight(result[0], lambda: done(result), failed, gen),
             failed,
         )
+
+    # Desktop and login-manager catalog selection
 
     def _scope(self):
         """(categories to search or None for the default, explanation) for this computer."""
@@ -458,7 +562,7 @@ class BrowsePage(Gtk.Box):
                     "downloadable themes: choose <b>⋯ → Use for login screen</b> on any installed "
                     "wallpaper, Controls theme, icon set or cursor, or see <b>Lock &amp; login</b>.\n\n"
                     "To browse themes for other login screens (SDDM, web greeters), turn off "
-                    "<b>Only show themes that work on this computer</b> in the ☰ menu."
+                    "<b>Hide incompatible themes for this desktop</b> in the ☰ menu."
                 )
             note = f"Your login screen is <b>{GLib.markup_escape_text(current)}</b>."
             if not only:

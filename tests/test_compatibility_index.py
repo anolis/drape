@@ -1,0 +1,114 @@
+import copy
+import tempfile
+import unittest
+from dataclasses import replace
+from pathlib import Path
+from unittest import mock
+
+from drape import compatibility, desktop, peek, pling
+
+
+class CompatibilityIndexTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.index = compatibility.Index(Path(self.temp.name) / "index.sqlite3")
+        self.file = pling.Download(1, "theme.zip", "https://example.test/theme.zip", 1, "abc")
+        self.item = pling.Item(
+            "1", "Theme", "author", "", "", "2026-01-01", 0, 0, "", files=[self.file]
+        )
+        self.result = ({"gtk", "gtk-3.0"}, True)
+        self.context = {"desktop": "cinnamon", "cinnamon": [6, 4]}
+
+    def record(self, result=None, context=None, **kwargs):
+        self.index.record(
+            self.item,
+            self.file,
+            result or self.result,
+            "gtk",
+            context or self.context,
+            "compatible",
+            **kwargs,
+        )
+
+    def test_reuses_exact_revision_and_invalidates_changed_checksum(self):
+        self.record()
+        self.assertEqual(self.index.inspection(self.item, self.file), self.result)
+        self.assertIsNone(self.index.inspection(self.item, replace(self.file, md5="def")))
+
+    def test_fallback_revision_uses_modification_date(self):
+        file = replace(self.file, md5="")
+        self.index.record(self.item, file, self.result, "gtk", self.context, "compatible")
+        self.assertIsNone(self.index.inspection(replace(self.item, changed="2026-02-01"), file))
+
+    def test_partial_evidence_expires_so_unknown_can_be_retried(self):
+        with mock.patch.object(compatibility.time, "time", return_value=1000):
+            self.record(result=(set(), False))
+        with mock.patch.object(compatibility.time, "time", return_value=1601):
+            self.assertIsNone(self.index.inspection(self.item, self.file))
+
+    def test_diff_cursor_only_advances_for_changes(self):
+        self.record()
+        first = self.index.export()
+        self.record()
+        self.assertEqual(self.index.export(first["cursor"])["observations"], [])
+        self.record(context={"desktop": "cinnamon", "cinnamon": [5, 2]})
+        delta = self.index.export(first["cursor"])
+        self.assertEqual(len(delta["observations"]), 1)
+        self.assertGreater(delta["cursor"], first["cursor"])
+
+    def test_installed_evidence_does_not_claim_archive_contents(self):
+        self.record(basis="installed-components")
+        self.assertIsNone(self.index.inspection(self.item, self.file))
+        self.assertEqual(self.index.export()["observations"][0]["basis"], "installed-components")
+
+    def test_imported_observations_are_not_exported_as_local(self):
+        self.record()
+        other = compatibility.Index(Path(self.temp.name) / "imported.sqlite3")
+        self.assertEqual(other.import_records(self.index.export()), 1)
+        self.assertEqual(other.inspection(self.item, self.file), self.result)
+        self.assertEqual(other.export()["observations"], [])
+
+    def test_local_evidence_takes_precedence_over_community(self):
+        self.record()
+        document = copy.deepcopy(self.index.export())
+        document["observations"][0]["parts"] = ["gtk", "gtk-4.0"]
+        self.index.import_records(document)
+        self.assertEqual(self.index.inspection(self.item, self.file), self.result)
+
+    def test_invalid_import_leaves_database_unchanged(self):
+        self.record()
+        document = copy.deepcopy(self.index.export())
+        document["observations"].append({"parts": "invalid"})
+        other = compatibility.Index(Path(self.temp.name) / "invalid.sqlite3")
+        with self.assertRaises(ValueError):
+            other.import_records(document)
+        self.assertIsNone(other.inspection(self.item, self.file))
+
+    def test_indexed_inspection_avoids_network_and_rechecks_current_rules(self):
+        self.record()
+        with (
+            mock.patch.object(compatibility, "Index", return_value=self.index),
+            mock.patch.object(compatibility, "context", return_value=self.context),
+            mock.patch.object(peek, "contents") as contents,
+            mock.patch.object(desktop, "supported", return_value=True),
+        ):
+            self.assertEqual(peek.inspect_downloads(self.item, "gtk"), {1: self.result})
+            contents.assert_not_called()
+
+    def test_installed_bundle_proof_requires_matching_download(self):
+        entry = {"file": self.file.name, "changed": self.item.changed, "components": []}
+        parts = {"gtk", "gtk-3.0", "icons"}
+        with (
+            mock.patch.object(compatibility, "Index", return_value=self.index),
+            mock.patch.object(compatibility, "context", return_value=self.context),
+            mock.patch.object(peek, "installed_parts", return_value=parts),
+            mock.patch.object(peek, "contents", return_value=(set(), False)) as contents,
+            mock.patch.object(desktop, "supported", return_value=True),
+        ):
+            self.assertEqual(
+                peek.inspect_downloads(self.item, "packs", {"1": entry}), {1: (parts, False)}
+            )
+            contents.assert_not_called()
+            peek.inspect_downloads(replace(self.item, changed="2026-02-01"), "packs", {"1": entry})
+            contents.assert_called_once()

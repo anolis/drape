@@ -8,7 +8,6 @@ PATH = (
     Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "drape" / "settings.json"
 )
 DEFAULTS = {
-    "hide_outdated_cinnamon": True,
     "only_applicable": True,
     "animations": "auto",
     "window_check": "ask",

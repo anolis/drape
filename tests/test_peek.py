@@ -22,7 +22,7 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(classify_names(["C/index.theme", "C/cursors/left_ptr"]), {"cursors"})
         self.assertEqual(classify_names(["pack/Normal.cur", "pack/Busy.ani"]), {"cursors"})
         self.assertEqual(classify_names(["s/s.plymouth", "s/s.script"]), {"plymouth"})
-        self.assertEqual(classify_names(["x/metadata.desktop", "x/Main.qml"]), {"login"})
+        self.assertEqual(classify_names(["x/metadata.desktop", "x/Main.qml"]), {"login", "sddm"})
 
     def test_icon_theme_layouts(self):
         std = [f"Frost/32x32/places/f{i}.png" for i in range(12)]

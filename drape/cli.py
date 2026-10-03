@@ -1,10 +1,15 @@
 """Search, install, apply and remove themes from GNOME-Look, KDE-Look and Xfce-Look."""
 
 import argparse
+import json
+import sqlite3
 import sys
 from pathlib import Path
 
 from . import desktop, installer, pling, settings, peek
+
+
+# Terminal output helpers
 
 
 def _progress(done, total):
@@ -24,6 +29,9 @@ def _print_entry(key, e):
         print(f"{'':12}  ... {len(e['components']) - 6} more")
 
 
+# Catalog commands
+
+
 def cmd_search(a):
     only = a.kind == "packs" or (not a.all_themes and settings.get("only_applicable"))
     categories, note = desktop.scope(a.kind, only)
@@ -31,27 +39,15 @@ def cmd_search(a):
         print(note, file=sys.stderr)
         return
     items, total = pling.search(a.kind, a.query, a.sort, a.page, max(a.limit, 10), categories)
-    if a.kind == "packs":
+    if only:
+        installed = installer.load_manifest() if a.kind == "packs" else None
         items = [
-            it
-            for it in items
-            if any(
-                desktop.archive_compatible(
-                    *(peek.cached(it.id, f.name) or peek.contents(it.id, f.url, f.name)), "packs"
-                )
-                for f in it.files
+            item
+            for item in items
+            if desktop.download_status(
+                list(peek.inspect_downloads(item, a.kind, installed).values()), a.kind
             )
-        ]
-    elif only:
-        items = [
-            it
-            for it in items
-            if not it.files
-            or any(
-                (hit := peek.cached(it.id, f.name)) is None
-                or desktop.archive_compatible(*hit, a.kind)
-                for f in it.files
-            )
+            == "compatible"
         ]
     items = items[: a.limit]  # the API won't return pages smaller than 10
     for it in items:
@@ -118,6 +114,9 @@ def cmd_file(a):
     _print_entry(f"file:{p.name}", e)
 
 
+# Applying installed components
+
+
 def _apply(entry, name=None):
     comps = [c for c in entry["components"] if name in (None, c["name"])]
     if not comps:
@@ -177,6 +176,9 @@ def cmd_apply(a):
     _apply(m[a.key], a.name)
 
 
+# Installed records and removal
+
+
 def cmd_list(a):
     m = installer.load_manifest()
     if not m:
@@ -204,6 +206,29 @@ def cmd_updates(a):
             print(
                 f"{k:>10}  {e['title']}: update available ({e.get('changed', '?')[:10]} -> {it.changed[:10]})"
             )
+
+
+def cmd_compatibility(a):
+    from .compatibility import Index
+
+    try:
+        index = Index()
+        if a.operation == "export":
+            if a.since < 0:
+                raise ValueError("The diff cursor must be nonnegative")
+            document = json.dumps(index.export(a.since), indent=2) + "\n"
+            if a.output:
+                Path(a.output).write_text(document)
+            else:
+                print(document, end="")
+        else:
+            count = index.import_records(json.loads(Path(a.path).read_text()))
+            print(f"Imported {count} compatibility observations.")
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        raise installer.InstallError(f"Compatibility index: {exc}") from exc
+
+
+# Command parsing and dispatch
 
 
 def main(argv=None):
@@ -269,6 +294,18 @@ def main(argv=None):
     sub.add_parser("updates", help="check installed items for updates").set_defaults(
         func=cmd_updates
     )
+
+    s = sub.add_parser(
+        "compatibility", help="export local evidence or import reviewed compatibility data"
+    )
+    operations = s.add_subparsers(dest="operation", required=True)
+    export = operations.add_parser("export")
+    export.add_argument("--since", type=int, default=0, help="cursor from the previous export")
+    export.add_argument("--output", help="JSON output file (default: stdout)")
+    export.set_defaults(func=cmd_compatibility)
+    imported = operations.add_parser("import")
+    imported.add_argument("path", help="reviewed compatibility JSON file")
+    imported.set_defaults(func=cmd_compatibility)
 
     for name in ("search", "install", "install-url", "install-file"):
         sub.choices[name].add_argument(

@@ -180,12 +180,12 @@ class MateDesktopTest(unittest.TestCase):
                 )
                 self.assertTrue(desktop.supported("gtk"))  # MATE controls still work under Compiz
 
-    def test_filter_rejects_wrong_format_but_keeps_unknown_downloads(self):
+    def test_filter_rejects_wrong_format_and_unverified_downloads(self):
         self.assertFalse(desktop.archive_compatible({"xfwm"}, True, "wm"))
         self.assertTrue(desktop.archive_compatible({"wm", "xfwm"}, True, "wm"))
         self.assertFalse(desktop.archive_compatible({"gtk", "gtk-4.0"}, True, "gtk"))
         self.assertTrue(desktop.archive_compatible({"gtk", "gtk-3.0"}, True, "gtk"))
-        self.assertTrue(desktop.archive_compatible(set(), False, "gtk"))
+        self.assertFalse(desktop.archive_compatible(set(), False, "gtk"))
         self.assertFalse(desktop.archive_compatible({"desktop"}, True, "desktop"))
 
     def test_mixed_pack_applies_only_compatible_parts(self):
