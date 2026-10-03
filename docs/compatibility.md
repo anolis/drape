@@ -30,12 +30,11 @@ color-scheme catalogs above; catalog IDs were rechecked on 2026-10-03. A bundle 
 at least two supported appearance parts, including controls, desktop style or window borders.
 Compatible KDE global themes also qualify. An archive's GTK 2/3/4 directories count as one
 part, and several variants of one part do not qualify by themselves. After inspection,
-unverified downloads stay hidden, and disabling the general compatibility filter does not
-broaden Theme packs. Extraction rechecks compatibility before installation, and Apply pack
+unverified downloads remain visible until index evidence is available. Extraction rechecks compatibility before installation, and Apply pack
 allows one variant per part or Keep current. Drape does not run an archive's installation scripts.
 
 Shared wallpaper categories remain available for desktops with an apply backend.
-Unrecognized or incomplete archive listings stay hidden while filtering is enabled. Disabling the filter reveals them with a Compatibility unverified label. Installation checks extracted
+Unrecognized or incomplete archive listings remain visible with a Compatibility unverified label. Installation checks extracted
 files, and Apply checks compatibility again. Source-only compiled plugins are not installed
 as decorations. A catalog match is not a guarantee that a theme's CSS, QML, or external
 dependencies work on every release.
@@ -44,13 +43,15 @@ dependencies work on every release.
 
 **☰ → Hide incompatible themes for this desktop** defaults to on and controls every theme category in Browse and Installed. Compatibility follows the desktop, window manager, display manager and known version requirements. Unsupported sections remain hidden independently of this preference. Disabling the filter reveals incompatible downloads within supported sections, but does not enable applying unsupported components.
 
-The same rules evaluate each archive variant and each extracted component. A mixed bundle can retain usable GTK or icon components while its Cinnamon styles are hidden from the Desktop category. One compatible download keeps a card available; an unverified alternate download does not override a failed check. Cards load immediately while compatibility checks run independently of preview loading. Visible incompatible or unverified results fade out as their individual scans finish. Off-screen cards keep their layout space and wait to fade out until they re-enter the viewport, so background scans do not shift the current rows; one positively identified compatible variant keeps a card visible. A slow scan never holds the first page behind a batch barrier.
+The same rules evaluate each archive variant and each extracted component. A mixed bundle can retain usable GTK or icon components while its Cinnamon styles are hidden from the Desktop category. Browsing reads existing local or imported index evidence without opening archives or launching compatibility scan jobs. Unknown themes remain visible; only known incompatible results are hidden. Off-screen card removals preserve the rows currently in view. Installation and Apply still validate the actual components against the current desktop.
+
+An [independent headless worker](compatibility-worker.md) builds archive evidence on demand in a separate process. It exports portable snapshots for local import or a future hosted service. The app does not start this worker automatically.
 
 Cinnamon checks work in both directions across the 5.4 dialog-style change. Newer Cinnamon requires `.dialog` or `.prompt-dialog` styles. Older Cinnamon uses `.modal-dialog`; an inspected modern-only theme is incompatible there. Themes including both generations can remain usable on both. Imported styles are included; unresolved imports and bounded partial reads remain unverified. These checks identify known CSS mismatches, rather than certifying every panel, menu or app style on every Cinnamon release.
 
 Window border formats follow the active window manager: Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae. GTK controls require GTK 3 content. Plasma global-theme catalogs follow Plasma 5/6 and installation validates their extracted metadata. Login-theme formats follow the detected display manager. Installed files and records are preserved when filtering hides an item.
 
-HTTP 429 responses leave cards visible with a pending compatibility check. Background checks retry after the server's `Retry-After` delay, or after 60 seconds when no valid delay is provided. Delays are capped at one day. Deferred checks wait in one queue per host: when the cooldown ends a single check runs, and the next starts a second after it finishes, so a host that is still overloaded sees one request rather than a burst. A check that is rate-limited again goes back in the queue and pushes the cooldown back for the rest. Leaving a page cancels its waiting checks. Download links are signed and expire; when a file host refuses a link (HTTP 401, 403 or 410), drape fetches fresh catalog details once and retries that file. Catalog requests, archive checks and installation downloads share a cooldown for the affected host. Rate-limited checks and failed requests do not save compatibility evidence; genuine empty partial listings are cached for ten minutes. Installation errors explain when to retry the download. Background archive reads fail fast on server errors; catalog requests and full downloads retain their bounded retries.
+HTTP 429 responses defer worker checks without saving compatibility evidence. Rerun the worker after the reported cooldown. Failed requests never become verdicts; genuine empty partial listings are reused for ten minutes. Refused signed links can be refreshed once. Worker archive reads and decompression are bounded, while full installation downloads retain their existing retry behavior.
 
 ## Xfce wallpaper, panel and border support
 
@@ -123,11 +124,11 @@ application in a running Plasma session still need visual verification.
 
 ## Local compatibility evidence
 
-Drape builds a SQLite index in `$XDG_DATA_HOME/drape/compatibility.sqlite3`
+The independent worker builds a SQLite index in `$XDG_DATA_HOME/drape/compatibility.sqlite3`
 (normally `~/.local/share/drape/compatibility.sqlite3`). Archive evidence is keyed by
 catalog item, filename and checksum, or modification date when no checksum is supplied.
 Results are re-evaluated for the current desktop, window manager and versions.
-Complete listings are reused for a week; incomplete checks retry after ten minutes.
+Complete listings are reused for a week; incomplete evidence expires after ten minutes.
 Matching installed bundle files can supply additional local evidence without claiming
 that companion themes or other downloads were included in that archive.
 

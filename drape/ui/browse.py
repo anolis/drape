@@ -1,21 +1,15 @@
 """Catalog cards, filtering and paginated browsing."""
 
-from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 
 from .card_transitions import CardFlow, FadingCard
 from .gtk import GLib, Gtk, Pango
-from .. import desktop, installer, peek, pling, settings, system
-from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, _safe, run_async
+from .. import compatibility, desktop, installer, peek, pling, settings, system
+from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, run_async
 from .images import _ui_busy_until, load_image
-from .retries import RetryQueue
 from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 from .scroll_state import ScrollState
-
-
-_peeks = ThreadPoolExecutor(max_workers=3)  # bounded scans for incoming catalog batches
-_retries = RetryQueue(_peeks.submit)  # rate-limited scans, released per host after its cooldown
 
 
 CHUNK = 10  # results per request: small batches paint sooner on slow connections
@@ -24,18 +18,15 @@ FIRST_CHUNKS = 3  # batches requested up front when a tab opens
 
 
 class Card(FadingCard):
-    def __init__(self, window, kind, item, checks=None, rate_limited=False):
+    def __init__(self, window, kind, item, checks=None):
         super().__init__()
         self.win, self.kind, self.item = window, kind, item
         self.compatible = False
         self.pack_pending = kind == "packs" and bool(item.files)
         self.compatibility_pending = bool(item.files)
-        self._peek_started = False
         self._checks = checks
-        self._rate_limited = rate_limited
         self._scan_alive = True
         self.connect("destroy", lambda *_: setattr(self, "_scan_alive", False))
-        self.connect("destroy", lambda *_: _retries.cancel(lambda key: key == ("card", self)))
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         frame = Gtk.Frame()
@@ -122,81 +113,16 @@ class Card(FadingCard):
         self.add(box)
         self.refresh()
 
-    # Archive checks independent of image previews
+    # Read-only evidence lookup independent of image previews
 
     def _peek(self, alive):
-        """Find out what the download contains (cached, or a small partial read) and show glyphs."""
+        """Use local evidence only; browsing never opens theme archives."""
         if not self._scan_alive or self._checks is not None:
             return
-        f = self.item.best_file()
-        if not f:
-            return
-        hit = peek.cached(self.item.id, f.name)
-        if hit is not None:
-            complete_check = desktop.archive_compatible(*hit, self.kind) or all(
-                peek.cached(self.item.id, other.name) is not None for other in self.item.files
-            )
-            if complete_check:
-                self._rate_limited = False
-            self._show_glyphs(*hit, checked=complete_check)
-            if complete_check:
-                return
-
-        if self._peek_started:
-            return
-        self._peek_started = True
-        _peeks.submit(lambda: _safe(lambda: self._peek_work(alive)))
-
-    def _peek_work(self, alive):
-        """Worker half of `_peek`; also what a rate-limited card re-runs from the retry queue."""
-        if not self._scan_alive or self.departing or (alive is not None and not alive.is_set()):
-            return
-        item = self.item
-        best = item.best_file()
-        if best is None:
-            return
-        try:
-            item, result = peek.contents_refreshing(item, best)
-            if not desktop.archive_compatible(*result, self.kind):
-                for other in list(item.files):
-                    if self.departing:
-                        return
-                    if other.name != best.name:
-                        try:
-                            item, _ = peek.contents_refreshing(item, other)
-                        except peek.InspectionFailed:
-                            pass  # a broken alternative must not hide the best file's result
-        except peek.RateLimited as exc:
-            GLib.idle_add(self._defer_peek, exc, alive)
-            return
-        except peek.InspectionFailed:
-            result = None  # no evidence: shown as unverified, not as still checking
-
-        def done():
-            if self._scan_alive:
-                self.item = item
-                self._rate_limited = False
-                self._show_glyphs(*(result or (set(), False)), checked=True)
-            return False
-
-        GLib.idle_add(done)
-
-    def _defer_peek(self, limited, alive):
-        if not self._scan_alive or self.departing:
-            return False
-        if limited.item is not None:
-            self.item = limited.item
-        self._rate_limited = True
+        self._checks = compatibility.Index().read_many([self.item]).get(self.item.id, {})
         best = self.item.best_file()
-        self._show_glyphs(*((best and peek.cached(self.item.id, best.name)) or (set(), False)))
-        # _peek_started stays set, so a redraw doesn't start a second check while this one waits
-        _retries.add(
-            limited.host,
-            ("card", self),
-            lambda: _safe(lambda: self._peek_work(alive)),
-            limited.retry_after,
-        )
-        return False
+        result = self._checks.get(best.index) if best else None
+        self._show_glyphs(*(result or (set(), False)), checked=True)
 
     def _show_glyphs(self, parts, complete, checked=False):
         if self.in_destruction() or self.departing:
@@ -208,25 +134,16 @@ class Card(FadingCard):
             for f in self.item.files
         ]
         state = desktop.download_status(checks, self.kind)
-        deferred = getattr(self, "_rate_limited", False)
         self.compatible = state == "compatible"
         self.compatibility_note.set_text(
-            "Compatibility check rate-limited; retrying…"
-            if deferred
-            else "Incompatible with this desktop"
+            "Incompatible with this desktop"
             if state == "incompatible"
             else "Compatibility unverified"
         )
         self.compatibility_note.set_visible(state != "compatible")
-        self.pack_pending = (
-            self.kind == "packs"
-            and not self.compatible
-            and (deferred or (not checked and any(hit is None for hit in checks)))
-        )
+        self.pack_pending = self.kind == "packs" and not self.compatible and state == "unknown"
         parent = self.get_parent()
-        self.compatibility_pending = state != "compatible" and (
-            deferred or (not checked and any(hit is None for hit in checks))
-        )
+        self.compatibility_pending = state == "unknown"
         if isinstance(parent, Gtk.FlowBox):
             parent.refilter()
             page = self.win.pages.get(self.kind)
@@ -297,7 +214,6 @@ class BrowsePage(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.win, self.kind = window, kind
         self._scanned_checks = {}
-        self._rate_limited = set()  # item ids whose scan is waiting in the retry queue
         self._first_scan_pending = False
         self._initial_fetching = False
         self.generation = 0
@@ -381,7 +297,7 @@ class BrowsePage(Gtk.Box):
             else "No compatible themes in these results."
         )
         if self.kind != "packs" and any(not card.compatible for card in cards):
-            message = "Incompatible and unverified themes are hidden. Turn off the filter in the ☰ menu to see them."
+            message = "Known incompatible themes are hidden. Unverified themes remain visible."
         checking = "Checking theme compatibility for this desktop…"
         if only and not visible and any(card.compatibility_pending for card in cards):
             self._set_status(checking, busy=True)
@@ -411,7 +327,6 @@ class BrowsePage(Gtk.Box):
                     self.kind,
                     it,
                     self._scanned_checks.get(it.id),
-                    rate_limited=it.id in self._rate_limited,
                 )
             )
         self.flow.show_all()
@@ -419,60 +334,11 @@ class BrowsePage(Gtk.Box):
             GLib.idle_add(self._filtered_status)
 
     def _preflight(self, items, ready, failed, generation):
-        """Publish immediately, then fade each card out when its own scan fails."""
+        """Attach a read-only evidence snapshot without submitting archive inspection jobs."""
         if generation != self.generation:
             return
-        if not items:
-            ready()
-            return
-        # An empty result means pending. It suppresses duplicate preview-triggered scans.
-        for item in items:
-            self._scanned_checks[item.id] = {}
+        self._scanned_checks.update(compatibility.Index().read_many(items))
         ready()
-
-        def finished(item, checks, limited=None):
-            if generation != self.generation or self.flow.in_destruction():
-                return False
-            self._scanned_checks[item.id] = checks
-            if limited is None:
-                self._rate_limited.discard(item.id)
-            else:
-                self._rate_limited.add(item.id)
-            for card in self.cards():
-                if card.item.id == item.id:
-                    card.item = item
-                    card._checks = checks
-                    card._rate_limited = limited is not None
-                    best = item.best_file()
-                    result = (checks.get(best.index) or (set(), False)) if best else (set(), False)
-                    card._show_glyphs(*result, checked=True)
-            self._filtered_status()
-            self._maybe_more()
-            if limited is not None:
-                _retries.add(
-                    limited.host,
-                    ("scan", self, item.id),
-                    lambda: work(item),
-                    limited.retry_after,
-                )
-            return False
-
-        def work(item):
-            if generation != self.generation:
-                return
-            try:
-                installed = installer.load_manifest() if self.kind == "packs" else None
-                item, checks = peek.inspect_downloads(item, self.kind, installed)
-            except peek.RateLimited as exc:
-                GLib.idle_add(finished, exc.item or item, exc.checks, exc)
-                return
-            except Exception:
-                # A failed check stays unverified and can be retried on a later visit.
-                checks = {}
-            GLib.idle_add(finished, item, checks)
-
-        for item in items:
-            _peeks.submit(lambda item=item: work(item))
 
     def load(self):
         query, sort = self._params()
@@ -482,8 +348,6 @@ class BrowsePage(Gtk.Box):
         self.generation += 1
         gen = self.generation
         self._scanned_checks.clear()
-        self._rate_limited.clear()
-        _retries.cancel(lambda key: key[:2] == ("scan", self))
         self._first_scan_pending = False
         self.flow.show()
         self.flow.clear()

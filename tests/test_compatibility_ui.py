@@ -9,11 +9,10 @@ from drape.ui.widgets import ApplyControl
 
 
 class CompatibilityUiTest(unittest.TestCase):
-    def test_rate_limited_card_stays_pending_instead_of_incompatible(self):
+    def test_missing_index_evidence_keeps_card_visible_and_unverified(self):
         card = SimpleNamespace(
             kind="gtk",
             _checks={1: None},
-            _rate_limited=True,
             item=SimpleNamespace(files=[SimpleNamespace(index=1)]),
             in_destruction=lambda: False,
             departing=False,
@@ -26,11 +25,9 @@ class CompatibilityUiTest(unittest.TestCase):
         Card._show_glyphs(card, set(), False, checked=True)
         self.assertFalse(card.compatible)
         self.assertTrue(card.compatibility_pending)
-        card.compatibility_note.set_text.assert_called_once_with(
-            "Compatibility check rate-limited; retrying…"
-        )
+        card.compatibility_note.set_text.assert_called_once_with("Compatibility unverified")
 
-    def test_bad_download_with_unchecked_alternative_does_not_pass_filter(self):
+    def test_unknown_alternative_remains_visible_without_online_scanning(self):
         card = SimpleNamespace(
             kind="gtk",
             _checks=None,
@@ -54,7 +51,7 @@ class CompatibilityUiTest(unittest.TestCase):
         ):
             Card._show_glyphs(card, {"gtk", "gtk-4.0"}, True, checked=True)
         self.assertFalse(card.compatible)
-        self.assertFalse(card.compatibility_pending)
+        self.assertTrue(card.compatibility_pending)
         card.compatibility_note.set_text.assert_called_once_with("Compatibility unverified")
 
     def test_unsupported_categories_stay_hidden_in_installed(self):

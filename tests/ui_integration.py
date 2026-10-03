@@ -60,35 +60,22 @@ with tempfile.TemporaryDirectory() as temp:
             files=[pling.Download(1, "theme.zip", "url", 1, "")],
         )
         with (
-            mock.patch.object(browse._peeks, "submit") as jobs,
-            mock.patch.object(
-                browse.peek,
-                "inspect_downloads",
-                side_effect=lambda item, *_: (item, {1: ({"gtk", "gtk-4.0"}, True)}),
-            ),
+            mock.patch.object(browse.compatibility.Index, "read_many", return_value={item.id: {1: ({"gtk", "gtk-4.0"}, True)}}),
+            mock.patch.object(browse.peek, "inspect_downloads", side_effect=AssertionError("GUI must not scan archives")),
+            mock.patch.object(browse.peek, "contents", side_effect=AssertionError("GUI must not inspect archives")),
         ):
             page._preflight([item], lambda: page._add([item]), mock.Mock(), page.generation)
             pump(0.25)
             card = page.cards()[0]
-            assert card.get_mapped() and card.compatibility_pending
-            jobs.call_args.args[0]()
-            pump(0.3)
             assert not card.get_child_visible() and not card.compatibility_pending
             assert page.flow.get_visible()
-        # HTTP 429 leaves cards visible and pending, then a later success clears the state.
-        limited_item = pling.Item("rate", "Rate limited", "author", "", "", "", 0, 0, "", files=[pling.Download(1, "rate.zip", "url", 1, "")])
-        with mock.patch.object(browse._peeks, "submit") as jobs, mock.patch.object(browse, "_retries") as retry, mock.patch.object(browse.peek, "inspect_downloads", side_effect=[browse.peek.RateLimited(12, checks={1: None}, host="files.test"), (limited_item, {1: ({"gtk", "gtk-3.0"}, True)})]):
-            page._preflight([limited_item], lambda: page._add([limited_item]), mock.Mock(), page.generation)
-            jobs.call_args.args[0]()
+        unknown = pling.Item("unknown", "Not indexed", "author", "", "", "", 0, 0, "", files=[pling.Download(1, "theme.zip", "url", 1, "")])
+        with mock.patch.object(browse.compatibility.Index, "read_many", return_value={unknown.id: {}}), mock.patch.object(browse.peek, "inspect_downloads", side_effect=AssertionError("GUI must not scan")):
+            page._preflight([unknown], lambda: page._add([unknown]), mock.Mock(), page.generation)
             pump(0.25)
-            card = next(card for card in page.cards() if card.item.id == "rate")
+            card = next(card for card in page.cards() if card.item.id == "unknown")
             assert card.get_child_visible() and card.compatibility_pending
-            assert "rate-limited" in card.compatibility_note.get_text()
-            host, key, job, delay = retry.add.call_args.args
-            assert (host, delay) == ("files.test", 12)
-            job()
-            pump(0.25)
-            assert card.compatible and not card.compatibility_pending and not card._rate_limited
+            assert card.compatibility_note.get_text() == "Compatibility unverified"
         win.remove(page)
         page.destroy()
     # Off-screen removals keep row allocations, including cards above the viewport.
@@ -304,7 +291,7 @@ with tempfile.TemporaryDirectory() as temp:
         window.destroy()
         print(f"Installed stress check: 500 items loaded in {load_seconds:.3f}s; only viewport cards hydrated.")
 print(
-    "GTK smoke passed: immediate cards, deferred off-screen removals, rate-limit recovery, uploader pagination, scroll persistence, four component chooser."
+    "GTK smoke passed: immediate cards, deferred off-screen removals, index-only compatibility, uploader pagination, scroll persistence, four component chooser."
 )
 """
 
