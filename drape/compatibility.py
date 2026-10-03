@@ -5,7 +5,11 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import sys
 import time
+from urllib.parse import urlsplit
+
+import requests
 
 PATH = (
     Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
@@ -14,6 +18,26 @@ PATH = (
 )
 RULES_VERSION = 2
 FORMAT = "drape-compatibility/v1"
+
+
+def fetch_snapshot(url, index=None):
+    """Explicitly download one public snapshot; browsing never calls this."""
+    from . import http
+
+    if urlsplit(url).scheme != "https":
+        raise ValueError("Compatibility snapshot URL must use HTTPS")
+    limit = 16 * 1024 * 1024
+    try:
+        with http.get(url, stream=True, timeout=(15, 60)) as response:
+            response.raise_for_status()
+            data = bytearray()
+            for chunk in response.iter_content(chunk_size=65536):
+                if len(data) + len(chunk) > limit:
+                    raise ValueError("Compatibility snapshot exceeds 16 MiB")
+                data.extend(chunk)
+        return (index or Index()).import_records(json.loads(data))
+    except requests.RequestException as exc:
+        raise ValueError("Could not download the compatibility snapshot") from exc
 
 
 class Index:
@@ -31,6 +55,35 @@ class Index:
         connection.execute("""CREATE TABLE IF NOT EXISTS observations (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT, identity TEXT UNIQUE, record TEXT)""")
         return connection
+
+    def read_many(self, items):
+        """Read one snapshot without creating a DB, writing records or opening archives."""
+        results = {item.id: {} for item in items}
+        if not self.path.exists():
+            return results
+        try:
+            with closing(
+                sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.1)
+            ) as db:
+                db.execute("BEGIN")
+                now = time.time()
+                for item in items:
+                    for file in item.files:
+                        rows = db.execute(
+                            "SELECT parts,complete,checked,rules FROM inspections WHERE item=? AND filename=? AND revision=? AND rules IN (1,?) ORDER BY CASE origin WHEN 'local' THEN 0 ELSE 1 END",
+                            (item.id, file.name, self.revision(item, file), RULES_VERSION),
+                        ).fetchall()
+                        for parts, complete, checked, rules in rows:
+                            parsed = set(json.loads(parts))
+                            if not parsed and not complete and rules < 2:
+                                continue
+                            if now - checked < (7 * 86400 if complete else 600):
+                                results[item.id][file.index] = (parsed, bool(complete))
+                                break
+        except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+            print(f"drape: compatibility index unavailable: {exc}", file=sys.stderr)
+            return {item.id: {} for item in items}
+        return results
 
     @staticmethod
     def revision(item, file):

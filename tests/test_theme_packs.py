@@ -122,7 +122,7 @@ class ThemePacksTest(unittest.TestCase):
     def test_theme_pack_category_registered(self):
         self.assertEqual(pling.KINDS_BY_KEY["packs"].label, "Theme packs")
 
-    def test_cli_pack_search_does_not_admit_unverified_single_themes(self):
+    def test_cli_pack_search_uses_index_and_keeps_unknown_themes_visible(self):
         import io
         from contextlib import redirect_stdout, redirect_stderr
 
@@ -154,9 +154,9 @@ class ThemePacksTest(unittest.TestCase):
         with (
             mock.patch.object(pling, "search", return_value=(items, 3)),
             mock.patch.object(
-                cli.peek,
-                "inspect_downloads",
-                side_effect=[(item, {1: result}) for item, result in zip(items, results)],
+                cli.compatibility.Index,
+                "read_many",
+                return_value={item.id: {1: result} for item, result in zip(items, results)},
             ),
             redirect_stdout(output),
             redirect_stderr(io.StringIO()),
@@ -164,7 +164,7 @@ class ThemePacksTest(unittest.TestCase):
             cli.cmd_search(args)
         self.assertIn("Bundle", output.getvalue())
         self.assertNotIn("Single", output.getvalue())
-        self.assertNotIn("Unknown", output.getvalue())
+        self.assertIn("Unknown", output.getvalue())
 
     def test_theme_and_wallpaper_bundle_installs_both_without_previews(self):
         self.session("cinnamon", "muffin", {"gtk", "desktop", "icons", "wallpapers"})

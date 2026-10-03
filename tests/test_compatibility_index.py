@@ -37,6 +37,44 @@ class CompatibilityIndexTest(unittest.TestCase):
         self.assertEqual(self.index.inspection(self.item, self.file), self.result)
         self.assertIsNone(self.index.inspection(self.item, replace(self.file, md5="def")))
 
+    def test_read_only_snapshot_does_not_create_missing_database(self):
+        self.assertEqual(self.index.read_many([self.item]), {self.item.id: {}})
+        self.assertFalse(self.index.path.exists())
+
+    def test_read_only_snapshot_matches_revision_and_expiry(self):
+        self.record()
+        self.assertEqual(self.index.read_many([self.item]), {self.item.id: {1: self.result}})
+        changed = replace(self.item, files=[replace(self.file, md5="def")])
+        self.assertEqual(self.index.read_many([changed]), {self.item.id: {}})
+        with mock.patch.object(compatibility.time, "time", return_value=10**12):
+            self.assertEqual(self.index.read_many([self.item]), {self.item.id: {}})
+
+    def test_public_snapshot_fetch_validates_before_importing(self):
+        import json
+
+        self.record()
+        payload = json.dumps(self.index.export()).encode()
+        response = mock.Mock()
+        response.__enter__ = mock.Mock(return_value=response)
+        response.__exit__ = mock.Mock(return_value=False)
+        response.iter_content.return_value = iter([payload])
+        other = compatibility.Index(Path(self.temp.name) / "downloaded.sqlite3")
+        with mock.patch("drape.http.get", return_value=response):
+            self.assertEqual(
+                compatibility.fetch_snapshot("https://example.test/index.json", other), 1
+            )
+        self.assertEqual(other.inspection(self.item, self.file), self.result)
+
+    def test_invalid_public_snapshot_does_not_create_database(self):
+        response = mock.Mock()
+        response.__enter__ = mock.Mock(return_value=response)
+        response.__exit__ = mock.Mock(return_value=False)
+        response.iter_content.return_value = iter([b'{"format":"bad","observations":[]}'])
+        with mock.patch("drape.http.get", return_value=response):
+            with self.assertRaises(ValueError):
+                compatibility.fetch_snapshot("https://example.test/index.json", self.index)
+        self.assertFalse(self.index.path.exists())
+
     def test_fallback_revision_uses_modification_date(self):
         file = replace(self.file, md5="")
         self.index.record(self.item, file, self.result, "gtk", self.context, "compatible")

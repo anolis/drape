@@ -206,6 +206,10 @@ The website changelog lives in `docs/changelog.html`. Add daily highlights to
 `docs/changelog-highlights.json`, then run `python3 tools/update_changelog.py` from a
 full checkout to rebuild it with every commit in the current branch's history.
 
+Archive compatibility inspection runs separately from the GUI. See the
+[worker guide](docs/compatibility-worker.md) for local index generation, portable snapshots
+and explicit imports. Browsing uses existing evidence and leaves unknown themes visible.
+
 The GUI entry point is `drape/app.py`; its implementation is in `drape/ui/`:
 
 - `application.py`: GTK lifecycle and incoming OCS links.

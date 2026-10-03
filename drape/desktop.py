@@ -12,6 +12,7 @@ from urllib.parse import unquote, urlsplit
 from gi.repository import Gio
 from . import kde, xfce, settings
 from .kde import ApplyError
+from .theme_css import NEW_DIALOG_RE, OLD_DIALOG_RE, cinnamon_css_imports, cinnamon_css_outdated
 
 # component -> (schema, key) for the running desktop
 KEYS = {
@@ -485,20 +486,6 @@ def find_theme_dir(name):
 
 # Cinnamon 5.4 moved its dialogs (password prompts, logout, ...) from .modal-dialog to .dialog /
 # .prompt-dialog. Themes that only style the old names leave those dialogs without a background.
-NEW_DIALOG_RE = re.compile(r"(^|[\s,}>])\.(dialog|prompt-dialog)\b", re.M)
-OLD_DIALOG_RE = re.compile(r"(^|[\s,}>])\.modal-dialog\b", re.M)
-
-
-def cinnamon_css_imports(css):
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return re.findall(r"@import\s+(?:url\(\s*)?[\"']([^\"']+)[\"']", css)
-
-
-def cinnamon_css_outdated(css):
-    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return not NEW_DIALOG_RE.search(css)
-
-
 def hide_outdated_cinnamon():
     return (
         settings.get("only_applicable")

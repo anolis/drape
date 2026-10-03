@@ -2,12 +2,11 @@
 
 import argparse
 import json
-import math
 import sqlite3
 import sys
 from pathlib import Path
 
-from . import desktop, installer, pling, settings, peek
+from . import compatibility, desktop, installer, pling, settings
 
 
 # Terminal output helpers
@@ -41,22 +40,13 @@ def cmd_search(a):
         return
     items, total = pling.search(a.kind, a.query, a.sort, a.page, max(a.limit, 10), categories)
     if only:
-        installed = installer.load_manifest() if a.kind == "packs" else None
-        visible = []
-        for item in items:
-            try:
-                _, checks = peek.inspect_downloads(item, a.kind, installed)
-                status = desktop.download_status(list(checks.values()), a.kind)
-            except peek.RateLimited as exc:
-                print(
-                    f"{item.name}: compatibility check rate-limited; retry in {math.ceil(exc.retry_after)}s.",
-                    file=sys.stderr,
-                )
-                visible.append(item)
-            else:
-                if status == "compatible":
-                    visible.append(item)
-        items = visible
+        indexed = compatibility.Index().read_many(items)
+        items = [
+            item
+            for item in items
+            if desktop.download_status(list(indexed.get(item.id, {}).values()), a.kind)
+            != "incompatible"
+        ]
     items = items[: a.limit]  # the API won't return pages smaller than 10
     for it in items:
         print(
@@ -229,6 +219,9 @@ def cmd_compatibility(a):
                 Path(a.output).write_text(document)
             else:
                 print(document, end="")
+        elif a.operation == "fetch":
+            count = compatibility.fetch_snapshot(a.url, index)
+            print(f"Imported {count} compatibility observations.")
         else:
             count = index.import_records(json.loads(Path(a.path).read_text()))
             print(f"Imported {count} compatibility observations.")
@@ -314,6 +307,11 @@ def main(argv=None):
     imported = operations.add_parser("import")
     imported.add_argument("path", help="reviewed compatibility JSON file")
     imported.set_defaults(func=cmd_compatibility)
+    fetched = operations.add_parser(
+        "fetch", help="download and import a reviewed public HTTPS snapshot"
+    )
+    fetched.add_argument("url")
+    fetched.set_defaults(func=cmd_compatibility)
 
     for name in ("search", "install", "install-url", "install-file"):
         sub.choices[name].add_argument(

@@ -200,10 +200,18 @@ class _RangeFile(io.RawIOBase):
                 headers={"User-Agent": USER_AGENT, "Range": f"bytes={start}-{end}"},
                 timeout=(15, 60),
                 retry_server_errors=False,
+                stream=True,
             )
-            r.raise_for_status()
-            self.blocks[i] = r.content
-            self.fetched += len(r.content)
+            try:
+                r.raise_for_status()
+                if r.status_code != 206:
+                    raise OSError("Host does not support bounded ZIP range reads")
+                self.blocks[i] = _read_prefix(r, end - start + 1)
+                if len(self.blocks[i]) != end - start + 1:
+                    raise OSError("Truncated ZIP range response")
+            finally:
+                r.close()
+            self.fetched += len(self.blocks[i])
             if self.fetched > 4 * 1024 * 1024:
                 raise OSError("zip table of contents is too large to peek at")
         return self.blocks[i]
@@ -227,13 +235,28 @@ def _size(url):
         headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"},
         timeout=(15, 30),
         retry_server_errors=False,
+        stream=True,
     )
-    r.raise_for_status()
-    total = r.headers.get("content-range", "").rsplit("/", 1)[-1]
-    return int(total) if total.isdigit() else 0
+    try:
+        r.raise_for_status()
+        total = r.headers.get("content-range", "").rsplit("/", 1)[-1]
+        return int(total) if total.isdigit() else 0
+    finally:
+        r.close()
+
+
+def _read_prefix(response, limit):
+    """Close callers' streams after a bounded prefix, even if a host ignores Range."""
+    result = bytearray()
+    for chunk in response.iter_content(chunk_size=min(limit, 16384)):
+        result.extend(chunk[: limit - len(result)])
+        if len(result) >= limit:
+            break
+    return bytes(result)
 
 
 CSS_LIMIT = 512 * 1024
+DECOMPRESSED_LIMIT = 8 * 1024 * 1024
 CINNAMON_MARKERS = {
     "cinnamon-legacy",
     "cinnamon-modern",
@@ -253,7 +276,7 @@ def _css_root(name):
 
 def _cinnamon_markers(names, styles, complete):
     """Tag inspected CSS; partial imported styles remain unknown, not old."""
-    from .desktop import cinnamon_css_outdated, cinnamon_css_imports, OLD_DIALOG_RE
+    from .theme_css import cinnamon_css_outdated, cinnamon_css_imports, OLD_DIALOG_RE
 
     roots = {_css_root(name) for name in names if name.lower().endswith("cinnamon/cinnamon.css")}
     if not roots:
@@ -342,21 +365,29 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
             headers={"User-Agent": USER_AGENT, "Range": f"bytes=0-{budget - 1}"},
             timeout=(15, 60),
             retry_server_errors=False,
+            stream=True,
         )
-        r.raise_for_status()
-        raw = r.content
+        try:
+            r.raise_for_status()
+            raw = _read_prefix(r, budget)
+        finally:
+            r.close()
         complete = len(raw) < budget
         try:
             if name.endswith((".gz", ".tgz")):
-                data = zlib.decompressobj(16 + zlib.MAX_WBITS).decompress(raw)
+                data = zlib.decompressobj(16 + zlib.MAX_WBITS).decompress(raw, DECOMPRESSED_LIMIT)
             elif name.endswith((".xz", ".txz")):
-                data = lzma.LZMADecompressor().decompress(raw)
+                data = lzma.LZMADecompressor(memlimit=64 * 1024 * 1024).decompress(
+                    raw, max_length=DECOMPRESSED_LIMIT
+                )
             elif name.endswith((".bz2", ".tbz", ".tbz2")):
-                data = bz2.BZ2Decompressor().decompress(raw)
+                data = bz2.BZ2Decompressor().decompress(raw, max_length=DECOMPRESSED_LIMIT)
             else:
                 data = raw
         except (zlib.error, lzma.LZMAError, OSError, EOFError):
             return [], False
+        if len(data) >= DECOMPRESSED_LIMIT:
+            complete = False
         names, styles, remaining = [], {}, CSS_LIMIT * 2
         try:
             with tarfile.open(fileobj=io.BytesIO(data), mode="r|") as t:
@@ -405,7 +436,7 @@ def cached(item_id, filename):
     return parts, entry["complete"]
 
 
-def contents(item_id, url, filename, use_cache=True):
+def contents(item_id, url, filename, use_cache=True, inspect_css=None, write_cache=True):
     """(parts, complete) for a download, from cache or by peeking. Blocking; call from a worker."""
     hit = cached(item_id, filename) if use_cache else None
     if hit is not None:
@@ -419,10 +450,15 @@ def contents(item_id, url, filename, use_cache=True):
                 for n in names
             ):
                 complete = False  # an outer listing cannot prove what's in nested archives
-            from .desktop import cinnamon_filter_active
+            if inspect_css is None:
+                from .desktop import cinnamon_filter_active
+
+                check_css = cinnamon_filter_active()
+            else:
+                check_css = inspect_css
 
             needs_css = (
-                cinnamon_filter_active()
+                check_css
                 and "desktop" in parts
                 and not parts & {"cinnamon-modern", "cinnamon-legacy"}
             )
@@ -440,7 +476,9 @@ def contents(item_id, url, filename, use_cache=True):
             response = getattr(cause, "response", None)
             if isinstance(cause, requests.HTTPError) and response is not None:
                 if response.status_code in EXPIRED_STATUSES:
-                    raise LinkExpired(f"Download link refused (HTTP {response.status_code}).") from exc
+                    raise LinkExpired(
+                        f"Download link refused (HTTP {response.status_code})."
+                    ) from exc
                 break
             cause = cause.__cause__ or cause.__context__
         raise InspectionFailed(
@@ -450,21 +488,22 @@ def contents(item_id, url, filename, use_cache=True):
         parts.add("cinnamon-unknown")
     if not complete and parts == {"wallpapers"}:
         parts = set()  # only saw pictures at the start: could be a theme's previews, so don't guess
-    with _lock:
-        data = _load()
-        data[f"{item_id}:{filename}"] = {
-            "parts": sorted(parts),
-            "complete": complete,
-            "cinnamon_checked_at": time.time(),
-            "evidence_version": 2,
-        }
-        try:
-            CACHE.parent.mkdir(parents=True, exist_ok=True)
-            tmp = CACHE.with_suffix(".tmp")
-            tmp.write_text(json.dumps(data))
-            tmp.replace(CACHE)
-        except OSError:
-            pass
+    if write_cache:
+        with _lock:
+            data = _load()
+            data[f"{item_id}:{filename}"] = {
+                "parts": sorted(parts),
+                "complete": complete,
+                "cinnamon_checked_at": time.time(),
+                "evidence_version": 2,
+            }
+            try:
+                CACHE.parent.mkdir(parents=True, exist_ok=True)
+                tmp = CACHE.with_suffix(".tmp")
+                tmp.write_text(json.dumps(data))
+                tmp.replace(CACHE)
+            except OSError:
+                pass
     return parts, complete
 
 

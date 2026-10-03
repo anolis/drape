@@ -84,7 +84,10 @@ class CinnamonFilterTest(unittest.TestCase):
             member.size = len(css)
             archive.addfile(member, io.BytesIO(css))
         response = SimpleNamespace(
-            content=data.getvalue(), status_code=200, raise_for_status=lambda: None
+            iter_content=lambda **_: iter([data.getvalue()]),
+            status_code=200,
+            raise_for_status=lambda: None,
+            close=lambda: None,
         )
         with mock.patch.object(peek.requests, "get", return_value=response):
             names, complete = peek.list_archive("url", "theme.tar.gz")
