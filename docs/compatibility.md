@@ -19,13 +19,14 @@ Catalog IDs verified against `/ocs/v1/content/categories` on 2026-09-28:
 | Window borders | Xfwm4 | 138 |
 | Window borders | KWin / Aurorae | 114; also 717 on Plasma 6 |
 | GTK controls | Cinnamon, MATE, GNOME, Xfce | 135 |
+| Qt widget applications | Any desktop with a Kvantum engine | 123 |
 | Icons / cursors | Shared | 132 / 107 |
 
 Cinnamon 5.4 and newer render all title bars with the GTK Controls theme and no longer
 use Metacity border themes. Drape hides their separate Window borders section and does
 not write the obsolete border-theme setting. See [Linux Mint's Cinnamon 5.4 release notes](https://linuxmint.com/rel_vanessa_cinnamon_whatsnew.php).
 
-Theme packs combine the applicable GTK, desktop-style, window-border, global-theme and
+Theme packs combine the applicable GTK, Kvantum, desktop-style, window-border, global-theme and
 color-scheme catalogs above; catalog IDs were rechecked on 2026-10-03. A bundle must contain
 at least two supported appearance parts, including controls, desktop style or window borders.
 Compatible KDE global themes also qualify. An archive's GTK 2/3/4 directories count as one
@@ -40,6 +41,9 @@ as decorations. A catalog match is not a guarantee that a theme's CSS, QML, or e
 dependencies work on every release.
 
 ## Desktop-aware compatibility filtering
+
+Qt widget themes work independently of the desktop shell. See [Qt setup](qt.md) for
+engine installation, the first-login requirement and application-specific overrides.
 
 **☰ → Hide incompatible themes for this desktop** defaults to on and controls every theme category in Browse and Installed. Compatibility follows the desktop, window manager, display manager and known version requirements. Unsupported sections remain hidden independently of this preference. Disabling the filter reveals incompatible downloads within supported sections, but does not enable applying unsupported components.
 
@@ -110,7 +114,7 @@ Old `.desktop`-only global themes are rejected on Plasma 6. Applying a global th
 not request `--resetLayout`, but can change multiple appearance settings. Themes may require
 separate icons, styles or plugins: Drape installs components present in the download, and
 does not automatically install external dependencies or run bundled installation scripts.
-Kvantum and compiled Qt/KWin plugins are outside the supported archive formats.
+Arbitrary compiled Qt/KWin plugins are outside the supported archive formats.
 
 References: [KDE theme formats and locations](https://develop.kde.org/docs/plasma/),
 [Plasma 6 theme changes](https://develop.kde.org/docs/plasma/theme/theme-porting-to-plasma6/),

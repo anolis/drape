@@ -8,6 +8,7 @@ from .common import PART_NAMES, error_dialog, in_use
 
 
 ORDER = [
+    "kvantum",
     "lookandfeel",
     "plasma",
     "colors",
@@ -119,7 +120,8 @@ def apply_pack(window, key, only_kind=None):
         if done:
             applied.extend(done)
     if applied:
+        note = " " + desktop.qt.RESTART_NOTE if "kvantum" in applied else ""
         window.notify(
-            f"Applied {entry['title']} ({', '.join(PART_NAMES.get(p, p) for p in applied)})."
+            f"Applied {entry['title']} ({', '.join(PART_NAMES.get(p, p) for p in applied)})." + note
         )
         window.refresh_item(key)

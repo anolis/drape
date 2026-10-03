@@ -11,6 +11,7 @@ from .images import _renders, load_image
 
 ACTIVE_PARTS = [
     ("gtk", "Controls"),
+    ("kvantum", "Qt applications"),
     ("wm", "Window borders"),
     ("desktop", "Desktop"),
     ("icons", "Icons"),
@@ -30,6 +31,8 @@ def locate_theme(part, name):
     """Folder of the theme in use for a part, looked up the way the desktop does."""
     if not name:
         return None
+    if part == "kvantum":
+        return desktop.qt.locate(name)
     if desktop.current_desktop() == "kde" and desktop.theme_part(part) in desktop.kde.DIRECTORIES:
         return desktop.kde.locate(desktop.theme_part(part), name)
     if part in ("gtk", "wm", "desktop"):
@@ -147,7 +150,7 @@ class ActiveCard(FadingCard):
 
     def _describe(self, part):
         """(name, detail line, drape manifest key, page for Change) - and start the preview."""
-        if part in ("gtk", "wm", "desktop", "icons", "cursors", "lookandfeel", "colors"):
+        if part in ("gtk", "kvantum", "wm", "desktop", "icons", "cursors", "lookandfeel", "colors"):
             name = desktop.get(part) or ""
             path = locate_theme(part, name)
             source, key = theme_source(path)

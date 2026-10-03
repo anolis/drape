@@ -1,5 +1,6 @@
 """Detect theme compatibility and apply components via GSettings or Xfconf."""
 
+import configparser
 import functools
 import os
 import re
@@ -10,7 +11,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from gi.repository import Gio
-from . import kde, xfce, settings
+from . import kde, xfce, settings, qt
 from .kde import ApplyError
 from .theme_css import NEW_DIALOG_RE, OLD_DIALOG_RE, cinnamon_css_imports, cinnamon_css_outdated
 
@@ -155,6 +156,8 @@ def _key(part):
 
 
 def supported(part):
+    if part == "kvantum":
+        return qt.supported()
     if part == "packs":
         return any(supported(p) for p in ("gtk", "desktop", "wm", "lookandfeel", "plasma"))
     if part in ("wm", "aurorae") and border_part() == "aurorae":
@@ -196,6 +199,8 @@ def _xfconf(key, value=None):
 
 
 def get(part):
+    if part == "kvantum":
+        return qt.get()
     if part == "wallpapers" and current_desktop() == "xfce":
         return xfce.wallpaper()
     if current_desktop() == "kde" or part in ("wm", "aurorae") and border_part() == "aurorae":
@@ -214,6 +219,11 @@ def get(part):
 
 
 def set_(part, value):
+    if part == "kvantum":
+        try:
+            return qt.enable(value)
+        except (OSError, ValueError, configparser.Error) as exc:
+            raise ApplyError(str(exc)) from exc
     if part == "wallpapers" and current_desktop() == "xfce":
         return xfce.apply_wallpaper(value) if supported(part) else False
     if current_desktop() == "kde" or part in ("wm", "aurorae") and border_part() == "aurorae":
@@ -292,6 +302,8 @@ def compatible_parts(component):
             continue
         if not supported(part):
             continue
+        if part == "kvantum" and component.get("name", path.name) not in qt.theme_names(path):
+            continue
         if part in kde.DIRECTORIES and not kde.compatible(part, path):
             continue
         # Our supported desktop shells use GTK 3; a GTK 2/4-only theme
@@ -312,7 +324,7 @@ def scope(kind, only=True):
     )
     if kind == "packs":
         categories = []
-        for category in ("gtk", "desktop", "wm", "lookandfeel", "colors"):
+        for category in ("gtk", "kvantum", "desktop", "wm", "lookandfeel", "colors"):
             if supported(category):
                 scoped, _ = scope(category, True)
                 if scoped != "":
@@ -329,6 +341,12 @@ def scope(kind, only=True):
         return "125,138,114,717", label
     if not supported(kind):
         return ("" if only else None), f"{label}: applying {kind} themes is not supported."
+    if kind == "kvantum":
+        versions = ", ".join(f"Qt {major}" for major in sorted(qt.engines()))
+        return (
+            "123",
+            f"Kvantum widget themes for {versions}. Restart Qt apps after applying; log out and back in after first enabling the engine.",
+        )
     if kind == "wm":
         return {
             "xfwm": "138",
@@ -638,6 +656,7 @@ def open_windows():
 
 PACK_PARTS = {
     "gtk",
+    "kvantum",
     "desktop",
     "wm",
     "xfwm",
@@ -649,7 +668,7 @@ PACK_PARTS = {
     "cursors",
     "wallpapers",
 }
-PACK_ANCHORS = {"gtk", "desktop", "wm", "xfwm", "aurorae", "plasma"}
+PACK_ANCHORS = {"gtk", "kvantum", "desktop", "wm", "xfwm", "aurorae", "plasma"}
 
 
 def _is_pack(parts):

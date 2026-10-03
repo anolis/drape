@@ -12,10 +12,11 @@ import tempfile
 import time
 from pathlib import Path
 from unittest import mock
-from drape import desktop, installer, pling, settings
+from drape import desktop, installer, pling, settings, qt
 from drape.ui import browse, installed, packs, profile, theme_actions
 from drape.ui.gtk import Gtk, GLib
 from drape.ui.scroll_state import ScrollState
+from drape.ui.qt_settings import QtSettingsPage
 
 
 def pump(duration=0.1):
@@ -38,6 +39,18 @@ with tempfile.TemporaryDirectory() as temp:
     win.show_details = mock.Mock()
     win.refresh_item = mock.Mock()
     win.stack = mock.Mock()
+    win.go_to = mock.Mock()
+    win._sidebar_list = mock.Mock()
+    qt_page = QtSettingsPage(win)
+    with mock.patch.object(qt, "engines", return_value={6}):
+        qt_page.load()
+        labels = [widget.get_label() for row in qt_page.body.get_children() if isinstance(row, Gtk.Box) for widget in row.get_children() if isinstance(widget, Gtk.Button)]
+        assert "Browse Qt themes" in labels and "Use system default" in labels
+        with mock.patch.object(qt, "enable", return_value=True) as enable:
+            qt_page._enable(None)
+            enable.assert_called_once()
+            assert "log out and back in" in win.notify.call_args.args[0]
+    qt_page.destroy()
     with (
         mock.patch.object(installer, "load_manifest", return_value={}),
         mock.patch.object(desktop, "supported", return_value=True),

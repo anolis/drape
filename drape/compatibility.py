@@ -16,7 +16,8 @@ PATH = (
     / "drape"
     / "compatibility.sqlite3"
 )
-RULES_VERSION = 2
+# Kvantum file-pair detection changes archive evidence; older listings need rescanning.
+RULES_VERSION = 3
 FORMAT = "drape-compatibility/v1"
 
 

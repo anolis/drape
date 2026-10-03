@@ -276,7 +276,8 @@ class ThemeActions:
                     action=("Show me", self.show_border_sample),
                 )
             else:
-                self.notify(f"Now using {component['name']} ({', '.join(applied)}).")
+                note = " " + desktop.qt.RESTART_NOTE if "kvantum" in applied else ""
+                self.notify(f"Now using {component['name']} ({', '.join(applied)})." + note)
         else:
             self.notify(
                 "Your desktop doesn't support applying this automatically.", Gtk.MessageType.WARNING

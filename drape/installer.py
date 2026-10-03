@@ -18,7 +18,7 @@ from pathlib import Path
 
 import requests
 
-from . import helper, wincursors, kde, http
+from . import helper, wincursors, kde, http, qt
 from .pling import USER_AGENT
 from .records import InstallError, ManifestStore
 
@@ -76,6 +76,7 @@ class Component:
     path: Path  # directory (or image file) in the extraction area
     name: str  # name it is installed and applied under
     windows: bool = False  # a Windows .cur/.ani pack that needs converting
+    qt_name: str | None = None  # original paired-file stem, retained when names collide
 
 
 # ---------------------------------------------------------------- manifest
@@ -324,6 +325,10 @@ def classify(root, fallback_name, include_wallpapers=False):
     components = []
 
     def walk(d):
+        # Kvantum variants may share a directory; install each matching file pair.
+        qt_names = qt.theme_names(d)
+        for name in qt_names:
+            components.append(Component(("kvantum",), d, name, qt_name=name))
         kind = _classify_dir(d)
         if kind:
             name = d.name if d != root else _sanitize(fallback_name)
@@ -333,6 +338,14 @@ def classify(root, fallback_name, include_wallpapers=False):
                 except ValueError as e:
                     raise InstallError(str(e)) from e
             components.append(Component(kind, d, name.removesuffix(".d")))
+            # GTK packs often tuck a Qt companion into a Kvantum subfolder.
+            for child in sorted(d.iterdir()):
+                if (
+                    child.is_dir()
+                    and not child.is_symlink()
+                    and (child.name.lower() == "kvantum" or qt.theme_names(child))
+                ):
+                    walk(child)
             return
         for file in sorted(d.glob("*.colors")):
             if "[Colors:Window]" in _read(file):
@@ -390,6 +403,8 @@ def _system_name(name):
 
 
 def _dest_for(comp, wallpaper_dir):
+    if comp.provides == ("kvantum",):
+        return qt.THEMES_DIR / comp.name
     if comp.provides[0] in kde.DIRECTORIES:
         folder = kde.DATA_HOME / kde.DIRECTORIES[comp.provides[0]]
         return folder / (comp.name + ".colors" if comp.provides[0] == "colors" else comp.name)
@@ -497,7 +512,9 @@ def install_file(
                     c.provides[0] in SYSTEM_KINDS and desktop.system_part_compatible(c.provides[0])
                 ) or (
                     c.provides[0] not in SYSTEM_KINDS
-                    and desktop.compatible_parts({"provides": c.provides, "path": str(c.path)})
+                    and desktop.compatible_parts(
+                        {"provides": c.provides, "path": str(c.path), "name": c.name}
+                    )
                 ):
                     usable.append(c)
                 else:
@@ -512,7 +529,7 @@ def install_file(
                     "to install themes for another session."
                 )
         if required_kind == "packs" and not desktop.pack_components(
-            [{"provides": c.provides, "path": str(c.path)} for c in comps]
+            [{"provides": c.provides, "path": str(c.path), "name": c.name} for c in comps]
         ):
             raise IncompatibleError(
                 "This download is not a theme pack for the current desktop. "
@@ -573,6 +590,13 @@ def install_file(
                         wincursors.convert_theme(c.path, dest, c.name)
                     except wincursors.ConversionError as e:
                         raise InstallError(str(e)) from e
+                elif c.qt_name:
+                    dest.mkdir()
+                    for suffix in (".kvconfig", ".svg"):
+                        shutil.copy2(c.path / (c.qt_name + suffix), dest / (c.name + suffix))
+                    for name in ("preview.png", "screenshot.png"):
+                        if (c.path / name).is_file():
+                            shutil.copy2(c.path / name, dest / name)
                 elif c.path.is_dir():
                     shutil.copytree(
                         c.path, dest, symlinks=True, ignore=shutil.ignore_patterns(".git")
@@ -764,6 +788,7 @@ def _remove_path(p):
         THEMES_DIR,
         WALLPAPER_DIR,
         STAGING_DIR,
+        qt.THEMES_DIR,
         *(kde.DATA_HOME / folder for folder in kde.DIRECTORIES.values()),
     )
     if not any(

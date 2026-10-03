@@ -3,7 +3,7 @@
 A theme manager for Linux desktops that treats each part of your look separately. Browse
 [GNOME-Look](https://www.gnome-look.org), [KDE-Look](https://www.kde-look.org), and
 [Xfce-Look](https://www.xfce-look.org) through their shared Pling catalog by category — **icons,
-cursors, controls (GTK), window borders, desktop styles, KDE global themes, color schemes and wallpapers** — and install or apply them in one
+cursors, controls (GTK), Qt applications (Kvantum), window borders, desktop styles, KDE global themes, color schemes and wallpapers** — and install or apply them in one
 click. No hunting for archives, no guessing which folder things go in.
 
 ![drape browsing cursor themes](docs/img/shot-cursors.png)
@@ -43,6 +43,12 @@ click. No hunting for archives, no guessing which folder things go in.
   during this app session. Xfwm variants show previews from their own title-bar artwork.
   Wallpaper application covers configured monitors/workspaces, discovers active displays on X11
   even before their wallpaper settings exist, and stops wallpaper cycling.
+- **Themes Qt widget applications.** The **Qt applications** catalog offers Kvantum themes
+  across desktops, including companions in theme packs. **Settings → Qt appearance** detects
+  Qt 5/6 engines, offers repository installation, enables the style and restores the system
+  default. Log out and back in after first setup; restart Qt apps after later theme switches.
+  Apps with custom stylesheets or sandboxed runtimes may need their own settings. See
+  [Qt setup](docs/qt.md).
 - **Supports KDE Plasma.** Plasma styles, global themes, color schemes and Aurorae window
   decorations install into their native user data folders. Icons, cursors and wallpapers use
   Plasma's apply tools too. Catalog selection follows Plasma 5/6, with KWin detected on X11
@@ -60,7 +66,7 @@ click. No hunting for archives, no guessing which folder things go in.
   Turn the filter off to broaden downloads within supported sections, or use CLI `--all-themes`
   to install for another session; this does not enable applying unsupported components.
 
-  Compiz decorators, GNOME Shell themes, compiled Qt styles/KWin plugins, Kvantum engines,
+  Compiz decorators, GNOME Shell themes, arbitrary compiled Qt styles/KWin plugins,
   and non-KWin window borders on Wayland are not supported yet.
   GTK application themes on KDE should be configured in KDE's own settings. Drape does not assume these sessions use
   GNOME settings just because the schemas are installed. Compatibility checks identify formats,
@@ -134,7 +140,7 @@ when GNOME updates.
 
 ## Install
 
-Needs Python 3.12+, PyGObject with GTK 3, Pillow and Requests, plus polkit for boot splash and login screen changes. Xfce uses `xfconf-query`; KDE uses its native Plasma apply tools.
+Needs Python 3.12+, PyGObject with GTK 3, Pillow and Requests, plus polkit for boot splash and login screen changes. Xfce uses `xfconf-query`; KDE uses its native Plasma apply tools. Qt widget themes require a Kvantum plugin for the app's Qt major version; **Settings → Qt appearance** detects Qt 5/6 engines and offers installation from configured Arch or Debian/Ubuntu repositories.
 
 If dependencies are missing, Drape offers to install them on Arch-based distributions (including CachyOS) and Debian/Ubuntu-based distributions. Terminal launches use a y/n prompt and `sudo`; menu launches use a dialog and `pkexec`. If GTK's Python bindings are missing, the dialog uses KDialog or Zenity when available. Installation only runs after you accept, and Drape resumes after a successful installation.
 

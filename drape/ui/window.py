@@ -126,6 +126,10 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
 
         self.xfcepage = XfcePanelPage(self)
         self.stack.add_titled(self.xfcepage, "xfcepanel", "Xfce panel")
+        from .qt_settings import QtSettingsPage
+
+        self.qtpage = QtSettingsPage(self)
+        self.stack.add_titled(self.qtpage, "qtsettings", "Qt appearance")
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
         side = self._sidebar()
@@ -173,7 +177,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         except GLib.Error:
             self.set_icon_name("preferences-desktop-theme")
 
-    SETTINGS_PAGES = ("lock", "windowmanager", "xfcepanel")
+    SETTINGS_PAGES = ("lock", "windowmanager", "xfcepanel", "qtsettings")
 
     def page_visible(self, name):
         if name == "xfcepanel":
@@ -383,7 +387,13 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.search.set_sensitive(False)
             self.sort_combo.set_sensitive(False)
             return
-        searchable = child not in (self.installed, self.lockpage, self.wmpage, self.xfcepage)
+        searchable = child not in (
+            self.installed,
+            self.lockpage,
+            self.wmpage,
+            self.xfcepage,
+            self.qtpage,
+        )
         self.search.set_sensitive(searchable)
         self.sort_combo.set_sensitive(searchable)
         if child is self.lockpage:
@@ -392,6 +402,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.wmpage.load()
         elif child is self.xfcepage:
             self.xfcepage.load()
+        elif child is self.qtpage:
+            self.qtpage.load()
         elif child is self.installed:
             self.installed.load()
         elif not child.loaded:

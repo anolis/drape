@@ -92,6 +92,9 @@ def classify_names(names):
     """Parts a theme archive contains, judged from its paths only."""
     parts = set()
     lower = [n.lower().strip("/") for n in names]
+    qt_artwork = {n.removesuffix(".kvconfig") + ".svg" for n in lower if n.endswith(".kvconfig")}
+    if qt_artwork & set(lower):
+        parts.add("kvantum")
     dirs = set()
     for n in lower:
         bits = n.split("/")
@@ -151,6 +154,7 @@ def classify_names(names):
         if IMAGE_RE.search(n)
         and not re.search(theme_bits, n)
         and not icon_dir.search(n)
+        and n not in qt_artwork
         and not re.search(r"(preview|screenshot|thumbnail|logo)", n.rsplit("/", 1)[-1])
     ]
     if (
