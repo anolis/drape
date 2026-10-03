@@ -25,13 +25,17 @@ def _print_entry(key, e):
 
 
 def cmd_search(a):
-    only = not a.all_themes and settings.get("only_applicable")
+    only = a.kind == "packs" or (not a.all_themes and settings.get("only_applicable"))
     categories, note = desktop.scope(a.kind, only)
     if categories == "":
         print(note, file=sys.stderr)
         return
     items, total = pling.search(a.kind, a.query, a.sort, a.page, max(a.limit, 10), categories)
-    if only:
+    if a.kind == "packs":
+        items = [it for it in items if any(
+            desktop.archive_compatible(*(peek.cached(it.id, f.name) or peek.contents(it.id, f.url, f.name)), "packs")
+            for f in it.files)]
+    elif only:
         items = [it for it in items if not it.files or any(
             (hit := peek.cached(it.id, f.name)) is None or desktop.archive_compatible(*hit, a.kind)
             for f in it.files)]

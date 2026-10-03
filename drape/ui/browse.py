@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 
+from .card_transitions import CardFlow, FadingCard
 from .gtk import GLib, Gtk, Pango
 from .. import desktop, installer, peek, pling, settings, system
 from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, _safe, run_async
@@ -19,11 +20,13 @@ CHUNK = 10          # results per request: small batches paint sooner on slow co
 FIRST_CHUNKS = 3    # batches requested up front when a tab opens
 
 
-class Card(Gtk.FlowBoxChild):
+class Card(FadingCard):
     def __init__(self, window, kind, item):
         super().__init__()
         self.win, self.kind, self.item = window, kind, item
-        self.compatible = True
+        self.cinnamon_legacy = False
+        self.compatible = kind != "packs"
+        self.pack_pending = kind == "packs" and bool(item.files)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         frame = Gtk.Frame()
@@ -71,7 +74,7 @@ class Card(Gtk.FlowBoxChild):
         box.pack_start(meta, False, False, 0)
         self.misfiled = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34, no_show_all=True)
         box.pack_start(self.misfiled, False, False, 0)
-        if not item.previews:
+        if not item.previews or kind == "packs":
             self._peek(None)
 
         self.actions = Gtk.Box(spacing=6)
@@ -92,23 +95,31 @@ class Card(Gtk.FlowBoxChild):
                 return
 
         def work():
-            if alive is not None and not alive.is_set():
+            if self.departing or (alive is not None and not alive.is_set()):
                 return
             result = peek.contents(self.item.id, f.url, f.name)
             if not desktop.archive_compatible(*result, self.kind):
                 for other in self.item.files:
+                    if self.departing:
+                        return
                     if other != f:
                         peek.contents(self.item.id, other.url, other.name)
-            GLib.idle_add(self._show_glyphs, *result)
+            GLib.idle_add(self._show_glyphs, *result, True)
         _peeks.submit(lambda: _safe(work))
 
-    def _show_glyphs(self, parts, complete):
+    def _show_glyphs(self, parts, complete, checked=False):
+        if self.in_destruction() or self.departing:
+            return False
         checks = [peek.cached(self.item.id, f.name) for f in self.item.files]
-        self.compatible = not checks or any(
-            hit is None or desktop.archive_compatible(*hit, self.kind) for hit in checks)
+        self.compatible = (self.kind != "packs" and not checks) or any(
+            (hit is None and self.kind != "packs") or
+            (hit is not None and desktop.archive_compatible(*hit, self.kind)) for hit in checks)
+        self.cinnamon_legacy = desktop.hide_outdated_cinnamon() and bool(checks) and all(
+            hit is not None and "cinnamon-legacy" in hit[0] for hit in checks)
+        self.pack_pending = self.kind == "packs" and not self.compatible and not checked and any(hit is None for hit in checks)
         parent = self.get_parent()
         if isinstance(parent, Gtk.FlowBox):
-            parent.invalidate_filter()
+            parent.refilter()
             page = self.win.pages.get(self.kind)
             if page:
                 GLib.idle_add(page._filtered_status)
@@ -141,7 +152,7 @@ class Card(Gtk.FlowBoxChild):
             self.actions.pack_end(rm, False, False, 0)
         elif self.item.files:
             b = Gtk.Button(label="Install")
-            b.connect("clicked", lambda _b: self.win.install(self.item))
+            b.connect("clicked", lambda _b: self.win.install(self.item, required_kind="packs" if self.kind == "packs" else None))
             self.actions.pack_start(b, False, False, 0)
             b2 = Gtk.Button(label="Install & apply")
             b2.get_style_context().add_class("suggested-action")
@@ -166,10 +177,11 @@ class BrowsePage(Gtk.Box):
         self.fetching = False
         self.loaded = False
 
-        self.flow = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
+        self.flow = CardFlow(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
                                 valign=Gtk.Align.START, max_children_per_line=8,
                                 margin=12, row_spacing=6, column_spacing=6)
-        self.flow.set_filter_func(lambda card: not settings.get("only_applicable") or card.compatible)
+        self.flow.set_card_filter(lambda card: ((self.kind != "packs" and not settings.get("only_applicable")) or card.compatible)
+                                        and not card.cinnamon_legacy)
         # "Asking gnome-look.org…" with a spinner, or a message
         self.status = Gtk.Box(spacing=10, margin=24, halign=Gtk.Align.CENTER, no_show_all=True)
         self.status_spinner = Gtk.Spinner()
@@ -206,16 +218,24 @@ class BrowsePage(Gtk.Box):
         self.pack_start(self.scroller, True, True, 0)
 
     def cards(self):
-        return self.flow.get_children()
+        return self.flow.cards()
 
     def _filtered_status(self):
         if self.flow.in_destruction():
             return False
-        message = "No compatible themes in these results."
-        if settings.get("only_applicable") and self.cards() and not any(c.compatible for c in self.cards()):
+        cards = self.cards()
+        only = self.kind == "packs" or settings.get("only_applicable")
+        visible = [card for card in cards if not card.cinnamon_legacy and (not only or card.compatible)]
+        message = "No compatible theme packs in these results." if self.kind == "packs" else "No compatible themes in these results."
+        if self.kind != "packs" and any(card.cinnamon_legacy for card in cards):
+            message = "Themes made for older Cinnamon are hidden. Change this in the ☰ menu."
+        checking = "Checking theme packs for this desktop…"
+        if self.kind == "packs" and not visible and any(card.pack_pending for card in cards):
+            self._set_status(checking, busy=True)
+        elif cards and not visible:
             self._set_status(message)
             self._maybe_more()
-        elif self.status_label.get_text() == message:
+        elif self.status_label.get_text() in (message, checking):
             self._set_status("")
         return False
 
@@ -234,13 +254,14 @@ class BrowsePage(Gtk.Box):
         for it in items:
             self.flow.add(Card(self.win, self.kind, it))
         self.flow.show_all()
+        if self.kind == "packs":
+            GLib.idle_add(self._filtered_status)
 
     def load(self):
         self.loaded = True
         self.generation += 1
         gen = self.generation
-        for c in self.cards():
-            c.destroy()
+        self.flow.clear()
         self.next_chunk, self.total, self.fetching = 0, 0, False
         self.more.hide()
         categories, banner = self._scope()
@@ -290,8 +311,7 @@ class BrowsePage(Gtk.Box):
                     self._add(items)
                 elif [it.id for it in fresh] != shown[:len(fresh)]:
                     # gnome-look changed since last time: swap in the fresh results
-                    for c in self.cards():
-                        c.destroy()
+                    self.flow.clear()
                     self._add(fresh)
                     state["replaced"] = True
             if state["next"]:
@@ -312,6 +332,8 @@ class BrowsePage(Gtk.Box):
 
     def _maybe_more(self):
         """Infinite scroll: start the next batch when the bottom is within a couple of rows."""
+        if self.kind == "packs" and any(card.pack_pending for card in self.cards()):
+            return
         if self.fetching or not self.loaded or not self.cards() or not self._has_more(self.next_chunk):
             return
         # a hidden tab has no height, so it would always look "at the bottom" and load forever

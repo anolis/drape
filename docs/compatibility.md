@@ -25,11 +25,31 @@ Cinnamon 5.4 and newer render all title bars with the GTK Controls theme and no 
 use Metacity border themes. Drape hides their separate Window borders section and does
 not write the obsolete border-theme setting. See [Linux Mint's Cinnamon 5.4 release notes](https://linuxmint.com/rel_vanessa_cinnamon_whatsnew.php).
 
+Theme packs combine the applicable GTK, desktop-style, window-border, global-theme and
+color-scheme catalogs above; catalog IDs were rechecked on 2026-10-03. A bundle must contain
+at least two supported appearance parts, including controls, desktop style or window borders.
+Compatible KDE global themes also qualify. An archive's GTK 2/3/4 directories count as one
+part, and several variants of one part do not qualify by themselves. Unlike ordinary sections,
+unverified downloads stay hidden, and disabling the general compatibility filter does not
+broaden Theme packs. Extraction rechecks compatibility before installation, and Apply pack
+allows one variant per part or Keep current. Drape does not run an archive's installation scripts.
+
 Shared wallpaper categories remain available for desktops with an apply backend.
 Unrecognized or incomplete archive listings remain visible. Installation checks extracted
 files, and Apply checks compatibility again. Source-only compiled plugins are not installed
 as decorations. A catalog match is not a guarantee that a theme's CSS, QML, or external
 dependencies work on every release.
+
+## Older Cinnamon themes
+
+The Cinnamon-only menu toggle **Hide themes made for older Cinnamon** defaults to on.
+On Cinnamon 5.4+, it checks whether desktop-theme CSS includes modern `.dialog` or
+`.prompt-dialog` styles. ZIP and tar inspection reads bounded amounts of CSS, including
+imported styles; incomplete checks stay unknown instead of being labeled incompatible.
+Existing cached listings are refreshed to include this check. Known old themes are hidden
+independently of the general compatibility filter, and installation checks extracted CSS again.
+Installed themes are hidden without deleting their files and can be shown by disabling the toggle.
+This detects the known dialog-style change; it does not certify all styling for every Cinnamon release.
 
 ## Xfce wallpaper, panel and border support
 

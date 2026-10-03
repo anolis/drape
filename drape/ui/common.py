@@ -14,7 +14,7 @@ APP_ID = "io.github.anolis.Drape"
 CARD_W, CARD_H = 260, 160
 
 
-PART_NAMES = {"icons": "Icons", "cursors": "Cursors", "gtk": "Controls", "wm": "Window borders",
+PART_NAMES = {"packs": "Theme pack", "icons": "Icons", "cursors": "Cursors", "gtk": "Controls", "wm": "Window borders",
               "desktop": "Desktop", "wallpapers": "Wallpaper", "plymouth": "Boot splash", "login": "Login screen",
               "plasma": "Plasma style", "lookandfeel": "Global theme", "colors": "Color scheme", "aurorae": "KWin borders"}
 
@@ -60,6 +60,8 @@ def system_theme_active(kind, name):
 
 
 def matches(kind, component):
+    if kind == "packs":
+        return bool(set(desktop.compatible_parts(component)) & desktop.PACK_PARTS)
     if kind in ("wm", "desktop"):
         return desktop.theme_part(kind) in component["provides"]
     return bool(TAB_PARTS.get(kind, {kind}) & set(component["provides"]))

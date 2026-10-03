@@ -13,6 +13,7 @@ from .images import ANIMATIONS, _fetch_thumb, _foreground
 from .installed import InstalledPage
 from .system_actions import SystemActions
 from .theme_actions import ThemeActions
+from .updates import AppUpdates
 
 
 class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
@@ -47,11 +48,23 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
                                  active=settings.get("only_applicable"))
         only.connect("toggled", self._toggle_applicable)
         menu.append(only)
+        if desktop.current_desktop() == "cinnamon":
+            legacy = Gtk.CheckMenuItem(label="Hide themes made for older Cinnamon",
+                                       active=settings.get("hide_outdated_cinnamon"))
+            legacy.connect("toggled", self._toggle_outdated_cinnamon)
+            menu.append(legacy)
         self.window_check_item = Gtk.CheckMenuItem(label="Check open windows on the Window borders tab automatically",
                                                    active=settings.get("window_check") == "always")
         self.window_check_item.connect("toggled", lambda it: settings.set(
             "window_check", "always" if it.get_active() else "ask"))
         menu.append(self.window_check_item)
+        auto_updates = Gtk.CheckMenuItem(label="Check for Drape updates automatically",
+                                         active=settings.get("check_app_updates"))
+        auto_updates.connect("toggled", lambda it: settings.set("check_app_updates", it.get_active()))
+        menu.append(auto_updates)
+        check_updates = Gtk.MenuItem(label="Check for Drape updates")
+        check_updates.connect("activate", lambda *_: self.app_updates.check(manual=True))
+        menu.append(check_updates)
         menu.append(Gtk.SeparatorMenuItem())
         heading = Gtk.MenuItem(label="Animate previews", sensitive=False)
         menu.append(heading)
@@ -115,6 +128,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         ANIMATIONS.on_switch = self._animations_switched
         self._closing = threading.Event()
         self.connect("destroy", lambda *_: self._closing.set())
+        self.app_updates = AppUpdates(self)
         GLib.timeout_add_seconds(4, self._start_prefetch)
         GLib.timeout_add_seconds(3, self._check_theme_session)
 
@@ -254,6 +268,13 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
     def _animations_switched(self, pct):
         self.notify(f"Animated previews were using about {pct:.0f}% CPU, so they now play when you hover "
                     "over them. Change this in the ☰ menu.")
+
+
+    def _toggle_outdated_cinnamon(self, item):
+        settings.set("hide_outdated_cinnamon", item.get_active())
+        self.reload_all()
+        if self.stack.get_visible_child() is self.installed:
+            self.installed.load()
 
 
     def _toggle_applicable(self, item):

@@ -77,5 +77,6 @@ class DetailsDialog(Gtk.Dialog):
         if resp == 1:
             self.win.remove(self.item.id)
         elif resp in (2, 3):
-            self.win.install(self.item, file_index, apply_kind=self.kind if resp == 3 else None)
+            self.win.install(self.item, file_index, apply_kind=self.kind if resp == 3 else None,
+                             required_kind="packs" if self.kind == "packs" else None)
         self.destroy()

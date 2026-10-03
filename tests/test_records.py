@@ -126,6 +126,43 @@ class RecordsTest(unittest.TestCase):
             for key in ('A', 'B'):
                 self.assertTrue(Path(records[key]['paths'][0]).exists())
 
+    def test_concurrent_installs_preserve_all_theme_categories(self):
+        packs = {
+            'controls': {'Controls/gtk-3.0/gtk.css': '/* theme */',
+                         'Controls/cinnamon/cinnamon.css': '/* theme */',
+                         'Controls/metacity-1/metacity-theme-3.xml': '<metacity_theme/>'},
+            'cursor': {'Cursor/cursors/left_ptr': b'Xcur' + bytes(12)},
+            'wallpaper': {'background.jpg': b'image'},
+            'colors': {'Scheme.colors': '[General]\nName=Scheme\n[Colors:Window]\nBackgroundNormal=0,0,0'},
+        }
+        archives = {}
+        for key, files in packs.items():
+            archives[key] = self.root / (key + '.zip')
+            with zipfile.ZipFile(archives[key], 'w') as output:
+                for name, content in files.items():
+                    output.writestr(name, content)
+        starting = threading.Barrier(len(packs))
+
+        def install(key):
+            starting.wait(timeout=5)
+            return installer.install_file(archives[key], key, key, only_applicable=False)
+
+        with mock.patch.object(installer, 'MANIFEST', self.store.path), \
+                mock.patch.object(installer, 'THEMES_DIR', self.root / 'themes'), \
+                mock.patch.object(installer, 'CURSORS_DIR', self.root / 'cursors'), \
+                mock.patch.object(installer, 'WALLPAPER_DIR', self.root / 'backgrounds'), \
+                mock.patch.object(installer.kde, 'DATA_HOME', self.root / 'kde'), \
+                mock.patch('drape.desktop.current_desktop', return_value='mate'):
+            with ThreadPoolExecutor(len(packs)) as pool:
+                list(pool.map(install, packs))
+        records = self.store.load()
+        self.assertEqual(set(records), set(packs))
+        kinds = {kind for entry in records.values() for component in entry['components']
+                 for kind in component['provides']}
+        self.assertEqual(kinds, {'gtk', 'desktop', 'wm', 'cursors', 'wallpapers', 'colors'})
+        for entry in records.values():
+            self.assertTrue(all(Path(path).exists() for path in entry['paths']))
+
 
 class RecordErrorUITest(unittest.TestCase):
     def test_startup_reports_record_error_before_creating_window(self):

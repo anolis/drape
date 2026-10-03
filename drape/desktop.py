@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from gi.repository import Gio
-from . import kde, xfce
+from . import kde, xfce, settings
 from .kde import ApplyError
 
 # component -> (schema, key) for the running desktop
@@ -127,6 +127,8 @@ def _key(part):
 
 
 def supported(part):
+    if part == "packs":
+        return any(supported(p) for p in ("gtk", "desktop", "wm", "lookandfeel", "plasma"))
     if part in ("wm", "aurorae") and border_part() == "aurorae":
         return kde.supported("aurorae")
     if current_desktop() == "kde":
@@ -240,6 +242,8 @@ def compatible_parts(component):
     result = []
     path = Path(component["path"])
     for part in component["provides"]:
+        if part == "desktop" and hide_outdated_cinnamon() and cinnamon_theme_outdated(path):
+            continue
         if part == "desktop" and current_desktop() == "kde":
             continue  # this format means Cinnamon, even though the UI tab also hosts Plasma
         if part == "wm" and border_part() != "wm":
@@ -259,6 +263,17 @@ def compatible_parts(component):
 def scope(kind, only=True):
     """Catalog scope shared by GUI and CLI. Empty categories means unsupported."""
     label = f"{current_desktop() or 'unsupported desktop'} / {running_wm() or 'unknown window manager'}"
+    if kind == "packs":
+        categories = []
+        for category in ("gtk", "desktop", "wm", "lookandfeel", "colors"):
+            if supported(category):
+                scoped, _ = scope(category, True)
+                if scoped != "":
+                    from .pling import KINDS_BY_KEY
+                    categories.extend((scoped or KINDS_BY_KEY[category].categories).split(","))
+        return ",".join(dict.fromkeys(categories)), (
+            f"Theme bundles for {label}. Shows packs with multiple usable appearance parts, "
+            "and compatible KDE global themes. Each part can be chosen before applying.")
     if kind in ("login", "boot"):
         return None, ""
     if kind == "wm" and not only:
@@ -276,7 +291,18 @@ def scope(kind, only=True):
 
 
 def archive_compatible(parts, complete, kind):
-    """Only reject a catalog download when a complete listing proves incompatibility."""
+    """Scope downloads by format; theme packs require positive bundle identification."""
+    if hide_outdated_cinnamon() and "cinnamon-legacy" in parts:
+        return False
+    if kind == "packs":
+        usable = {p for p in parts if p in PACK_PARTS and supported(p)}
+        if "wm" in usable and border_part() != "wm":
+            usable.remove("wm")
+        if "desktop" in usable and current_desktop() == "kde":
+            usable.remove("desktop")
+        if "gtk" in usable and "gtk-3.0" not in parts:
+            usable.remove("gtk")
+        return _is_pack(usable)
     if not complete or not parts or kind in ("login", "boot"):
         return True
     target = theme_part(kind)
@@ -341,13 +367,46 @@ def find_theme_dir(name):
 NEW_DIALOG_RE = re.compile(r"(^|[\s,}>])\.(dialog|prompt-dialog)\b", re.M)
 
 
+def cinnamon_css_imports(css):
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return re.findall(r"@import\s+(?:url\(\s*)?[\"']([^\"']+)[\"']", css)
+
+
+def cinnamon_css_outdated(css):
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return not NEW_DIALOG_RE.search(css)
+
+
+def hide_outdated_cinnamon():
+    if current_desktop() != "cinnamon" or not settings.get("hide_outdated_cinnamon"):
+        return False
+    version = cinnamon_version()
+    return version is not None and version >= (5, 4)
+
+
 def cinnamon_theme_outdated(theme_dir):
-    """True if a Desktop theme predates Cinnamon 5.4's dialog styling and this Cinnamon is newer."""
+    """Detect missing modern dialog styles, including styles in imported CSS files."""
     css = Path(theme_dir) / "cinnamon" / "cinnamon.css"
     version = cinnamon_version()
     if not css.is_file() or version is None or version < (5, 4):
         return False
-    return not NEW_DIALOG_RE.search(css.read_text(errors="replace"))
+    try:
+        content = css.read_text(errors="replace")
+        if "@import" in content:
+            imports = cinnamon_css_imports(content)
+            if not imports or any(not (css.parent / ref).is_file() or
+                                  not (css.parent / ref).resolve().is_relative_to(css.parent.resolve()) for ref in imports):
+                return False
+            content += "\n" + "\n".join(p.read_text(errors="replace") for p in css.parent.rglob("*.css")
+                                          if p != css and not p.is_symlink())
+    except OSError:
+        return False  # unreadable styles are unverified, not proven incompatible
+    return cinnamon_css_outdated(content)
+
+
+def cinnamon_entry_outdated(components):
+    themes = [c for c in components if "desktop" in c["provides"]]
+    return bool(themes) and all(cinnamon_theme_outdated(c["path"]) for c in themes)
 
 
 OUTDATED_NOTE = ("made for an older Cinnamon: system dialogs such as password prompts and the logout "
@@ -421,3 +480,20 @@ def open_windows():
         classic = classify_window(bool(frame), motif.group(1) if motif else "")
         seen[name] = seen.get(name, False) or classic
     return sorted(seen.items(), key=lambda kv: kv[0].lower())
+
+
+PACK_PARTS = {"gtk", "desktop", "wm", "xfwm", "aurorae", "plasma", "lookandfeel",
+              "colors", "icons", "cursors", "wallpapers"}
+PACK_ANCHORS = {"gtk", "desktop", "wm", "xfwm", "aurorae", "plasma"}
+
+
+def _is_pack(parts):
+    return (current_desktop() == "kde" and "lookandfeel" in parts) or (
+        len(parts) >= 2 and bool(parts & PACK_ANCHORS))
+
+
+def pack_components(components):
+    """Qualify extracted/installed bundles using real formats and current capabilities."""
+    usable = {part for component in components for part in compatible_parts(component)
+              if part in PACK_PARTS}
+    return _is_pack(usable)

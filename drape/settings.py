@@ -5,7 +5,8 @@ import os
 from pathlib import Path
 
 PATH = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "drape" / "settings.json"
-DEFAULTS = {"only_applicable": True, "animations": "auto", "window_check": "ask"}
+DEFAULTS = {"hide_outdated_cinnamon": True, "only_applicable": True, "animations": "auto", "window_check": "ask",
+            "check_app_updates": True, "app_update_checked_at": 0}
 
 
 def get(key):

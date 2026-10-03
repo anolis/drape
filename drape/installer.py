@@ -272,7 +272,7 @@ def _sanitize(name):
     return name or "theme"
 
 
-def classify(root, fallback_name):
+def classify(root, fallback_name, include_wallpapers=False):
     components = []
 
     def walk(d):
@@ -300,13 +300,18 @@ def classify(root, fallback_name):
                 walk(c)
 
     walk(root)
-    if not components:
+    if not components or include_wallpapers:
         # images inside a web page's assets (fonts, css, ...) aren't wallpapers
         skip = {"__MACOSX", ".git", "css", "fonts", "font", "js", "node_modules"}
         images = [p for p in sorted(root.rglob("*"))
                   if p.is_file() and p.suffix.lower() in IMAGE_EXTS and not skip & set(p.relative_to(root).parts[:-1])]
-        if images:
-            components = [Component(("wallpapers",), p, p.name) for p in images]
+        if components:
+            theme_roots = [c.path for c in components if c.path.is_dir()]
+            images = [p for p in images if
+                      (re.search(r"wallpaper|background", str(p.relative_to(root)), re.I) or
+                       not any(p.is_relative_to(folder) for folder in theme_roots))
+                      and not re.search(r"preview|screenshot|thumbnail|logo", str(p.relative_to(root)), re.I)]
+        components.extend(Component(("wallpapers",), p, p.name) for p in images)
     return components
 
 
@@ -347,13 +352,13 @@ def _register_wallpaper_folder(folder):
 
 @_serialized_files
 def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview="",
-                 replace_items=False, only_applicable=None, status=None):
+                 replace_items=False, only_applicable=None, status=None, required_kind=None):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
         root = unpack_all(Path(path), Path(work), status)
         _report_status(status, "Inspecting theme files…", 0.60)
-        comps = classify(root, title)
+        comps = classify(root, title, include_wallpapers=required_kind == "packs")
         if not comps:
             raise InstallError("Couldn't find a supported theme, color scheme or wallpaper in this download.")
 
@@ -363,6 +368,12 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             raise InstallError("This is a GDM login theme. Those work by replacing a core GNOME Shell file, which "
                                "breaks when GNOME updates, so drape doesn't install them yet.")
         from . import desktop, settings
+        if desktop.hide_outdated_cinnamon() and desktop.cinnamon_entry_outdated(
+                [{"provides": c.provides, "path": str(c.path)} for c in comps]):
+            raise IncompatibleError("This theme was made for older Cinnamon and is hidden by your filter. "
+                                    "Turn off 'Hide themes made for older Cinnamon' in the menu to install it.")
+        if required_kind == "packs":
+            only_applicable = True
         if only_applicable is None:
             only_applicable = settings.get("only_applicable")
         skipped = []
@@ -382,6 +393,10 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                                    f"{desktop.running_wm() or 'unknown window manager'}. "
                                    "Nothing was installed. Turn off 'Only show themes that work on this computer' "
                                    "to install themes for another session.")
+        if required_kind == "packs" and not desktop.pack_components(
+                [{"provides": c.provides, "path": str(c.path)} for c in comps]):
+            raise IncompatibleError("This download is not a theme pack for the current desktop. "
+                                    "It needs multiple supported appearance parts or a compatible KDE global theme.")
         # check every name before copying anything, so a clash can't leave a half-installed pack
         _report_status(status, "Checking installed themes…", 0.65)
         conflicts, foreign = {}, []
@@ -474,7 +489,7 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
 
 
 def install_item(item, file_index=None, progress=None, replace_foreign=False, replace_items=False,
-                 only_applicable=None, status=None):
+                 only_applicable=None, status=None, required_kind=None):
     """Install a pling.Item. The item should be freshly fetched (download links expire)."""
     if not item.files:
         raise InstallError("This item has no direct downloads (it may link to an external site).")
@@ -492,7 +507,8 @@ def install_item(item, file_index=None, progress=None, replace_foreign=False, re
                 return install_file(path, item.id, item.name, item.changed, item.page,
                                     replace_foreign, file=f.name,
                                     preview=item.previews[0] if item.previews else "", replace_items=replace_items,
-                                    only_applicable=only_applicable, status=status)
+                                    only_applicable=True if required_kind == "packs" else only_applicable,
+                                    status=status, required_kind=required_kind)
             except IncompatibleError as e:
                 last_error = e
         raise last_error

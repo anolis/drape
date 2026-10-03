@@ -24,6 +24,7 @@ class Kind:
 
 # The pieces of a desktop look that can be installed independently.
 KINDS = [
+    Kind("packs", "Theme packs", "135,133,125,138,121,722,104,112,114,717"),
     Kind("icons", "Icons", "132"),
     Kind("cursors", "Cursors", "107"),
     Kind("gtk", "Controls", "135"),

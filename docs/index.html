@@ -236,7 +236,7 @@
 
   <section id="install">
     <h2>Install</h2>
-    <p class="lede">Needs Python 3.12+, GTK 3 with PyGObject, Pillow and python3-requests. KDE also needs its native Plasma apply tools; Xfce uses xfconf-query. Installing drape needs no root; boot splash and login screen changes ask for your password through polkit.</p>
+    <p class="lede">Needs Python 3.12+, GTK 3 with PyGObject, Pillow and Requests. Drape offers to install missing dependencies on Arch/CachyOS and Debian/Ubuntu: a y/n prompt in a terminal, or a dialog when launched from the menu. KDE also needs its native Plasma apply tools; Xfce uses xfconf-query. Installing drape needs no root; dependency installation, boot splash and login screen changes ask for administrator authentication.</p>
     <div class="two">
       <div>
         <h3>Get it</h3>
@@ -246,6 +246,16 @@ cd drape
 <span class="c"># adds drape to your menu and handles
 # theme catalog Install buttons</span></code></pre>
         <p class="note">Uninstall with <code>./install.sh --uninstall</code>. Themes you installed stay put.</p>
+        <h3>Update an existing install</h3>
+        <p>Drape checks for app updates once a day and offers <strong>Update and restart</strong>. You can also select <strong>Check for Drape updates</strong> in the ☰ menu. Automatic updating requires the official Git clone on the main branch with no local changes.</p>
+        <p>For older installs that do not have the updater yet, close Drape and run these commands from the folder you cloned:</p>
+<pre><code>cd /path/to/drape
+git pull --ff-only
+./install.sh
+./bin/drape</code></pre>
+        <p class="note">Replace <code>/path/to/drape</code> with your checkout location. Installed themes and preferences are kept. If Git reports local changes, save or commit them before updating.</p>
+        <p class="note">On CachyOS or Arch, a <code>No module named 'PIL'</code> error means Pillow is missing. Install the runtime dependencies below, then launch Drape again. Current versions offer to install missing packages for you.</p>
+<pre><code>sudo pacman -S --needed python-pillow python-gobject gtk3 python-requests</code></pre>
       </div>
       <div>
         <h3>Or use the command line</h3>

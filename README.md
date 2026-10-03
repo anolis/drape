@@ -12,6 +12,12 @@ click. No hunting for archives, no guessing which folder things go in.
 
 ## What it handles for you
 
+- **Theme packs for your desktop.** Browse downloadable bundles with at least two usable
+  appearance parts, plus compatible KDE global themes. The catalog follows the current
+  desktop and window manager, including Plasma 5/6. Archive inspection confirms the bundle
+  before showing it; unknown downloads stay hidden in this section. Installation checks again
+  and skips unsupported components. **Apply pack** lets you choose one variant for each part,
+  or keep that part's current theme. Installed bundles also appear under **Theme packs**.
 - **Finds what's actually in a download, before you download it.** drape reads each download's
   file list without fetching the whole thing (a zip's table of contents over HTTP range requests,
   or the start of a tar) and shows small glyphs on every card for what's really inside. When an
@@ -81,8 +87,13 @@ click. No hunting for archives, no guessing which folder things go in.
 - **Handles name clashes.** If a new theme shares a name with one you have, drape explains and
   offers **Replace**, even for the boot splash or login theme currently in use (`--replace` on
   the command line).
-- **Flags outdated Cinnamon themes.** Desktop themes made before Cinnamon 5.4 leave password and
-  logout dialogs see-through; drape marks them and asks before applying one.
+- **Filters outdated Cinnamon themes.** **☰ → Hide themes made for older Cinnamon** is enabled
+  by default. On Cinnamon 5.4 and newer, Drape inspects dialog CSS in downloaded archives,
+  including imported styles, and hides themes with known outdated styling in browsing,
+  Theme packs and Installed. Installed reports how many are hidden; the files stay in place.
+  Turn the toggle off to show them again and retain the warning before applying. Unverified
+  archives remain visible in ordinary sections. This checks known dialog-style incompatibility,
+  not every rendering issue or an uploader's publication date.
 - **Shows installation stages.** One progress bar covers downloading, extraction, copying,
   icon-cache generation, cleanup and saving. It names the current step and reaches 100%
   only after installation succeeds. Steps have fixed shares of the bar; the percentage
@@ -123,7 +134,15 @@ when GNOME updates.
 
 ## Install
 
-Needs Python 3.12+, PyGObject with GTK 3, Pillow and `python3-requests`, plus polkit for boot splash and login screen changes. Xfce uses `xfconf-query`; KDE uses its native Plasma apply tools.
+Needs Python 3.12+, PyGObject with GTK 3, Pillow and Requests, plus polkit for boot splash and login screen changes. Xfce uses `xfconf-query`; KDE uses its native Plasma apply tools.
+
+If dependencies are missing, Drape offers to install them on Arch-based distributions (including CachyOS) and Debian/Ubuntu-based distributions. Terminal launches use a y/n prompt and `sudo`; menu launches use a dialog and `pkexec`. If GTK's Python bindings are missing, the dialog uses KDialog or Zenity when available. Installation only runs after you accept, and Drape resumes after a successful installation.
+
+To install dependencies manually on CachyOS or Arch:
+
+```sh
+sudo pacman -S --needed python-pillow python-gobject gtk3 python-requests
+```
 
 ```sh
 ./install.sh            # per-user, no root; adds a menu entry and the ocs:// handler
@@ -131,6 +150,20 @@ Needs Python 3.12+, PyGObject with GTK 3, Pillow and `python3-requests`, plus po
 ```
 
 Or run it in place: `./bin/drape`.
+
+### Updating
+
+Drape checks for app updates once a day and offers **Update and restart**. Use **Check for Drape updates** in the ☰ menu to check immediately, or turn off automatic checks there. This updates official Git clones on `main` tracking `origin/main`; local edits, untracked files and local commits block the update so your work is preserved. Network failures during automatic checks do not interrupt startup.
+
+To update older installs manually, close Drape and run these commands from your clone:
+
+```sh
+git pull --ff-only
+./install.sh
+./bin/drape
+```
+
+Installed themes and preferences stay in place. Save or commit local changes if Git refuses the update.
 
 ## Command line
 
@@ -164,6 +197,8 @@ The GUI entry point is `drape/app.py`; its implementation is in `drape/ui/`:
 - `widgets.py`: shared cards' controls, variant picker and border explanation.
 - `images.py`: preview downloads, caches, worker pools and animation state.
 - `install_progress.py`: installation stages and coalesced progress-bar updates.
+- `card_transitions.py`: card fades, deferred removal and animated compatibility filtering.
+- `packs.py`: per-part variant selection and applying downloaded theme bundles.
 - `theme_actions.py`, `system_actions.py`: window action mixins for theme operations
   and privileged/login/lock-screen changes. They use the window's state and callbacks;
   pages receive that window explicitly rather than importing it.

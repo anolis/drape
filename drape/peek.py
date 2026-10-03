@@ -11,9 +11,11 @@ import io
 import json
 import lzma
 import os
+import posixpath
 import re
 import tarfile
 import threading
+import time
 import zipfile
 import zlib
 from pathlib import Path
@@ -83,6 +85,7 @@ def classify_names(names):
                 and not re.search(r"(preview|screenshot|thumbnail|logo)", n.rsplit("/", 1)[-1])]
     if pictures and not parts & {"plasma", "lookandfeel", "aurorae"} and (not parts or len(pictures) >= 3 or any(re.search(r"wall|background", n) for n in pictures)):
         parts.add("wallpapers")
+    parts.update(marker for marker in CINNAMON_MARKERS if '__drape_' + marker + '__' in names)
     return parts
 
 
@@ -142,6 +145,40 @@ def _size(url):
     return int(total) if total.isdigit() else 0
 
 
+CSS_LIMIT = 512 * 1024
+CINNAMON_MARKERS = {"cinnamon-legacy", "cinnamon-modern", "cinnamon-unknown"}
+
+
+def _css_root(name):
+    match = re.match(r"^(.*(?:^|/)cinnamon/).*\.css$", name, re.I)
+    return match[1] if match else None
+
+
+def _cinnamon_markers(names, styles, complete):
+    """Tag inspected CSS; partial imported styles remain unknown, not old."""
+    from .desktop import cinnamon_css_outdated, cinnamon_css_imports
+    roots = {_css_root(name) for name in names if name.lower().endswith('cinnamon/cinnamon.css')}
+    if not roots:
+        return []
+    states = []
+    for root in roots:
+        main = next((styles[name] for name in styles if name.lower() == (root + 'cinnamon.css').lower()), None)
+        texts = [text for name, text in styles.items() if _css_root(name) == root]
+        all_read = all(name in styles for name in names if _css_root(name) == root)
+        if main is None:
+            states.append('unknown')
+        elif not cinnamon_css_outdated('\n'.join(texts)):
+            states.append('modern')
+        elif '@import' not in main or (complete and all_read and cinnamon_css_imports(main) and all(
+                posixpath.normpath(root + ref) in {posixpath.normpath(name) for name in styles}
+                for ref in cinnamon_css_imports(main))):
+            states.append('legacy')
+        else:
+            states.append('unknown')
+    status = 'modern' if 'modern' in states else 'legacy' if all(s == 'legacy' for s in states) else 'unknown'
+    return ['__drape_' + 'cinnamon-' + status + '__']
+
+
 def list_archive(url, filename, budget=TAR_BUDGETS[0]):
     """(paths inside, complete?) for a remote download, reading as little as possible."""
     name = filename.lower()
@@ -152,7 +189,15 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
         if not size:
             return [], False
         with zipfile.ZipFile(io.BufferedReader(_RangeFile(url, size), buffer_size=BLOCK)) as z:
-            return z.namelist(), True
+            names, styles, remaining = z.namelist(), {}, CSS_LIMIT * 2
+            for info in z.infolist():
+                if _css_root(info.filename) and info.file_size <= min(CSS_LIMIT, remaining):
+                    # Symlinks do not contain the target's CSS.
+                    if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                        continue
+                    styles[info.filename] = z.read(info).decode(errors="replace")
+                    remaining -= info.file_size
+            return names + _cinnamon_markers(names, styles, True), True
     if re.search(r"\.(tar(\.(gz|xz|bz2|zst))?|tgz|txz|tbz2?)$", name):
         r = requests.get(url, headers={"User-Agent": USER_AGENT, "Range": f"bytes=0-{budget - 1}"},
                          timeout=(15, 60))
@@ -170,14 +215,17 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
                 data = raw
         except (zlib.error, lzma.LZMAError, OSError, EOFError):
             return [], False
-        names = []
+        names, styles, remaining = [], {}, CSS_LIMIT * 2
         try:
             with tarfile.open(fileobj=io.BytesIO(data), mode="r|") as t:
                 for member in t:
                     names.append(member.name)
+                    if member.isfile() and _css_root(member.name) and member.size <= min(CSS_LIMIT, remaining):
+                        styles[member.name] = t.extractfile(member).read().decode(errors="replace")
+                        remaining -= member.size
         except (tarfile.TarError, EOFError, OSError):
             complete = False  # ran out of the part we read: what we saw is still useful
-        return names, complete
+        return names + _cinnamon_markers(names, styles, complete), complete
     return [], False
 
 
@@ -192,7 +240,15 @@ def _load():
 
 def cached(item_id, filename):
     entry = _load().get(f"{item_id}:{filename}")
-    return (set(entry["parts"]), entry["complete"]) if entry else None
+    if not entry:
+        return None
+    parts = set(entry["parts"])
+    if "desktop" in parts:
+        from .desktop import hide_outdated_cinnamon
+        if hide_outdated_cinnamon() and (not parts & CINNAMON_MARKERS or
+                time.time() - entry.get("cinnamon_checked_at", 0) > 7 * 86400):
+            return None
+    return parts, entry["complete"]
 
 
 def contents(item_id, url, filename):
@@ -206,15 +262,19 @@ def contents(item_id, url, filename):
             parts = classify_names(names)
             if any(re.search(r"\.(zip|tar|tgz|txz|tbz2?|7z|tar\.(gz|xz|bz2|zst))$", n, re.I) for n in names):
                 complete = False  # an outer listing cannot prove what's in nested archives
-            if complete or parts - {"wallpapers"}:
+            from .desktop import hide_outdated_cinnamon
+            needs_css = hide_outdated_cinnamon() and "desktop" in parts and not parts & {"cinnamon-modern", "cinnamon-legacy"}
+            if complete or (parts - {"wallpapers"} and not needs_css):
                 break
     except (requests.RequestException, OSError, zipfile.BadZipFile, ValueError):
         return set(), False
+    if "desktop" in parts and not parts & CINNAMON_MARKERS:
+        parts.add("cinnamon-unknown")
     if not complete and parts == {"wallpapers"}:
         parts = set()  # only saw pictures at the start: could be a theme's previews, so don't guess
     with _lock:
         data = _load()
-        data[f"{item_id}:{filename}"] = {"parts": sorted(parts), "complete": complete}
+        data[f"{item_id}:{filename}"] = {"parts": sorted(parts), "complete": complete, "cinnamon_checked_at": time.time()}
         try:
             CACHE.parent.mkdir(parents=True, exist_ok=True)
             tmp = CACHE.with_suffix(".tmp")

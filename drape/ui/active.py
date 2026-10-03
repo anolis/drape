@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from .card_transitions import FadingCard
 from .gtk import GLib, GdkPixbuf, Gtk, Pango
 from .. import desktop, helper as root_helper, installer, previews, system
 from .common import CARD_H, CARD_W, _safe
@@ -55,7 +56,7 @@ def plymouth_picture(theme_dir):
     return frames[len(frames) // 2] if frames else None
 
 
-class ActiveCard(Gtk.FlowBoxChild):
+class ActiveCard(FadingCard):
     """One part of the current look: a preview of exactly what's in use, its name and where it came from."""
 
     def __init__(self, window, part, label):

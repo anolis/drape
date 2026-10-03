@@ -17,7 +17,7 @@ class ThemeActions:
         self.refresh_item()
 
 
-    def install(self, item, file_index=None, apply_kind=None):
+    def install(self, item, file_index=None, apply_kind=None, required_kind=None):
         if item.id in self.busy:
             return
         feedback = InstallProgress(self._closing)
@@ -30,7 +30,8 @@ class ThemeActions:
             fresh = pling.get(item.id)  # download links are signed and expire
             try:
                 return installer.install_item(fresh, file_index, feedback.download,
-                                              flags["foreign"], flags["items"], status=feedback.status)
+                                              flags["foreign"], flags["items"], status=feedback.status,
+                                              required_kind=required_kind or ("packs" if apply_kind == "packs" else None))
             except installer.ConflictError as e:
                 return e  # ask the user on the main thread
             except installer.InstallError as e:
@@ -67,6 +68,9 @@ class ThemeActions:
             if any(c.get("system") for c in result["components"]) and not apply_kind:
                 self.notify(f"Downloaded {item.name}. Apply it to install it for the whole system "
                             "(you'll be asked for your password).")
+                return
+            if apply_kind == "packs":
+                self.apply_pack(item.id)
                 return
             if apply_kind and not any(matches(apply_kind, c) for c in result["components"]):
                 # misfiled on gnome-look: don't apply something other than what the tab is for
@@ -145,6 +149,11 @@ class ThemeActions:
         ok = d.run() == Gtk.ResponseType.ACCEPT
         d.destroy()
         return ok
+
+
+    def apply_pack(self, key):
+        from .packs import apply_pack
+        apply_pack(self, key)
 
 
     def apply(self, component, kind=None):

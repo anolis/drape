@@ -232,7 +232,7 @@ class ApplyControl(Gtk.Box):
         super().__init__()
         self.win, self.key, self.kind = window, key, kind
         self.get_style_context().add_class("linked")
-        apply = Gtk.Button(label="Apply")
+        apply = Gtk.Button(label="Apply pack" if kind == "packs" else "Apply")
         apply.get_style_context().add_class("suggested-action")
         apply.connect("clicked", self._apply)
         self.pack_start(apply, False, False, 0)
@@ -240,7 +240,7 @@ class ApplyControl(Gtk.Box):
         apply.set_sensitive(bool(comps))
         if not comps:
             apply.set_tooltip_text("No supported components for this desktop and window manager")
-        if len(comps) > 1:
+        if len(comps) > 1 and kind != "packs":
             more = Gtk.Button(image=Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON))
             more.get_style_context().add_class("suggested-action")
             more.set_tooltip_text(f"Choose from {len(comps)} variants")
@@ -257,7 +257,7 @@ class ApplyControl(Gtk.Box):
             comps = [c for c in comps if matches(self.kind, c)]
         return [c for c in comps if c.get("system") or
                 any(p in desktop.compatible_parts(c) for p in (
-                    [desktop.theme_part(self.kind)] if self.kind else c["provides"]))]
+                    [desktop.theme_part(self.kind)] if self.kind and self.kind != "packs" else c["provides"]))]
 
     def _target(self, comps):
         using = [c for c in comps if in_use(c)]
@@ -267,6 +267,9 @@ class ApplyControl(Gtk.Box):
         return next((c for c in comps if c["name"] == chosen), comps[0])
 
     def _apply(self, _btn):
+        if self.kind == "packs":
+            self.win.apply_pack(self.key)
+            return
         comps = self._components()
         if self.kind == "wallpapers" and len(comps) > 1:
             self.win.choose_wallpaper(comps)
