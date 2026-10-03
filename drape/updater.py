@@ -7,8 +7,12 @@ import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
-OFFICIAL_REMOTES = {"https://github.com/anolis/drape", "https://github.com/anolis/drape.git",
-                    "git@github.com:anolis/drape.git", "ssh://git@github.com/anolis/drape.git"}
+OFFICIAL_REMOTES = {
+    "https://github.com/anolis/drape",
+    "https://github.com/anolis/drape.git",
+    "git@github.com:anolis/drape.git",
+    "ssh://git@github.com/anolis/drape.git",
+}
 
 
 class UpdateError(Exception):
@@ -24,12 +28,24 @@ class Update:
     blocked: str = ""
 
 
+# Bounded Git execution
+
+
 def git(root, *args):
-    env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
-               GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10")
+    env = dict(
+        os.environ,
+        GIT_TERMINAL_PROMPT="0",
+        GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10",
+    )
     try:
-        proc = subprocess.run(["git", "-C", str(root), *args], text=True,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, timeout=45)
+        proc = subprocess.run(
+            ["git", "-C", str(root), *args],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            timeout=45,
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise UpdateError(str(exc)) from exc
     if proc.returncode:
@@ -37,19 +53,27 @@ def git(root, *args):
     return proc.stdout.strip()
 
 
+# Checkout eligibility and update discovery
+
+
 def supported(root):
     if not shutil.which("git") or not (root / ".git").exists():
         return False
-    return (git(root, "rev-parse", "--show-toplevel") == str(root.resolve()) and
-            git(root, "remote", "get-url", "origin") in OFFICIAL_REMOTES and
-            git(root, "branch", "--show-current") == "main" and
-            git(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}") == "origin/main")
+    return (
+        git(root, "rev-parse", "--show-toplevel") == str(root.resolve())
+        and git(root, "remote", "get-url", "origin") in OFFICIAL_REMOTES
+        and git(root, "branch", "--show-current") == "main"
+        and git(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+        == "origin/main"
+    )
 
 
 def check(root=ROOT):
     """None means current; unsupported installs need manual updates."""
     if not supported(root):
-        raise UpdateError("Automatic updates require an official Drape Git checkout on main, tracking origin/main.")
+        raise UpdateError(
+            "Automatic updates require an official Drape Git checkout on main, tracking origin/main."
+        )
     git(root, "fetch", "--quiet", "origin", "refs/heads/main:refs/remotes/origin/main")
     head = git(root, "rev-parse", "HEAD")
     target = git(root, "rev-parse", "origin/main")
@@ -63,6 +87,9 @@ def check(root=ROOT):
         blocked = "This checkout has local commits. Update it manually to keep your work."
     summary = git(root, "log", "-5", "--format=%h %s", "HEAD..origin/main")
     return Update(head, target, count, summary, blocked)
+
+
+# Revalidation after user consent
 
 
 def apply(update, root=ROOT):

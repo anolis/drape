@@ -16,11 +16,14 @@ class App(Gtk.Application):
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
-        Gtk.IconTheme.get_default().append_search_path(str(Path(__file__).resolve().parents[2] / "data" / "icons"))
+        Gtk.IconTheme.get_default().append_search_path(
+            str(Path(__file__).resolve().parents[2] / "data" / "icons")
+        )
         css = Gtk.CssProvider()
         css.load_from_data(GLYPH_CSS)
-        Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), css,
-                                                 Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(), css, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
 
     def _window(self):
         try:

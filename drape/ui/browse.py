@@ -12,12 +12,14 @@ from .images import _ui_busy_until, load_image
 from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 
 
-_peeks = ThreadPoolExecutor(max_workers=1)  # small and gentle: one listing at a time, after pictures
+_peeks = ThreadPoolExecutor(
+    max_workers=1
+)  # small and gentle: one listing at a time, after pictures
 
 
-CHUNK = 10          # results per request: small batches paint sooner on slow connections
+CHUNK = 10  # results per request: small batches paint sooner on slow connections
 
-FIRST_CHUNKS = 3    # batches requested up front when a tab opens
+FIRST_CHUNKS = 3  # batches requested up front when a tab opens
 
 
 class Card(FadingCard):
@@ -56,23 +58,36 @@ class Card(FadingCard):
                 # GTK only draws what's on screen, so off-screen cards and hidden tabs wait their turn
                 self.image.disconnect(handler[0])
                 spinner.start()
-                load_image(pling.thumb_url(item.previews[0]), self.image, CARD_W, CARD_H,
-                           on_done=lambda _ok: (spinner.destroy(), self._peek(alive)), alive=alive.is_set)
+                load_image(
+                    pling.thumb_url(item.previews[0]),
+                    self.image,
+                    CARD_W,
+                    CARD_H,
+                    on_done=lambda _ok: (spinner.destroy(), self._peek(alive)),
+                    alive=alive.is_set,
+                )
                 return False
+
             handler = [self.image.connect("draw", first_draw)]
         else:
             self.image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
 
-        title = Gtk.Label(label=item.name, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=28)
+        title = Gtk.Label(
+            label=item.name, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=28
+        )
         title.set_markup(f"<b>{GLib.markup_escape_text(item.name)}</b>")
         box.pack_start(title, False, False, 0)
 
         meta = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=32)
-        meta.set_markup(f"<small>{GLib.markup_escape_text(item.author)} · ★ {item.score / 10:.1f} · "
-                        f"{item.downloads:,} downloads</small>")
+        meta.set_markup(
+            f"<small>{GLib.markup_escape_text(item.author)} · ★ {item.score / 10:.1f} · "
+            f"{item.downloads:,} downloads</small>"
+        )
         meta.get_style_context().add_class("dim-label")
         box.pack_start(meta, False, False, 0)
-        self.misfiled = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34, no_show_all=True)
+        self.misfiled = Gtk.Label(
+            xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34, no_show_all=True
+        )
         box.pack_start(self.misfiled, False, False, 0)
         if not item.previews or kind == "packs":
             self._peek(None)
@@ -91,7 +106,8 @@ class Card(FadingCard):
         if hit is not None:
             self._show_glyphs(*hit)
             if desktop.archive_compatible(*hit, self.kind) or all(
-                    peek.cached(self.item.id, other.name) is not None for other in self.item.files):
+                peek.cached(self.item.id, other.name) is not None for other in self.item.files
+            ):
                 return
 
         def work():
@@ -105,6 +121,7 @@ class Card(FadingCard):
                     if other != f:
                         peek.contents(self.item.id, other.url, other.name)
             GLib.idle_add(self._show_glyphs, *result, True)
+
         _peeks.submit(lambda: _safe(work))
 
     def _show_glyphs(self, parts, complete, checked=False):
@@ -112,11 +129,21 @@ class Card(FadingCard):
             return False
         checks = [peek.cached(self.item.id, f.name) for f in self.item.files]
         self.compatible = (self.kind != "packs" and not checks) or any(
-            (hit is None and self.kind != "packs") or
-            (hit is not None and desktop.archive_compatible(*hit, self.kind)) for hit in checks)
-        self.cinnamon_legacy = desktop.hide_outdated_cinnamon() and bool(checks) and all(
-            hit is not None and "cinnamon-legacy" in hit[0] for hit in checks)
-        self.pack_pending = self.kind == "packs" and not self.compatible and not checked and any(hit is None for hit in checks)
+            (hit is None and self.kind != "packs")
+            or (hit is not None and desktop.archive_compatible(*hit, self.kind))
+            for hit in checks
+        )
+        self.cinnamon_legacy = (
+            desktop.hide_outdated_cinnamon()
+            and bool(checks)
+            and all(hit is not None and "cinnamon-legacy" in hit[0] for hit in checks)
+        )
+        self.pack_pending = (
+            self.kind == "packs"
+            and not self.compatible
+            and not checked
+            and any(hit is None for hit in checks)
+        )
         parent = self.get_parent()
         if isinstance(parent, Gtk.FlowBox):
             parent.refilter()
@@ -124,7 +151,11 @@ class Card(FadingCard):
             if page:
                 GLib.idle_add(page._filtered_status)
         parts = {"wm" if p in ("xfwm", "aurorae") else p for p in parts}
-        expected = "plasma" if self.kind == "desktop" and desktop.current_desktop() == "kde" else TAB_PART.get(self.kind)
+        expected = (
+            "plasma"
+            if self.kind == "desktop" and desktop.current_desktop() == "kde"
+            else TAB_PART.get(self.kind)
+        )
         if self.glyphs.show_parts(parts, expected, complete):
             not_ = GLib.markup_escape_text(PART_NAMES[expected])
             if set(parts) == {"wallpapers"}:
@@ -145,14 +176,21 @@ class Card(FadingCard):
             self.win.busy[self.item.id]["progress"].attach(bar)
             self.actions.pack_start(bar, True, True, 0)
         elif installed:
-            self.actions.pack_start(ApplyControl(self.win, self.item.id, self.kind), False, False, 0)
+            self.actions.pack_start(
+                ApplyControl(self.win, self.item.id, self.kind), False, False, 0
+            )
             rm = Gtk.Button.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.BUTTON)
             rm.set_tooltip_text("Remove")
             rm.connect("clicked", lambda _b: self.win.remove(self.item.id))
             self.actions.pack_end(rm, False, False, 0)
         elif self.item.files:
             b = Gtk.Button(label="Install")
-            b.connect("clicked", lambda _b: self.win.install(self.item, required_kind="packs" if self.kind == "packs" else None))
+            b.connect(
+                "clicked",
+                lambda _b: self.win.install(
+                    self.item, required_kind="packs" if self.kind == "packs" else None
+                ),
+            )
             self.actions.pack_start(b, False, False, 0)
             b2 = Gtk.Button(label="Install & apply")
             b2.get_style_context().add_class("suggested-action")
@@ -177,11 +215,21 @@ class BrowsePage(Gtk.Box):
         self.fetching = False
         self.loaded = False
 
-        self.flow = CardFlow(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                                valign=Gtk.Align.START, max_children_per_line=8,
-                                margin=12, row_spacing=6, column_spacing=6)
-        self.flow.set_card_filter(lambda card: ((self.kind != "packs" and not settings.get("only_applicable")) or card.compatible)
-                                        and not card.cinnamon_legacy)
+        self.flow = CardFlow(
+            selection_mode=Gtk.SelectionMode.NONE,
+            homogeneous=True,
+            valign=Gtk.Align.START,
+            max_children_per_line=8,
+            margin=12,
+            row_spacing=6,
+            column_spacing=6,
+        )
+        self.flow.set_card_filter(
+            lambda card: (
+                ((self.kind != "packs" and not settings.get("only_applicable")) or card.compatible)
+                and not card.cinnamon_legacy
+            )
+        )
         # "Asking gnome-look.org…" with a spinner, or a message
         self.status = Gtk.Box(spacing=10, margin=24, halign=Gtk.Align.CENTER, no_show_all=True)
         self.status_spinner = Gtk.Spinner()
@@ -200,7 +248,9 @@ class BrowsePage(Gtk.Box):
         more_label.show()
 
         # explains what this tab shows on this computer (login screens, boot splash)
-        self.banner = Gtk.Label(xalign=0, wrap=True, margin=12, margin_bottom=0, no_show_all=True, use_markup=True)
+        self.banner = Gtk.Label(
+            xalign=0, wrap=True, margin=12, margin_bottom=0, no_show_all=True, use_markup=True
+        )
         self.banner.get_style_context().add_class("dim-label")
 
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -225,8 +275,14 @@ class BrowsePage(Gtk.Box):
             return False
         cards = self.cards()
         only = self.kind == "packs" or settings.get("only_applicable")
-        visible = [card for card in cards if not card.cinnamon_legacy and (not only or card.compatible)]
-        message = "No compatible theme packs in these results." if self.kind == "packs" else "No compatible themes in these results."
+        visible = [
+            card for card in cards if not card.cinnamon_legacy and (not only or card.compatible)
+        ]
+        message = (
+            "No compatible theme packs in these results."
+            if self.kind == "packs"
+            else "No compatible themes in these results."
+        )
         if self.kind != "packs" and any(card.cinnamon_legacy for card in cards):
             message = "Themes made for older Cinnamon are hidden. Change this in the ☰ menu."
         checking = "Checking theme packs for this desktop…"
@@ -289,9 +345,13 @@ class BrowsePage(Gtk.Box):
 
         def slow():
             if gen == self.generation and not self.cards() and self.status.get_visible():
-                self._set_status(f"Still waiting for {desktop.catalog_name()} - the connection seems slow. "
-                                 "Results will show as soon as they arrive.", busy=True)
+                self._set_status(
+                    f"Still waiting for {desktop.catalog_name()} - the connection seems slow. "
+                    "Results will show as soon as they arrive.",
+                    busy=True,
+                )
             return False
+
         GLib.timeout_add_seconds(6, slow)
 
         # the first few batches in parallel; shown in order as they arrive
@@ -309,7 +369,7 @@ class BrowsePage(Gtk.Box):
                 fresh.extend(items)
                 if state["replaced"]:
                     self._add(items)
-                elif [it.id for it in fresh] != shown[:len(fresh)]:
+                elif [it.id for it in fresh] != shown[: len(fresh)]:
                     # gnome-look changed since last time: swap in the fresh results
                     self.flow.clear()
                     self._add(fresh)
@@ -323,8 +383,11 @@ class BrowsePage(Gtk.Box):
                 self._set_status(f"Couldn't reach {desktop.catalog_name()}: {e}")
 
         for i in range(FIRST_CHUNKS):
-            run_async(lambda i=i: pling.search(self.kind, query, sort, i, CHUNK, categories),
-                      lambda r, i=i: arrived(i, r), failed)
+            run_async(
+                lambda i=i: pling.search(self.kind, query, sort, i, CHUNK, categories),
+                lambda r, i=i: arrived(i, r),
+                failed,
+            )
         self.next_chunk = FIRST_CHUNKS
 
     def _has_more(self, chunks):
@@ -334,7 +397,12 @@ class BrowsePage(Gtk.Box):
         """Infinite scroll: start the next batch when the bottom is within a couple of rows."""
         if self.kind == "packs" and any(card.pack_pending for card in self.cards()):
             return
-        if self.fetching or not self.loaded or not self.cards() or not self._has_more(self.next_chunk):
+        if (
+            self.fetching
+            or not self.loaded
+            or not self.cards()
+            or not self._has_more(self.next_chunk)
+        ):
             return
         # a hidden tab has no height, so it would always look "at the bottom" and load forever
         if self.win.stack.get_visible_child() is not self or not self.get_mapped():
@@ -364,7 +432,12 @@ class BrowsePage(Gtk.Box):
             if gen == self.generation:
                 self.fetching = False
                 self.more.hide()
-        run_async(lambda: pling.search(self.kind, query, sort, chunk, CHUNK, self.categories), done, failed)
+
+        run_async(
+            lambda: pling.search(self.kind, query, sort, chunk, CHUNK, self.categories),
+            done,
+            failed,
+        )
 
     def _scope(self):
         """(categories to search or None for the default, explanation) for this computer."""
@@ -380,11 +453,13 @@ class BrowsePage(Gtk.Box):
             dm, greeter = system.display_manager(), system.lightdm_greeter()
             current = f"LightDM with {greeter}" if dm == "lightdm" else (dm or "unknown")
             if cats == "":
-                return "", (f"Your login screen is <b>{GLib.markup_escape_text(current)}</b>. It doesn't use "
-                            "downloadable themes: choose <b>⋯ → Use for login screen</b> on any installed "
-                            "wallpaper, Controls theme, icon set or cursor, or see <b>Lock &amp; login</b>.\n\n"
-                            "To browse themes for other login screens (SDDM, web greeters), turn off "
-                            "<b>Only show themes that work on this computer</b> in the ☰ menu.")
+                return "", (
+                    f"Your login screen is <b>{GLib.markup_escape_text(current)}</b>. It doesn't use "
+                    "downloadable themes: choose <b>⋯ → Use for login screen</b> on any installed "
+                    "wallpaper, Controls theme, icon set or cursor, or see <b>Lock &amp; login</b>.\n\n"
+                    "To browse themes for other login screens (SDDM, web greeters), turn off "
+                    "<b>Only show themes that work on this computer</b> in the ☰ menu."
+                )
             note = f"Your login screen is <b>{GLib.markup_escape_text(current)}</b>."
             if not only:
                 note += " Showing themes for every login screen - drape tells you if one needs something installed."
@@ -393,11 +468,15 @@ class BrowsePage(Gtk.Box):
             current = desktop.get("desktop")
             d = desktop.find_theme_dir(current) if current else None
             if d and desktop.cinnamon_theme_outdated(d):
-                return None, (f"⚠ Your Desktop theme <b>{GLib.markup_escape_text(current)}</b> was "
-                              f"{desktop.OUTDATED_NOTE}. Pick a newer one to fix that.")
+                return None, (
+                    f"⚠ Your Desktop theme <b>{GLib.markup_escape_text(current)}</b> was "
+                    f"{desktop.OUTDATED_NOTE}. Pick a newer one to fix that."
+                )
         if self.kind == "boot" and not system.plymouth_installed():
-            return None, ("Plymouth, which draws the boot splash, isn't installed. drape will offer to install "
-                          "it when you apply one.")
+            return None, (
+                "Plymouth, which draws the boot splash, isn't installed. drape will offer to install "
+                "it when you apply one."
+            )
         return None, ""
 
     def refresh_cards(self, item_id=None):

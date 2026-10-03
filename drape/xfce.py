@@ -9,15 +9,20 @@ from urllib.parse import unquote, urlsplit
 from .kde import ApplyError
 
 
+# Xfconf command and property access
+
+
 def query(channel, *args):
     try:
-        result = subprocess.run(["xfconf-query", "-c", channel, *args],
-                                capture_output=True, text=True, timeout=5)
+        result = subprocess.run(
+            ["xfconf-query", "-c", channel, *args], capture_output=True, text=True, timeout=5
+        )
     except (OSError, subprocess.SubprocessError) as exc:
         raise ApplyError(f"Couldn't reach Xfce settings: {exc}") from exc
     if result.returncode:
-        raise ApplyError(result.stderr.strip() or result.stdout.strip() or
-                         f"Couldn't change {channel} settings.")
+        raise ApplyError(
+            result.stderr.strip() or result.stdout.strip() or f"Couldn't change {channel} settings."
+        )
     return result.stdout.rstrip("\n")
 
 
@@ -37,11 +42,16 @@ def write(channel, key, value, typ, exists=True):
     query(channel, *args)
 
 
+# Reversible setting changes
+
+
 def change(channel, values):
     """Apply scalar settings with rollback; return the previous values for Undo."""
     present = properties(channel)
-    before = {key: (read(channel, key) if key in present else None, typ)
-              for key, (_, typ) in values.items()}
+    before = {
+        key: (read(channel, key) if key in present else None, typ)
+        for key, (_, typ) in values.items()
+    }
     applied = []
     try:
         for key, (value, typ) in values.items():
@@ -75,6 +85,9 @@ def restore(channel, before):
             write(channel, key, value, typ, key in present)
 
 
+# Wallpaper targets across monitors and workspaces
+
+
 def wallpaper_targets(present):
     targets = {}
     for key in sorted(present):
@@ -90,10 +103,16 @@ def live_wallpaper_targets(present):
     if os.environ.get("XDG_SESSION_TYPE") == "wayland":
         return {}  # Xwayland outputs do not describe the compositor's monitors.
     try:
-        outputs = subprocess.run(["xrandr", "--query"], capture_output=True, text=True,
-                                 timeout=5, check=True).stdout
-        desktops = subprocess.run(["xprop", "-root", "_NET_NUMBER_OF_DESKTOPS"],
-                                  capture_output=True, text=True, timeout=5, check=True).stdout
+        outputs = subprocess.run(
+            ["xrandr", "--query"], capture_output=True, text=True, timeout=5, check=True
+        ).stdout
+        desktops = subprocess.run(
+            ["xprop", "-root", "_NET_NUMBER_OF_DESKTOPS"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return {}
     screen = re.search(r"^Screen (\d+):", outputs, re.M)
@@ -108,9 +127,13 @@ def live_wallpaper_targets(present):
         value = read("xfce4-desktop", single)
         if value.isdigit() and int(value) < 256:
             workspaces.add(int(value))
-    return {base: base + "/last-image" for monitor in monitors if "/" not in monitor
-            for workspace in sorted(workspaces)
-            for base in [f"/backdrop/screen{screen[1]}/monitor{monitor}/workspace{workspace}"]}
+    return {
+        base: base + "/last-image"
+        for monitor in monitors
+        if "/" not in monitor
+        for workspace in sorted(workspaces)
+        for base in [f"/backdrop/screen{screen[1]}/monitor{monitor}/workspace{workspace}"]
+    }
 
 
 def wallpaper():
@@ -143,8 +166,10 @@ def apply_wallpaper(value):
     targets = wallpaper_targets(present)
     targets.update(live_wallpaper_targets(present))
     if not targets:
-        raise ApplyError("Couldn't identify Xfce monitor/workspace settings. Open Xfce Desktop Settings "
-                         "and choose a background once, then try again.")
+        raise ApplyError(
+            "Couldn't identify Xfce monitor/workspace settings. Open Xfce Desktop Settings "
+            "and choose a background once, then try again."
+        )
     values = {}
     for base, key in targets.items():
         values[key] = (str(path), "string")
@@ -158,17 +183,28 @@ def apply_wallpaper(value):
 
 PANEL_CHANNEL = "xfce4-panel"
 PANEL_FIELDS = {
-    "size": ("uint", 48), "length": ("double", 10),
-    "autohide-behavior": ("uint", 0), "position-locked": ("bool", False),
+    "size": ("uint", 48),
+    "length": ("double", 10),
+    "autohide-behavior": ("uint", 0),
+    "position-locked": ("bool", False),
     "background-style": ("uint", 0),
 }
 # Xfce SnapPosition: NC=9, SC=10, WC=7. Keep the existing monitor coordinates.
 PRESETS = {
-    "Bottom taskbar": {"position": 10, "mode": 0, "size": 32, "length": 100, "autohide-behavior": 0},
+    "Bottom taskbar": {
+        "position": 10,
+        "mode": 0,
+        "size": 32,
+        "length": 100,
+        "autohide-behavior": 0,
+    },
     "Top bar": {"position": 9, "mode": 0, "size": 28, "length": 100, "autohide-behavior": 0},
     "Bottom dock": {"position": 10, "mode": 0, "size": 48, "length": 35, "autohide-behavior": 1},
     "Left bar": {"position": 7, "mode": 1, "size": 40, "length": 100, "autohide-behavior": 0},
 }
+
+
+# Panel appearance settings
 
 
 def panels():
@@ -191,10 +227,16 @@ def apply_panel(panel, values, preset=None):
     if panel not in panels():
         raise ApplyError("This panel no longer exists. Refresh the panel list.")
     base = f"/panels/panel-{panel}/"
-    limits = {"size": (16, 128), "length": (1, 100), "autohide-behavior": (0, 2),
-              "background-style": (0, 2)}
+    limits = {
+        "size": (16, 128),
+        "length": (1, 100),
+        "autohide-behavior": (0, 2),
+        "background-style": (0, 2),
+    }
     for key, value in values.items():
-        if key not in PANEL_FIELDS or (key in limits and not limits[key][0] <= value <= limits[key][1]):
+        if key not in PANEL_FIELDS or (
+            key in limits and not limits[key][0] <= value <= limits[key][1]
+        ):
             raise ApplyError(f"Invalid panel setting: {key}")
     changes = {base + key: (value, PANEL_FIELDS[key][0]) for key, value in values.items()}
     if preset:
@@ -202,7 +244,9 @@ def apply_panel(panel, values, preset=None):
             raise ApplyError("Unknown panel preset.")
         position = read(PANEL_CHANNEL, base + "position")
         if not re.fullmatch(r"p=\d+;x=\d+;y=\d+", position):
-            raise ApplyError("Open Panel Preferences and position this panel before using a preset.")
+            raise ApplyError(
+                "Open Panel Preferences and position this panel before using a preset."
+            )
         for key, value in PRESETS[preset].items():
             if key == "position":
                 value = re.sub(r"^p=\d+", f"p={value}", position)

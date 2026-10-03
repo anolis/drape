@@ -13,22 +13,36 @@ from urllib.parse import unquote, urlsplit
 from gi.repository import Gio, GLib
 
 DATA_HOME = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share")
-DIRECTORIES = {"plasma": "plasma/desktoptheme", "lookandfeel": "plasma/look-and-feel",
-               "colors": "color-schemes", "aurorae": "aurorae/themes"}
-TOOLS = {"plasma": "plasma-apply-desktoptheme", "lookandfeel": "plasma-apply-lookandfeel",
-         "colors": "plasma-apply-colorscheme", "cursors": "plasma-apply-cursortheme",
-         "wallpapers": "plasma-apply-wallpaperimage", "icons": "plasma-changeicons",
-         "aurorae": "kwin-applywindowdecoration"}
-CONFIG_KEYS = {"plasma": ("plasmarc", "Theme", "name"),
-               "lookandfeel": ("kdeglobals", "KDE", "LookAndFeelPackage"),
-               "colors": ("kdeglobals", "General", "ColorScheme"),
-               "icons": ("kdeglobals", "Icons", "Theme"),
-               "cursors": ("kcminputrc", "Mouse", "cursorTheme"),
-               "aurorae": ("kwinrc", "org.kde.kdecoration2", "theme")}
+DIRECTORIES = {
+    "plasma": "plasma/desktoptheme",
+    "lookandfeel": "plasma/look-and-feel",
+    "colors": "color-schemes",
+    "aurorae": "aurorae/themes",
+}
+TOOLS = {
+    "plasma": "plasma-apply-desktoptheme",
+    "lookandfeel": "plasma-apply-lookandfeel",
+    "colors": "plasma-apply-colorscheme",
+    "cursors": "plasma-apply-cursortheme",
+    "wallpapers": "plasma-apply-wallpaperimage",
+    "icons": "plasma-changeicons",
+    "aurorae": "kwin-applywindowdecoration",
+}
+CONFIG_KEYS = {
+    "plasma": ("plasmarc", "Theme", "name"),
+    "lookandfeel": ("kdeglobals", "KDE", "LookAndFeelPackage"),
+    "colors": ("kdeglobals", "General", "ColorScheme"),
+    "icons": ("kdeglobals", "Icons", "Theme"),
+    "cursors": ("kcminputrc", "Mouse", "cursorTheme"),
+    "aurorae": ("kwinrc", "org.kde.kdecoration2", "theme"),
+}
 
 
 class ApplyError(Exception):
     pass
+
+
+# Plasma version and native tool detection
 
 
 def major_version():
@@ -44,10 +58,18 @@ def tool(name):
         return found
     # Several distributions put the icon/decorations helpers outside PATH.
     multiarch = sysconfig.get_config_var("MULTIARCH")
-    roots = [Path("/usr/libexec"), Path("/usr/lib"), Path("/usr/lib/qt6/libexec"), Path("/usr/lib/qt5/libexec")]
+    roots = [
+        Path("/usr/libexec"),
+        Path("/usr/lib"),
+        Path("/usr/lib/qt6/libexec"),
+        Path("/usr/lib/qt5/libexec"),
+    ]
     if multiarch:
         roots.append(Path("/usr/lib") / multiarch / "libexec")
-    return next((str(p / name) for p in roots if (p / name).is_file() and os.access(p / name, os.X_OK)), None)
+    return next(
+        (str(p / name) for p in roots if (p / name).is_file() and os.access(p / name, os.X_OK)),
+        None,
+    )
 
 
 def supported(part):
@@ -56,16 +78,35 @@ def supported(part):
 
 def _dbus(service, path, interface, method, parameters=None):
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-    return bus.call_sync(service, path, interface, method, parameters, None,
-                         Gio.DBusCallFlags.NO_AUTO_START, 1500, None).unpack()
+    return bus.call_sync(
+        service,
+        path,
+        interface,
+        method,
+        parameters,
+        None,
+        Gio.DBusCallFlags.NO_AUTO_START,
+        1500,
+        None,
+    ).unpack()
 
 
 def kwin_running():
     try:
-        return bool(_dbus("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-                          "NameHasOwner", GLib.Variant("(s)", ("org.kde.KWin",)))[0])
+        return bool(
+            _dbus(
+                "org.freedesktop.DBus",
+                "/org/freedesktop/DBus",
+                "org.freedesktop.DBus",
+                "NameHasOwner",
+                GLib.Variant("(s)", ("org.kde.KWin",)),
+            )[0]
+        )
     except GLib.Error:
         return False
+
+
+# Native settings and theme application
 
 
 def get(part):
@@ -73,8 +114,13 @@ def get(part):
         try:
             # Reading the first desktop keeps the existing single-wallpaper UI useful.
             script = 'var ds = desktops(); if (ds.length) { ds[0].currentConfigGroup = ["Wallpaper", "org.kde.image", "General"]; print(ds[0].readConfig("Image", "")); }'
-            return _dbus("org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell",
-                         "evaluateScript", GLib.Variant("(s)", (script,)))[0].strip()
+            return _dbus(
+                "org.kde.plasmashell",
+                "/PlasmaShell",
+                "org.kde.PlasmaShell",
+                "evaluateScript",
+                GLib.Variant("(s)", (script,)),
+            )[0].strip()
         except GLib.Error:
             return None
     key = CONFIG_KEYS.get(part)
@@ -82,8 +128,12 @@ def get(part):
     if not key or not reader:
         return None
     try:
-        r = subprocess.run([reader, "--file", key[0], "--group", key[1], "--key", key[2]],
-                           capture_output=True, text=True, timeout=3)
+        r = subprocess.run(
+            [reader, "--file", key[0], "--group", key[1], "--key", key[2]],
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
         value = r.stdout.rstrip("\n") if r.returncode == 0 else None
         return value.removeprefix("__aurorae__svg__") if value and part == "aurorae" else value
     except (OSError, subprocess.SubprocessError):
@@ -116,6 +166,9 @@ def apply(part, value):
     return True
 
 
+# Package metadata and compatibility
+
+
 def metadata(path):
     try:
         data = json.loads((path / "metadata.json").read_text())
@@ -127,8 +180,10 @@ def metadata(path):
     try:
         ini.read(path / "metadata.desktop")
         section = ini["Desktop Entry"]
-        return {"KPlugin": {"Id": section.get("X-KDE-PluginInfo-Name", "")},
-                "KPackageStructure": section.get("X-KDE-ServiceTypes", "")}
+        return {
+            "KPlugin": {"Id": section.get("X-KDE-PluginInfo-Name", "")},
+            "KPackageStructure": section.get("X-KDE-ServiceTypes", ""),
+        }
     except (OSError, KeyError, configparser.Error):
         return {}
 
@@ -138,9 +193,13 @@ def classify_dir(path):
     structure = meta.get("KPackageStructure", "")
     if "Plasma/LookAndFeel" in structure or (meta and (path / "contents/defaults").is_file()):
         return "lookandfeel"
-    if "Plasma/Theme" in structure or (meta and any((path / d).is_dir() for d in ("widgets", "dialogs", "contents/widgets"))):
+    if "Plasma/Theme" in structure or (
+        meta and any((path / d).is_dir() for d in ("widgets", "dialogs", "contents/widgets"))
+    ):
         return "plasma"
-    if any((path / n).is_file() for n in ("decoration.svg", "decoration.svgz")) and any(path.glob("*rc")):
+    if any((path / n).is_file() for n in ("decoration.svg", "decoration.svgz")) and any(
+        path.glob("*rc")
+    ):
         return "aurorae"
     if "KWin/Decoration" in structure and (path / "contents/ui/main.qml").is_file():
         return "aurorae"
@@ -151,14 +210,20 @@ def theme_name(path, fallback):
     plugin = metadata(path).get("KPlugin", {})
     name = plugin.get("Id") if isinstance(plugin, dict) else None
     name = name or fallback
-    if not isinstance(name, str) or not re.fullmatch(r"[\w][\w .+@-]*", name, re.UNICODE) or name in (".", ".."):
+    if (
+        not isinstance(name, str)
+        or not re.fullmatch(r"[\w][\w .+@-]*", name, re.UNICODE)
+        or name in (".", "..")
+    ):
         raise ValueError("Invalid KDE theme ID in metadata")
     return name
 
 
 def compatible(part, path):
     if part == "lookandfeel" and major_version() >= 6:
-        return (path / "metadata.json").is_file() and metadata(path).get("KPackageStructure") == "Plasma/LookAndFeel"
+        return (path / "metadata.json").is_file() and metadata(path).get(
+            "KPackageStructure"
+        ) == "Plasma/LookAndFeel"
     return True
 
 
@@ -167,7 +232,13 @@ def locate(part, name):
     if not folder or not name:
         return None
     filename = name + ".colors" if part == "colors" else name
-    for base in (DATA_HOME, *(Path(p) for p in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":"))):
+    for base in (
+        DATA_HOME,
+        *(
+            Path(p)
+            for p in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
+        ),
+    ):
         p = base / folder / filename
         if p.exists():
             return p

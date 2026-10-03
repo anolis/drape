@@ -10,8 +10,10 @@ from gi.repository import GLib, Gtk  # noqa: E402
 from . import compiz  # noqa: E402
 from .lockpage import _framed, _row, _section  # noqa: E402
 
-COMPIZ_PITCH = ("Wobbly windows, a desktop cube, Expo, window previews, fire and water effects and "
-                "dozens more, each with its own settings.")
+COMPIZ_PITCH = (
+    "Wobbly windows, a desktop cube, Expo, window previews, fire and water effects and "
+    "dozens more, each with its own settings."
+)
 
 
 class WindowManagerPage(Gtk.ScrolledWindow):
@@ -72,8 +74,11 @@ class WindowManagerPage(Gtk.ScrolledWindow):
     def _busy(self):
         self.busy_row = Gtk.Box(spacing=10, margin_bottom=12, no_show_all=True)
         self.busy_spinner = Gtk.Spinner()
-        label = Gtk.Label(label="Software is being installed or removed… this page updates when it's done.",
-                          xalign=0, wrap=True)
+        label = Gtk.Label(
+            label="Software is being installed or removed… this page updates when it's done.",
+            xalign=0,
+            wrap=True,
+        )
         self.busy_row.pack_start(self.busy_spinner, False, False, 0)
         self.busy_row.pack_start(label, False, False, 0)
         self.busy_spinner.show()
@@ -88,8 +93,10 @@ class WindowManagerPage(Gtk.ScrolledWindow):
         sess, wm = compiz.session(), compiz.running_wm() or "unknown"
         text = GLib.markup_escape_text
         if sess == "cinnamon":
-            msg = (f"You're in <b>Cinnamon</b>, which manages windows itself (<b>{text(wm)}</b>). Its look comes "
-                   "from your Window borders and Desktop themes.")
+            msg = (
+                f"You're in <b>Cinnamon</b>, which manages windows itself (<b>{text(wm)}</b>). Its look comes "
+                "from your Window borders and Desktop themes."
+            )
         else:
             msg = f"You're in <b>{text(sess.upper() if sess == 'mate' else sess.title())}</b>, using <b>{text(wm)}</b>."
         info = Gtk.Label(xalign=0, wrap=True)
@@ -132,8 +139,10 @@ class WindowManagerPage(Gtk.ScrolledWindow):
             if sess in ("mate", "xfce"):
                 how = "drape installs Compiz and its settings manager; you can switch to it right here."
             else:
-                how = ("Compiz can't run inside Cinnamon, so drape also adds a small MATE + Compiz session that you "
-                       "pick at the login screen. Cinnamon stays exactly as it is, and you can switch back by logging out.")
+                how = (
+                    "Compiz can't run inside Cinnamon, so drape also adds a small MATE + Compiz session that you "
+                    "pick at the login screen. Cinnamon stays exactly as it is, and you can switch back by logging out."
+                )
             b = Gtk.Button(label="Install Compiz")
             b.get_style_context().add_class("suggested-action")
             b.connect("clicked", lambda _b: self._install())
@@ -145,16 +154,28 @@ class WindowManagerPage(Gtk.ScrolledWindow):
                     compiz.use_compiz_in_mate(True)
                 b = Gtk.Button(label="Log out")
                 b.connect("clicked", lambda _b: self._log_out())
-                rows.append(_row("Compiz is installed", b,
-                                 "To use it, log out and choose MATE at the login screen. Effects you set up below "
-                                 "are ready when you get there."))
+                rows.append(
+                    _row(
+                        "Compiz is installed",
+                        b,
+                        "To use it, log out and choose MATE at the login screen. Effects you set up below "
+                        "are ready when you get there.",
+                    )
+                )
             else:
                 b = Gtk.Button(label="Add the MATE + Compiz session")
                 b.connect("clicked", lambda _b: self._install())
-                rows.append(_row("Compiz is installed", b, "Compiz needs a session it can run in, next to Cinnamon."))
+                rows.append(
+                    _row(
+                        "Compiz is installed",
+                        b,
+                        "Compiz needs a session it can run in, next to Cinnamon.",
+                    )
+                )
         else:
-            rows.append(_row("Compiz is installed", Gtk.Label(label="✓"),
-                             "Choose it above to switch now."))
+            rows.append(
+                _row("Compiz is installed", Gtk.Label(label="✓"), "Choose it above to switch now.")
+            )
         if self.state[0] or self.state[1]:
             ours = compiz.removable()
             if ours:
@@ -162,53 +183,96 @@ class WindowManagerPage(Gtk.ScrolledWindow):
                 rm.get_style_context().add_class("destructive-action")
                 rm.connect("clicked", lambda _b: self._remove(ours))
                 what = "Compiz and the MATE session" if sess not in ("mate", "xfce") else "Compiz"
-                rows.append(_row(f"Remove {what}", rm,
-                                 f"Takes out the {len(ours)} packages drape's install added. Anything you installed "
-                                 "yourself stays."))
+                rows.append(
+                    _row(
+                        f"Remove {what}",
+                        rm,
+                        f"Takes out the {len(ours)} packages drape's install added. Anything you installed "
+                        "yourself stays.",
+                    )
+                )
         box.pack_start(_framed(rows), False, False, 0)
         return box
 
     def _remove(self, packages):
         from . import helper
+
         if compiz.session() == "mate":
-            self.win.notify("You're using the MATE session right now. Log into Cinnamon first, then remove it.")
+            self.win.notify(
+                "You're using the MATE session right now. Log into Cinnamon first, then remove it."
+            )
             return
         _removed, beyond = helper.removal_plan(packages)
         if beyond:
-            self.win.notify("Can't remove these safely: other software you installed needs "
-                            + ", ".join(beyond[:5]) + ("…" if len(beyond) > 5 else "") + ".")
+            self.win.notify(
+                "Can't remove these safely: other software you installed needs "
+                + ", ".join(beyond[:5])
+                + ("…" if len(beyond) > 5 else "")
+                + "."
+            )
             return
-        names = ", ".join(packages[:6]) + (f" and {len(packages) - 6} more" if len(packages) > 6 else "")
-        if not self.win.ask("Remove Compiz and the MATE session?",
-                            f"drape will remove the {len(packages)} packages its install added ({GLib.markup_escape_text(names)}). "
-                            "Things you installed yourself stay. This needs your password.", "Remove",
-                            destructive=True):
+        names = ", ".join(packages[:6]) + (
+            f" and {len(packages) - 6} more" if len(packages) > 6 else ""
+        )
+        if not self.win.ask(
+            "Remove Compiz and the MATE session?",
+            f"drape will remove the {len(packages)} packages its install added ({GLib.markup_escape_text(names)}). "
+            "Things you installed yourself stay. This needs your password.",
+            "Remove",
+            destructive=True,
+        ):
             return
         if compiz.session() != "mate":
             compiz.use_compiz_in_mate(False)
-        self.win.run_root([["remove-drape-packages", "--of", *(compiz.COMPIZ_PACKAGES + compiz.MATE_SESSION_PACKAGES),
-                            "--", *packages]],
-                          "Removing Compiz…", lambda: (self.win.notify("Removed. Cinnamon is unchanged."), self.load()))
+        self.win.run_root(
+            [
+                [
+                    "remove-drape-packages",
+                    "--of",
+                    *(compiz.COMPIZ_PACKAGES + compiz.MATE_SESSION_PACKAGES),
+                    "--",
+                    *packages,
+                ]
+            ],
+            "Removing Compiz…",
+            lambda: (self.win.notify("Removed. Cinnamon is unchanged."), self.load()),
+        )
 
     def _install(self):
         pkgs = compiz.packages_to_install()
-        if not self.win.ask("Install Compiz?",
-                            f"drape will install {len(pkgs)} packages: Compiz, its settings manager, the plugins "
-                            + ("and a minimal MATE session to run it in. " if len(pkgs) > len(compiz.COMPIZ_PACKAGES)
-                               else ". ") + "This needs your password.", "Install"):
+        if not self.win.ask(
+            "Install Compiz?",
+            f"drape will install {len(pkgs)} packages: Compiz, its settings manager, the plugins "
+            + (
+                "and a minimal MATE session to run it in. "
+                if len(pkgs) > len(compiz.COMPIZ_PACKAGES)
+                else ". "
+            )
+            + "This needs your password.",
+            "Install",
+        ):
             return
 
         def done():
             if compiz.session() not in ("mate", "xfce"):
                 compiz.use_compiz_in_mate(True)
-            self.win.notify("Compiz is installed. Restart drape to set up effects here"
-                            + ("; log out and choose MATE at the login screen to use it."
-                               if compiz.session() not in ("mate", "xfce") else "."))
+            self.win.notify(
+                "Compiz is installed. Restart drape to set up effects here"
+                + (
+                    "; log out and choose MATE at the login screen to use it."
+                    if compiz.session() not in ("mate", "xfce")
+                    else "."
+                )
+            )
             self.load()
+
         self.win.run_root([["apt-install", *pkgs]], "Installing Compiz…", done)
 
     def _log_out(self):
-        for cmd in (["cinnamon-session-quit", "--logout"], ["mate-session-save", "--logout-dialog"]):
+        for cmd in (
+            ["cinnamon-session-quit", "--logout"],
+            ["mate-session-save", "--logout-dialog"],
+        ):
             try:
                 subprocess.Popen(cmd, start_new_session=True)
                 return
@@ -219,8 +283,13 @@ class WindowManagerPage(Gtk.ScrolledWindow):
     def ccsm_section(self, create=False):
         if getattr(self, "_ccsm_section", None) is None and create:
             box = _section("Compiz effects")
-            if compiz.session() not in ("mate", "xfce") or "compiz" not in (compiz.running_wm() or "").lower():
-                note = Gtk.Label(xalign=0, wrap=True, label="Changes take effect the next time Compiz runs.")
+            if (
+                compiz.session() not in ("mate", "xfce")
+                or "compiz" not in (compiz.running_wm() or "").lower()
+            ):
+                note = Gtk.Label(
+                    xalign=0, wrap=True, label="Changes take effect the next time Compiz runs."
+                )
                 note.get_style_context().add_class("dim-label")
                 box.pack_start(note, False, False, 0)
             try:
@@ -231,7 +300,11 @@ class WindowManagerPage(Gtk.ScrolledWindow):
                 frame.add(self.ccsm)
                 box.pack_start(frame, True, True, 0)
             except Exception as e:  # noqa: BLE001 - show why rather than breaking the page
-                box.pack_start(Gtk.Label(label=f"Couldn't load Compiz's settings: {e}", xalign=0, wrap=True),
-                               False, False, 0)
+                box.pack_start(
+                    Gtk.Label(label=f"Couldn't load Compiz's settings: {e}", xalign=0, wrap=True),
+                    False,
+                    False,
+                    0,
+                )
             self._ccsm_section = box
         return getattr(self, "_ccsm_section", None)

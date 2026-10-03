@@ -14,6 +14,7 @@ from pathlib import Path
 
 def session_check():
     import gi
+
     gi.require_version("Gtk", "3.0")
     from gi.repository import Gtk, GLib
     from drape import xfce
@@ -67,13 +68,16 @@ def session_check():
     assert xfce.read(channel, "/panels/panel-1/position") == "p=6;x=2200;y=300"
     assert not page.undo_button.get_sensitive()
     window.destroy()
-    print("Isolated Xfconf + GTK: wallpaper, preset, legacy length type, panel controls and Undo passed.")
+    print(
+        "Isolated Xfconf + GTK: wallpaper, preset, legacy length type, panel controls and Undo passed."
+    )
 
 
 def main():
     if "--session" in sys.argv:
-        with subprocess.Popen(["broadwayd", "--address=127.0.0.1", "--port=0", ":83"],
-                              stdout=subprocess.DEVNULL) as display:
+        with subprocess.Popen(
+            ["broadwayd", "--address=127.0.0.1", "--port=0", ":83"], stdout=subprocess.DEVNULL
+        ) as display:
             try:
                 time.sleep(0.3)
                 session_check()
@@ -82,20 +86,35 @@ def main():
         return
     # Include the files touched by the check in a before/after isolation assertion.
     real_config = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    files = [real_config / "xfce4/xfconf/xfce-perchannel-xml" / f"{channel}.xml"
-             for channel in ("xfce4-panel", "xfce4-desktop")]
+    files = [
+        real_config / "xfce4/xfconf/xfce-perchannel-xml" / f"{channel}.xml"
+        for channel in ("xfce4-panel", "xfce4-desktop")
+    ]
     original = {path: path.read_bytes() if path.exists() else None for path in files}
     with tempfile.TemporaryDirectory(prefix="drape-xfce-integration-") as temp:
-        env = dict(os.environ, XDG_CONFIG_HOME=temp + "/config", XDG_CONFIG_DIRS=temp + "/defaults",
-                   XDG_CACHE_HOME=temp + "/cache", XDG_RUNTIME_DIR=temp,
-                   XDG_CURRENT_DESKTOP="XFCE", GDK_BACKEND="broadway", BROADWAY_DISPLAY=":83",
-                   GIO_USE_VFS="local", NO_AT_BRIDGE="1", DISPLAY="")
+        env = dict(
+            os.environ,
+            XDG_CONFIG_HOME=temp + "/config",
+            XDG_CONFIG_DIRS=temp + "/defaults",
+            XDG_CACHE_HOME=temp + "/cache",
+            XDG_RUNTIME_DIR=temp,
+            XDG_CURRENT_DESKTOP="XFCE",
+            GDK_BACKEND="broadway",
+            BROADWAY_DISPLAY=":83",
+            GIO_USE_VFS="local",
+            NO_AT_BRIDGE="1",
+            DISPLAY="",
+        )
         for name in ("config", "defaults", "cache"):
             (Path(temp) / name).mkdir()
-        result = subprocess.run(["dbus-run-session", "--", sys.executable, "-m",
-                                 "tests.xfce_integration", "--session"], env=env)
+        result = subprocess.run(
+            ["dbus-run-session", "--", sys.executable, "-m", "tests.xfce_integration", "--session"],
+            env=env,
+        )
     for path, data in original.items():
-        assert (path.read_bytes() if path.exists() else None) == data, f"Real config changed: {path}"
+        assert (path.read_bytes() if path.exists() else None) == data, (
+            f"Real config changed: {path}"
+        )
     sys.exit(result.returncode)
 
 

@@ -31,9 +31,11 @@ class XfceTest(unittest.TestCase):
         return ""
 
     def test_wallpaper_all_monitors_workspaces_and_legacy(self):
-        bases = ["/backdrop/screen0/monitorHDMI-1/workspace0",
-                 "/backdrop/screen0/monitorHDMI-1/workspace1",
-                 "/backdrop/screen1/monitorDP-2/workspace0"]
+        bases = [
+            "/backdrop/screen0/monitorHDMI-1/workspace0",
+            "/backdrop/screen0/monitorHDMI-1/workspace1",
+            "/backdrop/screen1/monitorDP-2/workspace0",
+        ]
         for base in bases:
             self.values[base + "/last-image"] = "/old.png"
             self.values[base + "/backdrop-cycle-enable"] = "true"
@@ -67,7 +69,10 @@ class XfceTest(unittest.TestCase):
                 xfce.apply_wallpaper(value)
 
     def test_uninitialized_desktop_never_creates_fake_monitor(self):
-        with tempfile.NamedTemporaryFile() as image, self.assertRaisesRegex(xfce.ApplyError, "Desktop Settings"):
+        with (
+            tempfile.NamedTemporaryFile() as image,
+            self.assertRaisesRegex(xfce.ApplyError, "Desktop Settings"),
+        ):
             xfce.apply_wallpaper(image.name)
         self.assertEqual(self.values, {})
 
@@ -90,22 +95,34 @@ class XfceTest(unittest.TestCase):
             if "-s" in args and "/fail" in args:
                 raise xfce.ApplyError("locked setting")
             return self.query(channel, *args)
-        with mock.patch.object(xfce, "query", side_effect=fail), self.assertRaisesRegex(xfce.ApplyError, "locked"):
-            xfce.change("test", {"/old": ("new", "string"), "/new": (True, "bool"), "/fail": (1, "int")})
+
+        with (
+            mock.patch.object(xfce, "query", side_effect=fail),
+            self.assertRaisesRegex(xfce.ApplyError, "locked"),
+        ):
+            xfce.change(
+                "test", {"/old": ("new", "string"), "/new": (True, "bool"), "/fail": (1, "int")}
+            )
         self.assertEqual(self.values, {"/old": "original"})
 
     def test_panel_preset_and_undo_preserve_widgets_monitor_and_other_panels(self):
-        self.values = {"/panels": "Value is an array with 2 items:\n\n1\n3",
-                       "/panels/panel-1/position": "p=6;x=2200;y=300",
-                       "/panels/panel-1/plugin-ids": "1\n2\n3",
-                       "/panels/panel-1/output-name": "DP-2",
-                       "/panels/panel-3/size": "48"}
+        self.values = {
+            "/panels": "Value is an array with 2 items:\n\n1\n3",
+            "/panels/panel-1/position": "p=6;x=2200;y=300",
+            "/panels/panel-1/plugin-ids": "1\n2\n3",
+            "/panels/panel-1/output-name": "DP-2",
+            "/panels/panel-3/size": "48",
+        }
         before = dict(self.values)
         self.assertEqual(xfce.panels(), [1, 3])
         undo = xfce.apply_panel(1, {"background-style": 0}, "Left bar")
         self.assertEqual(self.values["/panels/panel-1/position"], "p=7;x=2200;y=300")
         self.assertEqual(self.values["/panels/panel-1/mode"], "1")
-        for key in ("/panels/panel-1/plugin-ids", "/panels/panel-1/output-name", "/panels/panel-3/size"):
+        for key in (
+            "/panels/panel-1/plugin-ids",
+            "/panels/panel-1/output-name",
+            "/panels/panel-3/size",
+        ):
             self.assertEqual(self.values[key], before[key])
         xfce.restore(xfce.PANEL_CHANNEL, undo)
         self.assertEqual(self.values, before)
@@ -118,9 +135,11 @@ class XfceTest(unittest.TestCase):
         self.assertEqual(self.values, {"/panels": "1"})
 
     def test_xfce_wallpaper_routing_and_sidebar(self):
-        with mock.patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "XFCE"}), \
-                mock.patch.object(desktop.shutil, "which", return_value="/usr/bin/xfconf-query"), \
-                mock.patch.object(xfce, "apply_wallpaper", return_value=True) as apply:
+        with (
+            mock.patch.dict(os.environ, {"XDG_CURRENT_DESKTOP": "XFCE"}),
+            mock.patch.object(desktop.shutil, "which", return_value="/usr/bin/xfconf-query"),
+            mock.patch.object(xfce, "apply_wallpaper", return_value=True) as apply,
+        ):
             self.assertTrue(desktop.supported("wallpapers"))
             self.assertTrue(desktop.set_("wallpapers", "file:///tmp/image.png"))
             apply.assert_called_once_with("file:///tmp/image.png")
@@ -132,33 +151,63 @@ class XfceTest(unittest.TestCase):
 class XfceCommandTest(unittest.TestCase):
     def test_live_outputs_and_workspaces_skip_disconnected_and_disabled(self):
         outputs = "Screen 0: minimum 320 x 200\neDP-1 connected primary 1920x1200+0+0\nDP-1 connected 1280x1024-1280+0\nHDMI-1 disconnected\nDP-2 connected (normal)"
-        with mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11"}), \
-                mock.patch.object(xfce.subprocess, "run", side_effect=[
-                    mock.Mock(stdout=outputs), mock.Mock(stdout="_NET_NUMBER_OF_DESKTOPS(CARDINAL) = 2")]):
+        with (
+            mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11"}),
+            mock.patch.object(
+                xfce.subprocess,
+                "run",
+                side_effect=[
+                    mock.Mock(stdout=outputs),
+                    mock.Mock(stdout="_NET_NUMBER_OF_DESKTOPS(CARDINAL) = 2"),
+                ],
+            ),
+        ):
             targets = xfce.live_wallpaper_targets(set())
-        self.assertEqual(set(targets), {f"/backdrop/screen0/monitor{monitor}/workspace{workspace}"
-                                      for monitor in ("eDP-1", "DP-1") for workspace in (0, 1)})
+        self.assertEqual(
+            set(targets),
+            {
+                f"/backdrop/screen0/monitor{monitor}/workspace{workspace}"
+                for monitor in ("eDP-1", "DP-1")
+                for workspace in (0, 1)
+            },
+        )
 
     def test_existing_types_are_preserved_and_new_values_are_typed(self):
-        with mock.patch.object(xfce.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="")) as run:
+        with mock.patch.object(
+            xfce.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="")
+        ) as run:
             xfce.write("test", "/length", 100, "double")
-            self.assertEqual(run.call_args.args[0], ["xfconf-query", "-c", "test", "-p", "/length", "-s", "100"])
+            self.assertEqual(
+                run.call_args.args[0], ["xfconf-query", "-c", "test", "-p", "/length", "-s", "100"]
+            )
             xfce.write("test", "/locked", True, "bool", False)
             self.assertEqual(run.call_args.args[0][-3:], ["-n", "-t", "bool"])
         for result in (OSError("missing"), subprocess.TimeoutExpired("xfconf-query", 5)):
-            with mock.patch.object(xfce.subprocess, "run", side_effect=result), self.assertRaises(xfce.ApplyError):
+            with (
+                mock.patch.object(xfce.subprocess, "run", side_effect=result),
+                self.assertRaises(xfce.ApplyError),
+            ):
                 xfce.read("test", "/key")
 
     def test_xfconf_failure_is_reported(self):
-        with mock.patch.object(xfce.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="", stderr="permission denied")), \
-                self.assertRaisesRegex(xfce.ApplyError, "permission denied"):
+        with (
+            mock.patch.object(
+                xfce.subprocess,
+                "run",
+                return_value=mock.Mock(returncode=1, stdout="", stderr="permission denied"),
+            ),
+            self.assertRaisesRegex(xfce.ApplyError, "permission denied"),
+        ):
             xfce.write("test", "/key", "value", "string")
 
 
 class XfwmPreviewTest(unittest.TestCase):
     def test_artwork_preview_beats_gtk_and_invalidates_after_artwork_changes(self):
-        with tempfile.TemporaryDirectory() as temp, mock.patch.object(previews, "CACHE", Path(temp) / "cache"), \
-                mock.patch.object(previews, "render_gtk_theme") as gtk:
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            mock.patch.object(previews, "CACHE", Path(temp) / "cache"),
+            mock.patch.object(previews, "render_gtk_theme") as gtk,
+        ):
             theme = Path(temp) / "Example"
             (theme / "xfwm4").mkdir(parents=True)
             (theme / "gtk-3.0").mkdir()

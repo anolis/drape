@@ -22,6 +22,9 @@ _pixbufs = {}  # (source, width, height) -> Pixbuf, for this session
 _PIXBUF_LIMIT = 600
 
 
+# Image decoding and animated frame preparation
+
+
 def _decode(path, width, height):
     """Scale an image to fit; animated GIFs use their first frame (the plain loader rejects them)."""
     try:
@@ -29,8 +32,11 @@ def _decode(path, width, height):
     except GLib.Error:
         pb = GdkPixbuf.PixbufAnimation.new_from_file(str(path)).get_static_image()
         scale = min(width / pb.get_width(), height / pb.get_height(), 1)
-        return pb.scale_simple(max(1, round(pb.get_width() * scale)), max(1, round(pb.get_height() * scale)),
-                               GdkPixbuf.InterpType.BILINEAR)
+        return pb.scale_simple(
+            max(1, round(pb.get_width() * scale)),
+            max(1, round(pb.get_height() * scale)),
+            GdkPixbuf.InterpType.BILINEAR,
+        )
 
 
 MAX_FRAMES = 150
@@ -39,6 +45,7 @@ MAX_FRAMES = 150
 def _frames(path, width, height):
     """[(Pixbuf, delay_ms)] for an animated image scaled to fit, or None if it isn't animated."""
     from PIL import Image, ImageSequence
+
     with Image.open(path) as im:
         if not getattr(im, "is_animated", False):
             return None
@@ -48,8 +55,15 @@ def _frames(path, width, height):
         for frame in ImageSequence.Iterator(im):
             delay = frame.info.get("duration") or 100
             rgba = frame.convert("RGBA").resize(size, Image.BILINEAR)
-            pb = GdkPixbuf.Pixbuf.new_from_bytes(GLib.Bytes.new(rgba.tobytes()), GdkPixbuf.Colorspace.RGB,
-                                                 True, 8, size[0], size[1], size[0] * 4)
+            pb = GdkPixbuf.Pixbuf.new_from_bytes(
+                GLib.Bytes.new(rgba.tobytes()),
+                GdkPixbuf.Colorspace.RGB,
+                True,
+                8,
+                size[0],
+                size[1],
+                size[0] * 4,
+            )
             frames.append((pb, max(20, int(delay))))
             if len(frames) >= MAX_FRAMES:
                 break
@@ -57,6 +71,9 @@ def _frames(path, width, height):
 
 
 _ui_busy_until = [0.0]  # cards being added right now also cost CPU; don't blame the animations
+
+
+# Playback scheduling and foreground load
 
 
 def _ui_busy():
@@ -76,6 +93,7 @@ def _play(image, frames):
     def cancel():
         player.cancel()
         image._drape_anim = None
+
     image._drape_anim = cancel
 
 
@@ -89,9 +107,14 @@ def _show(image, result):
         image.set_from_pixbuf(result)
 
 
-_foreground = {"pending": 0}  # previews the user is waiting to see; background prefetch waits for these
+_foreground = {
+    "pending": 0
+}  # previews the user is waiting to see; background prefetch waits for these
 
 _fg_lock = threading.Lock()
+
+
+# Thumbnail fetch and caching
 
 
 def _fetch_thumb(url, width, height):
@@ -111,6 +134,9 @@ def _fetch_thumb(url, width, height):
         return  # possibly animated: played from the original
     _decode(original, width, height).savev(str(small), "png", [], [])
     original.unlink(missing_ok=True)
+
+
+# Widget-safe asynchronous image loading
 
 
 def load_image(url, image, width, height, on_done=None, alive=None):
@@ -167,6 +193,7 @@ def load_image(url, image, width, height, on_done=None, alive=None):
         finally:
             with _fg_lock:
                 _foreground["pending"] -= 1
+
     with _fg_lock:
         _foreground["pending"] += 1
     _images.submit(safe)

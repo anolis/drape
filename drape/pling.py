@@ -67,6 +67,7 @@ class Item:
     def best_file(self):
         """The download most likely to be the installable theme: an archive or image, not the
         author's drafts/sources. Uploads are often ordered arbitrarily."""
+
         def rank(f):
             n = f.name.lower()
             return (
@@ -74,6 +75,7 @@ class Item:
                 not re.search(r"\.(tar|tgz|zip|7z|xz|gz|bz2|zst|png|jpe?g|webp|svg)(\.|$)", n),
                 f.index,
             )
+
         return min(self.files, key=rank) if self.files else None
 
     @classmethod
@@ -84,13 +86,15 @@ class Item:
         while f"downloadlink{i}" in d:
             # downloadway 1 == direct file; other values are external links / packages
             if d.get(f"downloadlink{i}") and str(d.get(f"downloadway{i}", "1")) == "1":
-                files.append(Download(
-                    index=i,
-                    name=d.get(f"downloadname{i}") or f"file{i}",
-                    url=d[f"downloadlink{i}"],
-                    size_kb=int(d.get(f"downloadsize{i}") or 0),
-                    md5=d.get(f"downloadmd5sum{i}") or "",
-                ))
+                files.append(
+                    Download(
+                        index=i,
+                        name=d.get(f"downloadname{i}") or f"file{i}",
+                        url=d[f"downloadlink{i}"],
+                        size_kb=int(d.get(f"downloadsize{i}") or 0),
+                        md5=d.get(f"downloadmd5sum{i}") or "",
+                    )
+                )
             i += 1
         return cls(
             id=str(d["id"]),
@@ -115,8 +119,9 @@ def _get(path, params=None):
     params = dict(params or {}, format="json")
     try:
         # slow connections can take a while to deliver a page; only give up if nothing arrives at all
-        r = http.get(f"{API}/{path}", params=params, timeout=(15, 90),
-                         headers={"User-Agent": USER_AGENT})
+        r = http.get(
+            f"{API}/{path}", params=params, timeout=(15, 90), headers={"User-Agent": USER_AGENT}
+        )
         r.raise_for_status()
         data = r.json()
     except (requests.RequestException, ValueError) as e:
@@ -136,8 +141,13 @@ CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drap
 
 
 def _search_params(kind, query, sort, page, pagesize, categories):
-    return {"categories": categories or KINDS_BY_KEY[kind].categories, "search": query,
-            "sortmode": SORT_MODES.get(sort, "top"), "page": page, "pagesize": pagesize}
+    return {
+        "categories": categories or KINDS_BY_KEY[kind].categories,
+        "search": query,
+        "sortmode": SORT_MODES.get(sort, "top"),
+        "page": page,
+        "pagesize": pagesize,
+    }
 
 
 def _cache_file(params):
@@ -162,7 +172,9 @@ def search(kind, query="", sort="top", page=0, pagesize=30, categories=None):
     return _parse(data)
 
 
-def cached_search(kind, query="", sort="top", page=0, pagesize=30, categories=None, max_age=7 * 86400):
+def cached_search(
+    kind, query="", sort="top", page=0, pagesize=30, categories=None, max_age=7 * 86400
+):
     """The last results for this search, if we have them - shown instantly while fresh ones load.
     Download links inside may have expired; installs always re-fetch the item."""
     f = _cache_file(_search_params(kind, query, sort, page, pagesize, categories))

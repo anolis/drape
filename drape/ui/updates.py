@@ -15,10 +15,15 @@ class AppUpdates:
         self.checking = False
         GLib.timeout_add_seconds(5, self.automatic)
 
+    # Daily checks without interrupting startup
+
     def automatic(self):
         last = settings.get("app_update_checked_at") or 0
-        if (not self.window._closing.is_set() and settings.get("check_app_updates") and
-                time.time() - last >= 86400):
+        if (
+            not self.window._closing.is_set()
+            and settings.get("check_app_updates")
+            and time.time() - last >= 86400
+        ):
             self.check()
         return False
 
@@ -38,7 +43,10 @@ class AppUpdates:
             except OSError:
                 pass
             if update:
-                self.window.notify("A Drape update is available.", action=("View update", lambda: self.offer(update)))
+                self.window.notify(
+                    "A Drape update is available.",
+                    action=("View update", lambda: self.offer(update)),
+                )
             elif manual:
                 self.window.notify("Drape is up to date.")
 
@@ -49,16 +57,26 @@ class AppUpdates:
 
         run_async(updater.check, done, failed)
 
+    # Consent, update progress and restart
+
     def offer(self, update):
         win = self.window
         if win.busy:
-            win.notify("Finish the current theme installation before updating Drape.",
-                     action=("View update", lambda: self.offer(update)))
+            win.notify(
+                "Finish the current theme installation before updating Drape.",
+                action=("View update", lambda: self.offer(update)),
+            )
             return
-        dialog = Gtk.MessageDialog(transient_for=win, modal=True,
-                                   message_type=Gtk.MessageType.INFO, text="A Drape update is available")
-        dialog.format_secondary_text(f"{update.count} new commit(s):\n\n{update.summary}\n\n" +
-                                     (update.blocked or "Update this checkout and restart Drape now?"))
+        dialog = Gtk.MessageDialog(
+            transient_for=win,
+            modal=True,
+            message_type=Gtk.MessageType.INFO,
+            text="A Drape update is available",
+        )
+        dialog.format_secondary_text(
+            f"{update.count} new commit(s):\n\n{update.summary}\n\n"
+            + (update.blocked or "Update this checkout and restart Drape now?")
+        )
         dialog.add_button("Later", Gtk.ResponseType.CANCEL)
         if not update.blocked:
             dialog.add_button("Update and restart", Gtk.ResponseType.OK)

@@ -32,16 +32,32 @@ def cmd_search(a):
         return
     items, total = pling.search(a.kind, a.query, a.sort, a.page, max(a.limit, 10), categories)
     if a.kind == "packs":
-        items = [it for it in items if any(
-            desktop.archive_compatible(*(peek.cached(it.id, f.name) or peek.contents(it.id, f.url, f.name)), "packs")
-            for f in it.files)]
+        items = [
+            it
+            for it in items
+            if any(
+                desktop.archive_compatible(
+                    *(peek.cached(it.id, f.name) or peek.contents(it.id, f.url, f.name)), "packs"
+                )
+                for f in it.files
+            )
+        ]
     elif only:
-        items = [it for it in items if not it.files or any(
-            (hit := peek.cached(it.id, f.name)) is None or desktop.archive_compatible(*hit, a.kind)
-            for f in it.files)]
-    items = items[:a.limit]  # the API won't return pages smaller than 10
+        items = [
+            it
+            for it in items
+            if not it.files
+            or any(
+                (hit := peek.cached(it.id, f.name)) is None
+                or desktop.archive_compatible(*hit, a.kind)
+                for f in it.files
+            )
+        ]
+    items = items[: a.limit]  # the API won't return pages smaller than 10
     for it in items:
-        print(f"{it.id:>10}  {it.name[:48]:48}  {it.author[:16]:16}  score {it.score:3d}  {it.downloads:>7} dl")
+        print(
+            f"{it.id:>10}  {it.name[:48]:48}  {it.author[:16]:16}  score {it.score:3d}  {it.downloads:>7} dl"
+        )
     print(f"\n{len(items)} of {total} {pling.KINDS_BY_KEY[a.kind].label.lower()}", file=sys.stderr)
 
 
@@ -57,8 +73,9 @@ def cmd_show(a):
 def cmd_install(a):
     it = pling.get(a.id)
     print(f"Installing {it.name}...", file=sys.stderr)
-    e = installer.install_item(it, a.file, _progress, a.force, _replace(a),
-                               only_applicable=False if a.all_themes else None)
+    e = installer.install_item(
+        it, a.file, _progress, a.force, _replace(a), only_applicable=False if a.all_themes else None
+    )
     print(file=sys.stderr)
     _print_entry(it.id, e)
     if a.apply:
@@ -66,8 +83,9 @@ def cmd_install(a):
 
 
 def cmd_install_url(a):
-    key, e = installer.install_url(a.url, _progress, a.force, _replace(a),
-                                   only_applicable=False if a.all_themes else None)
+    key, e = installer.install_url(
+        a.url, _progress, a.force, _replace(a), only_applicable=False if a.all_themes else None
+    )
     print(file=sys.stderr)
     _print_entry(key, e)
     if a.apply:
@@ -87,9 +105,16 @@ def _conflict_hint(e):
 
 def cmd_file(a):
     p = Path(a.path)
-    e = installer.install_file(p, f"file:{p.name}", p.name.split(".")[0], source=str(p.resolve()),
-                               replace_foreign=a.force, file=p.name, replace_items=_replace(a),
-                               only_applicable=False if a.all_themes else None)
+    e = installer.install_file(
+        p,
+        f"file:{p.name}",
+        p.name.split(".")[0],
+        source=str(p.resolve()),
+        replace_foreign=a.force,
+        file=p.name,
+        replace_items=_replace(a),
+        only_applicable=False if a.all_themes else None,
+    )
     _print_entry(f"file:{p.name}", e)
 
 
@@ -115,14 +140,24 @@ def _apply(entry, name=None):
 def _apply_system(c):
     """Boot splash / login screen themes: copy into place and apply as root (asks for a password)."""
     from . import system
+
     kind, name = c["system"], c["name"]
     req = system.requirement(kind)
     if not req.installed:
-        how = f"install it with: sudo apt install {req.package}" if req.package else f"get it from {req.url}"
+        how = (
+            f"install it with: sudo apt install {req.package}"
+            if req.package
+            else f"get it from {req.url}"
+        )
         sys.exit(f"{name} needs {req.label}, which isn't installed - {how}")
-    cmds = [["install", kind, c["path"], "--name", name],
-            {"plymouth": ["set-plymouth", name], "sddm": ["sddm-theme", name],
-             "webgreeter": ["web-greeter-theme", name]}[kind]]
+    cmds = [
+        ["install", kind, c["path"], "--name", name],
+        {
+            "plymouth": ["set-plymouth", name],
+            "sddm": ["sddm-theme", name],
+            "webgreeter": ["web-greeter-theme", name],
+        }[kind],
+    ]
     if kind == "plymouth":
         print("Rebuilding the boot image takes a minute…", file=sys.stderr)
     r = system.run_helper(*cmds)
@@ -130,7 +165,9 @@ def _apply_system(c):
         sys.exit(r.output or "failed")
     print(f"Applied: {kind} {name}")
     if not req.active:
-        print(f"Note: {req.label} isn't your active login screen - switch to it in drape's Lock & login page.")
+        print(
+            f"Note: {req.label} isn't your active login screen - switch to it in drape's Lock & login page."
+        )
 
 
 def cmd_apply(a):
@@ -164,7 +201,9 @@ def cmd_updates(a):
             print(f"{k}: {err}", file=sys.stderr)
             continue
         if it.changed and it.changed != e.get("changed"):
-            print(f"{k:>10}  {e['title']}: update available ({e.get('changed', '?')[:10]} -> {it.changed[:10]})")
+            print(
+                f"{k:>10}  {e['title']}: update available ({e.get('changed', '?')[:10]} -> {it.changed[:10]})"
+            )
 
 
 def main(argv=None):
@@ -184,8 +223,11 @@ def main(argv=None):
     s.set_defaults(func=cmd_show)
 
     s = sub.add_parser("install", help="install an item by id")
-    s.add_argument("--replace", action="store_true",
-                   help="if a theme name clashes with another installed item, uninstall that item")
+    s.add_argument(
+        "--replace",
+        action="store_true",
+        help="if a theme name clashes with another installed item, uninstall that item",
+    )
     s.add_argument("id")
     s.add_argument("--file", type=int, help="download number (see `show`), default first")
     s.add_argument("--apply", action="store_true", help="apply after installing")
@@ -193,16 +235,22 @@ def main(argv=None):
     s.set_defaults(func=cmd_install)
 
     s = sub.add_parser("install-url", help="install from an ocs:// link or direct URL")
-    s.add_argument("--replace", action="store_true",
-                   help="if a theme name clashes with another installed item, uninstall that item")
+    s.add_argument(
+        "--replace",
+        action="store_true",
+        help="if a theme name clashes with another installed item, uninstall that item",
+    )
     s.add_argument("url")
     s.add_argument("--apply", action="store_true")
     s.add_argument("--force", action="store_true")
     s.set_defaults(func=cmd_install_url)
 
     s = sub.add_parser("install-file", help="install from a local archive")
-    s.add_argument("--replace", action="store_true",
-                   help="if a theme name clashes with another installed item, uninstall that item")
+    s.add_argument(
+        "--replace",
+        action="store_true",
+        help="if a theme name clashes with another installed item, uninstall that item",
+    )
     s.add_argument("path")
     s.add_argument("--force", action="store_true")
     s.set_defaults(func=cmd_file)
@@ -218,11 +266,16 @@ def main(argv=None):
     s.add_argument("key")
     s.set_defaults(func=cmd_remove)
 
-    sub.add_parser("updates", help="check installed items for updates").set_defaults(func=cmd_updates)
+    sub.add_parser("updates", help="check installed items for updates").set_defaults(
+        func=cmd_updates
+    )
 
     for name in ("search", "install", "install-url", "install-file"):
-        sub.choices[name].add_argument("--all-themes", action="store_true",
-                                      help="include themes for other desktops (Apply still checks compatibility)")
+        sub.choices[name].add_argument(
+            "--all-themes",
+            action="store_true",
+            help="include themes for other desktops (Apply still checks compatibility)",
+        )
     a = ap.parse_args(argv)
     try:
         a.func(a)

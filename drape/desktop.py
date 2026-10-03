@@ -40,11 +40,19 @@ KEYS = {
 }
 
 
-FALLBACK = {"icons": "Adwaita", "cursors": "Adwaita", "gtk": "Adwaita", "wm": "Adwaita", "desktop": ""}
-XFCE_KEYS = {"gtk": ("xsettings", "/Net/ThemeName"),
-             "icons": ("xsettings", "/Net/IconThemeName"),
-             "cursors": ("xsettings", "/Gtk/CursorThemeName"),
-             "xfwm": ("xfwm4", "/general/theme")}
+FALLBACK = {
+    "icons": "Adwaita",
+    "cursors": "Adwaita",
+    "gtk": "Adwaita",
+    "wm": "Adwaita",
+    "desktop": "",
+}
+XFCE_KEYS = {
+    "gtk": ("xsettings", "/Net/ThemeName"),
+    "icons": ("xsettings", "/Net/IconThemeName"),
+    "cursors": ("xsettings", "/Gtk/CursorThemeName"),
+    "xfwm": ("xfwm4", "/general/theme"),
+}
 _wm_cache = (None, 0.0)
 
 
@@ -54,16 +62,28 @@ def running_wm(refresh=False):
     if not refresh and time.monotonic() < _wm_cache[1]:
         return _wm_cache[0]
     name = None
-    if os.environ.get("XDG_SESSION_TYPE") == "wayland" and current_desktop() == "kde" and kde.kwin_running():
+    if (
+        os.environ.get("XDG_SESSION_TYPE") == "wayland"
+        and current_desktop() == "kde"
+        and kde.kwin_running()
+    ):
         name = "KWin"
     if os.environ.get("DISPLAY") and os.environ.get("XDG_SESSION_TYPE") != "wayland":
         try:
-            root = subprocess.run(["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"],
-                                  capture_output=True, text=True, timeout=2).stdout
+            root = subprocess.run(
+                ["xprop", "-root", "_NET_SUPPORTING_WM_CHECK"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout
             wid = re.search(r"window id # (0x[0-9a-fA-F]+)", root)
             if wid:
-                out = subprocess.run(["xprop", "-id", wid[1], "_NET_WM_NAME"],
-                                     capture_output=True, text=True, timeout=2).stdout
+                out = subprocess.run(
+                    ["xprop", "-id", wid[1], "_NET_WM_NAME"],
+                    capture_output=True,
+                    text=True,
+                    timeout=2,
+                ).stdout
                 match = re.search(r'= "([^"]*)"', out)
                 name = match[1] if match else None
         except (OSError, subprocess.SubprocessError):
@@ -115,9 +135,13 @@ def _key(part):
         if border_part() != "wm":
             return None
         wm = (running_wm() or "").lower()
-        schema = ("org.mate.Marco.general" if "marco" in wm else
-                  "org.cinnamon.desktop.wm.preferences" if "muffin" in wm else
-                  "org.gnome.desktop.wm.preferences")
+        schema = (
+            "org.mate.Marco.general"
+            if "marco" in wm
+            else "org.cinnamon.desktop.wm.preferences"
+            if "muffin" in wm
+            else "org.gnome.desktop.wm.preferences"
+        )
         return (schema, "theme") if _schema_exists(schema) else None
     de = current_desktop()
     if de not in KEYS:
@@ -262,7 +286,9 @@ def compatible_parts(component):
 
 def scope(kind, only=True):
     """Catalog scope shared by GUI and CLI. Empty categories means unsupported."""
-    label = f"{current_desktop() or 'unsupported desktop'} / {running_wm() or 'unknown window manager'}"
+    label = (
+        f"{current_desktop() or 'unsupported desktop'} / {running_wm() or 'unknown window manager'}"
+    )
     if kind == "packs":
         categories = []
         for category in ("gtk", "desktop", "wm", "lookandfeel", "colors"):
@@ -270,10 +296,12 @@ def scope(kind, only=True):
                 scoped, _ = scope(category, True)
                 if scoped != "":
                     from .pling import KINDS_BY_KEY
+
                     categories.extend((scoped or KINDS_BY_KEY[category].categories).split(","))
         return ",".join(dict.fromkeys(categories)), (
             f"Theme bundles for {label}. Shows packs with multiple usable appearance parts, "
-            "and compatible KDE global themes. Each part can be chosen before applying.")
+            "and compatible KDE global themes. Each part can be chosen before applying."
+        )
     if kind in ("login", "boot"):
         return None, ""
     if kind == "wm" and not only:
@@ -281,12 +309,18 @@ def scope(kind, only=True):
     if not supported(kind):
         return ("" if only else None), f"{label}: applying {kind} themes is not supported."
     if kind == "wm":
-        return {"xfwm": "138", "wm": "125", "aurorae": "114,717" if kde.major_version() >= 6 else "114"}[border_part()], label
+        return {
+            "xfwm": "138",
+            "wm": "125",
+            "aurorae": "114,717" if kde.major_version() >= 6 else "114",
+        }[border_part()], label
     if current_desktop() == "kde":
         if kind == "desktop":
             return "104", "Plasma styles from KDE-Look.org"
         if kind == "lookandfeel":
-            return ("722" if kde.major_version() >= 6 else "121") if only else "121,722", "KDE global themes"
+            return (
+                "722" if kde.major_version() >= 6 else "121"
+            ) if only else "121,722", "KDE global themes"
     return None, label
 
 
@@ -344,10 +378,13 @@ def catalog_name():
 
 # ---------------------------------------------------------------- Cinnamon theme compatibility
 
+
 @functools.lru_cache(maxsize=1)
 def cinnamon_version():
     try:
-        out = subprocess.run(["cinnamon", "--version"], capture_output=True, text=True, timeout=5).stdout
+        out = subprocess.run(
+            ["cinnamon", "--version"], capture_output=True, text=True, timeout=5
+        ).stdout
         m = re.search(r"(\d+)\.(\d+)", out)
         return (int(m.group(1)), int(m.group(2))) if m else None
     except (OSError, subprocess.SubprocessError):
@@ -355,8 +392,11 @@ def cinnamon_version():
 
 
 def find_theme_dir(name):
-    for base in (Path.home() / ".themes", Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "themes",
-                 Path("/usr/share/themes")):
+    for base in (
+        Path.home() / ".themes",
+        Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "themes",
+        Path("/usr/share/themes"),
+    ):
         if (base / name).is_dir():
             return base / name
     return None
@@ -394,11 +434,17 @@ def cinnamon_theme_outdated(theme_dir):
         content = css.read_text(errors="replace")
         if "@import" in content:
             imports = cinnamon_css_imports(content)
-            if not imports or any(not (css.parent / ref).is_file() or
-                                  not (css.parent / ref).resolve().is_relative_to(css.parent.resolve()) for ref in imports):
+            if not imports or any(
+                not (css.parent / ref).is_file()
+                or not (css.parent / ref).resolve().is_relative_to(css.parent.resolve())
+                for ref in imports
+            ):
                 return False
-            content += "\n" + "\n".join(p.read_text(errors="replace") for p in css.parent.rglob("*.css")
-                                          if p != css and not p.is_symlink())
+            content += "\n" + "\n".join(
+                p.read_text(errors="replace")
+                for p in css.parent.rglob("*.css")
+                if p != css and not p.is_symlink()
+            )
     except OSError:
         return False  # unreadable styles are unverified, not proven incompatible
     return cinnamon_css_outdated(content)
@@ -409,11 +455,14 @@ def cinnamon_entry_outdated(components):
     return bool(themes) and all(cinnamon_theme_outdated(c["path"]) for c in themes)
 
 
-OUTDATED_NOTE = ("made for an older Cinnamon: system dialogs such as password prompts and the logout "
-                 "dialog won't have a background")
+OUTDATED_NOTE = (
+    "made for an older Cinnamon: system dialogs such as password prompts and the logout "
+    "dialog won't have a background"
+)
 
 
 # ---------------------------------------------------------------- which open windows show window borders
+
 
 def _xprop(*args):
     try:
@@ -426,12 +475,17 @@ def _xprop(*args):
 def _app_names():
     """Window class / program name -> the app's name in the menu."""
     from gi.repository import Gio
+
     names = {}
     for info in Gio.AppInfo.get_all():
         if not isinstance(info, Gio.DesktopAppInfo) or info.get_nodisplay():
             continue
         name = info.get_name()
-        keys = [info.get_startup_wm_class(), Path(info.get_id() or "").stem, Path(info.get_executable() or "").name]
+        keys = [
+            info.get_startup_wm_class(),
+            Path(info.get_id() or "").stem,
+            Path(info.get_executable() or "").name,
+        ]
         for k in keys:
             if k:
                 names.setdefault(k.lower(), name)
@@ -467,7 +521,9 @@ def open_windows():
         return None
     seen = {}
     for wid in re.findall(r"0x[0-9a-f]+", _xprop("-root", "_NET_CLIENT_LIST").split("=", 1)[-1]):
-        props = _xprop("-id", wid, "WM_CLASS", "_NET_WM_WINDOW_TYPE", "_GTK_FRAME_EXTENTS", "_MOTIF_WM_HINTS")
+        props = _xprop(
+            "-id", wid, "WM_CLASS", "_NET_WM_WINDOW_TYPE", "_GTK_FRAME_EXTENTS", "_MOTIF_WM_HINTS"
+        )
         wtype = re.search(r"_NET_WM_WINDOW_TYPE\(ATOM\) = (\S+)", props)
         if wtype and not wtype.group(1).rstrip(",").endswith(("NORMAL", "DIALOG")):
             continue  # desktop, panels, ...
@@ -482,18 +538,34 @@ def open_windows():
     return sorted(seen.items(), key=lambda kv: kv[0].lower())
 
 
-PACK_PARTS = {"gtk", "desktop", "wm", "xfwm", "aurorae", "plasma", "lookandfeel",
-              "colors", "icons", "cursors", "wallpapers"}
+PACK_PARTS = {
+    "gtk",
+    "desktop",
+    "wm",
+    "xfwm",
+    "aurorae",
+    "plasma",
+    "lookandfeel",
+    "colors",
+    "icons",
+    "cursors",
+    "wallpapers",
+}
 PACK_ANCHORS = {"gtk", "desktop", "wm", "xfwm", "aurorae", "plasma"}
 
 
 def _is_pack(parts):
     return (current_desktop() == "kde" and "lookandfeel" in parts) or (
-        len(parts) >= 2 and bool(parts & PACK_ANCHORS))
+        len(parts) >= 2 and bool(parts & PACK_ANCHORS)
+    )
 
 
 def pack_components(components):
     """Qualify extracted/installed bundles using real formats and current capabilities."""
-    usable = {part for component in components for part in compatible_parts(component)
-              if part in PACK_PARTS}
+    usable = {
+        part
+        for component in components
+        for part in compatible_parts(component)
+        if part in PACK_PARTS
+    }
     return _is_pack(usable)

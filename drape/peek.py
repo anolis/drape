@@ -25,13 +25,17 @@ import requests
 from .pling import USER_AGENT
 
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "peek-v3.json"
-TAR_BUDGETS = (64 * 1024, 256 * 1024)  # bytes read from the start of a tar download; more only if needed
-BLOCK = 128 * 1024        # zip reads are fetched and cached in blocks this size
+TAR_BUDGETS = (
+    64 * 1024,
+    256 * 1024,
+)  # bytes read from the start of a tar download; more only if needed
+BLOCK = 128 * 1024  # zip reads are fetched and cached in blocks this size
 IMAGE_RE = re.compile(r"\.(jpe?g|png|webp|jxl|avif|bmp)$", re.I)
 _lock = threading.Lock()
 
 
 # ---------------------------------------------------------------- what a list of paths contains
+
 
 def classify_names(names):
     """Parts a theme archive contains, judged from its paths only."""
@@ -47,7 +51,11 @@ def classify_names(names):
         parts.add("plymouth")
     if has(r"(^|/)metadata\.desktop$") and has(r"(^|/)main\.qml$"):
         parts.add("login")
-    if has(r"(^|/)index\.html$") and has(r"(^|/)(index\.theme|index\.yml|theme\.json)$") and not has(r"/gtk-3\.0/"):
+    if (
+        has(r"(^|/)index\.html$")
+        and has(r"(^|/)(index\.theme|index\.yml|theme\.json)$")
+        and not has(r"/gtk-3\.0/")
+    ):
         parts.add("login")
     if has(r"(^|/)gtk-[234]\.0(/|$)"):
         parts.add("gtk")
@@ -73,23 +81,43 @@ def classify_names(names):
         parts.add("cursors")
     # icon themes: size folders and context folders, in either order (48x48/apps or apps/48, @2x too)
     size = r"(\d+(x\d+)?(@\dx?)?|scalable|symbolic)"
-    context = r"(apps|places|mimetypes|actions|devices|status|categories|panel|emblems|animations|emotes)"
+    context = (
+        r"(apps|places|mimetypes|actions|devices|status|categories|panel|emblems|animations|emotes)"
+    )
     icon_dir = re.compile(rf"(^|/)({size}/{context}|{context}/{size})(/|$)")
     icon_files = [n for n in lower if re.search(r"\.(png|svg)$", n) and icon_dir.search(n)]
-    if has(r"(^|/)icon-theme\.cache$") or len(icon_files) >= 10 or \
-            (has(r"(^|/)index\.theme$") and any(icon_dir.search(d) for d in dirs)):
+    if (
+        has(r"(^|/)icon-theme\.cache$")
+        or len(icon_files) >= 10
+        or (has(r"(^|/)index\.theme$") and any(icon_dir.search(d) for d in dirs))
+    ):
         parts.add("icons")
     # pictures that aren't a theme's own assets
     theme_bits = r"(gtk-[234]\.0|metacity-1|xfwm4|cinnamon|gnome-shell|openbox-3|plasma|aurorae|assets|cursors|icons?|css|fonts?)/"
-    pictures = [n for n in lower if IMAGE_RE.search(n) and not re.search(theme_bits, n) and not icon_dir.search(n)
-                and not re.search(r"(preview|screenshot|thumbnail|logo)", n.rsplit("/", 1)[-1])]
-    if pictures and not parts & {"plasma", "lookandfeel", "aurorae"} and (not parts or len(pictures) >= 3 or any(re.search(r"wall|background", n) for n in pictures)):
+    pictures = [
+        n
+        for n in lower
+        if IMAGE_RE.search(n)
+        and not re.search(theme_bits, n)
+        and not icon_dir.search(n)
+        and not re.search(r"(preview|screenshot|thumbnail|logo)", n.rsplit("/", 1)[-1])
+    ]
+    if (
+        pictures
+        and not parts & {"plasma", "lookandfeel", "aurorae"}
+        and (
+            not parts
+            or len(pictures) >= 3
+            or any(re.search(r"wall|background", n) for n in pictures)
+        )
+    ):
         parts.add("wallpapers")
-    parts.update(marker for marker in CINNAMON_MARKERS if '__drape_' + marker + '__' in names)
+    parts.update(marker for marker in CINNAMON_MARKERS if "__drape_" + marker + "__" in names)
     return parts
 
 
 # ---------------------------------------------------------------- reading archive listings over HTTP
+
 
 class _RangeFile(io.RawIOBase):
     """A seekable file over HTTP range requests, fetching and caching fixed blocks."""
@@ -116,8 +144,11 @@ class _RangeFile(io.RawIOBase):
         if i not in self.blocks:
             start = i * BLOCK
             end = min(start + BLOCK, self.size) - 1
-            r = requests.get(self.url, headers={"User-Agent": USER_AGENT, "Range": f"bytes={start}-{end}"},
-                             timeout=(15, 60))
+            r = requests.get(
+                self.url,
+                headers={"User-Agent": USER_AGENT, "Range": f"bytes={start}-{end}"},
+                timeout=(15, 60),
+            )
             r.raise_for_status()
             self.blocks[i] = r.content
             self.fetched += len(r.content)
@@ -132,14 +163,16 @@ class _RangeFile(io.RawIOBase):
         out = bytearray()
         while len(out) < n:
             i, off = divmod(self.pos + len(out), BLOCK)
-            out += self._block(i)[off:off + n - len(out)]
+            out += self._block(i)[off : off + n - len(out)]
         buf[:n] = out[:n]
         self.pos += n
         return n
 
 
 def _size(url):
-    r = requests.get(url, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"}, timeout=(15, 30))
+    r = requests.get(
+        url, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"}, timeout=(15, 30)
+    )
     r.raise_for_status()
     total = r.headers.get("content-range", "").rsplit("/", 1)[-1]
     return int(total) if total.isdigit() else 0
@@ -157,26 +190,42 @@ def _css_root(name):
 def _cinnamon_markers(names, styles, complete):
     """Tag inspected CSS; partial imported styles remain unknown, not old."""
     from .desktop import cinnamon_css_outdated, cinnamon_css_imports
-    roots = {_css_root(name) for name in names if name.lower().endswith('cinnamon/cinnamon.css')}
+
+    roots = {_css_root(name) for name in names if name.lower().endswith("cinnamon/cinnamon.css")}
     if not roots:
         return []
     states = []
     for root in roots:
-        main = next((styles[name] for name in styles if name.lower() == (root + 'cinnamon.css').lower()), None)
+        main = next(
+            (styles[name] for name in styles if name.lower() == (root + "cinnamon.css").lower()),
+            None,
+        )
         texts = [text for name, text in styles.items() if _css_root(name) == root]
         all_read = all(name in styles for name in names if _css_root(name) == root)
         if main is None:
-            states.append('unknown')
-        elif not cinnamon_css_outdated('\n'.join(texts)):
-            states.append('modern')
-        elif '@import' not in main or (complete and all_read and cinnamon_css_imports(main) and all(
+            states.append("unknown")
+        elif not cinnamon_css_outdated("\n".join(texts)):
+            states.append("modern")
+        elif "@import" not in main or (
+            complete
+            and all_read
+            and cinnamon_css_imports(main)
+            and all(
                 posixpath.normpath(root + ref) in {posixpath.normpath(name) for name in styles}
-                for ref in cinnamon_css_imports(main))):
-            states.append('legacy')
+                for ref in cinnamon_css_imports(main)
+            )
+        ):
+            states.append("legacy")
         else:
-            states.append('unknown')
-    status = 'modern' if 'modern' in states else 'legacy' if all(s == 'legacy' for s in states) else 'unknown'
-    return ['__drape_' + 'cinnamon-' + status + '__']
+            states.append("unknown")
+    status = (
+        "modern"
+        if "modern" in states
+        else "legacy"
+        if all(s == "legacy" for s in states)
+        else "unknown"
+    )
+    return ["__drape_" + "cinnamon-" + status + "__"]
 
 
 def list_archive(url, filename, budget=TAR_BUDGETS[0]):
@@ -199,8 +248,11 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
                     remaining -= info.file_size
             return names + _cinnamon_markers(names, styles, True), True
     if re.search(r"\.(tar(\.(gz|xz|bz2|zst))?|tgz|txz|tbz2?)$", name):
-        r = requests.get(url, headers={"User-Agent": USER_AGENT, "Range": f"bytes=0-{budget - 1}"},
-                         timeout=(15, 60))
+        r = requests.get(
+            url,
+            headers={"User-Agent": USER_AGENT, "Range": f"bytes=0-{budget - 1}"},
+            timeout=(15, 60),
+        )
         r.raise_for_status()
         raw = r.content
         complete = len(raw) < budget
@@ -220,7 +272,11 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
             with tarfile.open(fileobj=io.BytesIO(data), mode="r|") as t:
                 for member in t:
                     names.append(member.name)
-                    if member.isfile() and _css_root(member.name) and member.size <= min(CSS_LIMIT, remaining):
+                    if (
+                        member.isfile()
+                        and _css_root(member.name)
+                        and member.size <= min(CSS_LIMIT, remaining)
+                    ):
                         styles[member.name] = t.extractfile(member).read().decode(errors="replace")
                         remaining -= member.size
         except (tarfile.TarError, EOFError, OSError):
@@ -230,6 +286,7 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
 
 
 # ---------------------------------------------------------------- cached lookups
+
 
 def _load():
     try:
@@ -245,8 +302,11 @@ def cached(item_id, filename):
     parts = set(entry["parts"])
     if "desktop" in parts:
         from .desktop import hide_outdated_cinnamon
-        if hide_outdated_cinnamon() and (not parts & CINNAMON_MARKERS or
-                time.time() - entry.get("cinnamon_checked_at", 0) > 7 * 86400):
+
+        if hide_outdated_cinnamon() and (
+            not parts & CINNAMON_MARKERS
+            or time.time() - entry.get("cinnamon_checked_at", 0) > 7 * 86400
+        ):
             return None
     return parts, entry["complete"]
 
@@ -260,10 +320,18 @@ def contents(item_id, url, filename):
         for budget in TAR_BUDGETS:
             names, complete = list_archive(url, filename, budget)
             parts = classify_names(names)
-            if any(re.search(r"\.(zip|tar|tgz|txz|tbz2?|7z|tar\.(gz|xz|bz2|zst))$", n, re.I) for n in names):
+            if any(
+                re.search(r"\.(zip|tar|tgz|txz|tbz2?|7z|tar\.(gz|xz|bz2|zst))$", n, re.I)
+                for n in names
+            ):
                 complete = False  # an outer listing cannot prove what's in nested archives
             from .desktop import hide_outdated_cinnamon
-            needs_css = hide_outdated_cinnamon() and "desktop" in parts and not parts & {"cinnamon-modern", "cinnamon-legacy"}
+
+            needs_css = (
+                hide_outdated_cinnamon()
+                and "desktop" in parts
+                and not parts & {"cinnamon-modern", "cinnamon-legacy"}
+            )
             if complete or (parts - {"wallpapers"} and not needs_css):
                 break
     except (requests.RequestException, OSError, zipfile.BadZipFile, ValueError):
@@ -274,7 +342,11 @@ def contents(item_id, url, filename):
         parts = set()  # only saw pictures at the start: could be a theme's previews, so don't guess
     with _lock:
         data = _load()
-        data[f"{item_id}:{filename}"] = {"parts": sorted(parts), "complete": complete, "cinnamon_checked_at": time.time()}
+        data[f"{item_id}:{filename}"] = {
+            "parts": sorted(parts),
+            "complete": complete,
+            "cinnamon_checked_at": time.time(),
+        }
         try:
             CACHE.parent.mkdir(parents=True, exist_ok=True)
             tmp = CACHE.with_suffix(".tmp")

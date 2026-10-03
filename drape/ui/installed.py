@@ -17,7 +17,12 @@ def entry_image(key, entry, image, width, height, wallpaper=None):
     if wallpaper:
         load_image(wallpaper["path"], image, width, height)
     elif entry.get("preview"):
-        load_image(pling.thumb_url(entry["preview"]) if width <= 300 else entry["preview"], image, width, height)
+        load_image(
+            pling.thumb_url(entry["preview"]) if width <= 300 else entry["preview"],
+            image,
+            width,
+            height,
+        )
     elif walls:
         load_image(walls[0]["path"], image, width, height)
     elif key.isdigit():
@@ -28,8 +33,12 @@ def entry_image(key, entry, image, width, height, wallpaper=None):
                 load_image(item.previews[0], image, width, height)
             else:
                 image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
-        run_async(lambda: pling.get(key), found,
-                  lambda _e: image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG))
+
+        run_async(
+            lambda: pling.get(key),
+            found,
+            lambda _e: image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG),
+        )
     else:
         image.set_from_icon_name("preferences-desktop-theme", Gtk.IconSize.DIALOG)
 
@@ -40,15 +49,22 @@ class InstalledCard(FadingCard):
     def __init__(self, window, kind, key, entry, update=None, wallpaper=None):
         super().__init__()
         self.win, self.kind, self.key, self.entry = window, kind, key, entry
-        comps = [wallpaper] if wallpaper else \
-            [c for c in entry["components"] if matches(kind, c)] or entry["components"]
+        comps = (
+            [wallpaper]
+            if wallpaper
+            else [c for c in entry["components"] if matches(kind, c)] or entry["components"]
+        )
         using = [c for c in comps if in_use(c)]
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         self.selection_id = (key, wallpaper["path"] if wallpaper else None)
-        self.select_check = Gtk.CheckButton(label="Select wallpaper" if wallpaper else "Select pack")
+        self.select_check = Gtk.CheckButton(
+            label="Select wallpaper" if wallpaper else "Select pack"
+        )
         self.select_check.set_active(self.selection_id in window.installed.selected)
-        self.select_check.connect("toggled", lambda b: window.installed.select_card(self.selection_id, b.get_active()))
+        self.select_check.connect(
+            "toggled", lambda b: window.installed.select_card(self.selection_id, b.get_active())
+        )
         box.pack_start(self.select_check, False, False, 0)
         frame = Gtk.Frame()
         frame.get_style_context().add_class("view")
@@ -68,9 +84,14 @@ class InstalledCard(FadingCard):
         overlay.add_overlay(glyphs)
         frame.add(overlay)
         entry_image(key, entry, image, CARD_W, CARD_H, wallpaper)
-        glyphs.show_parts({"login" if p in ("sddm", "webgreeter") else p
-                           for c in (entry["components"] if not wallpaper else [wallpaper])
-                           for p in c["provides"] if p != "xfwm"})
+        glyphs.show_parts(
+            {
+                "login" if p in ("sddm", "webgreeter") else p
+                for c in (entry["components"] if not wallpaper else [wallpaper])
+                for p in c["provides"]
+                if p != "xfwm"
+            }
+        )
         box.pack_start(frame, False, False, 0)
 
         title_text = Path(wallpaper["path"]).stem if wallpaper else entry["title"]
@@ -86,7 +107,9 @@ class InstalledCard(FadingCard):
             detail = f"{len(comps)} variants" if len(comps) > 1 else ""
         meta = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=32)
         markup = "<b>✓ In use</b>" if using else ""
-        outdated = kind == "desktop" and any(desktop.cinnamon_theme_outdated(c["path"]) for c in comps)
+        outdated = kind == "desktop" and any(
+            desktop.cinnamon_theme_outdated(c["path"]) for c in comps
+        )
         if outdated:
             markup += (" · " if markup else "") + "⚠ For older Cinnamon"
             meta.set_tooltip_text("This theme was " + desktop.OUTDATED_NOTE + ".")
@@ -112,8 +135,16 @@ class InstalledCard(FadingCard):
         extra = [("Show installed files…", lambda *_: window.show_files(key, wallpaper))]
         target = wallpaper or (comps[0] if len(comps) == 1 else None)
         if kind in ("wallpapers", "gtk", "icons", "cursors"):
-            extra.append(("Use for login screen…", lambda *_: window.use_for_login(kind, target) if target
-                          else window.pick_variant_for_login(kind, comps)))
+            extra.append(
+                (
+                    "Use for login screen…",
+                    lambda *_: (
+                        window.use_for_login(kind, target)
+                        if target
+                        else window.pick_variant_for_login(kind, comps)
+                    ),
+                )
+            )
         if kind == "wallpapers" and desktop.current_desktop() == "gnome":
             extra.append(("Use for lock screen", lambda *_: window.use_for_lock(wallpaper)))
         if extra:
@@ -123,8 +154,10 @@ class InstalledCard(FadingCard):
                 mi.connect("activate", cb)
                 menu.append(mi)
             menu.show_all()
-            more = Gtk.MenuButton(popup=menu, image=Gtk.Image.new_from_icon_name("view-more-symbolic",
-                                                                                 Gtk.IconSize.BUTTON))
+            more = Gtk.MenuButton(
+                popup=menu,
+                image=Gtk.Image.new_from_icon_name("view-more-symbolic", Gtk.IconSize.BUTTON),
+            )
             more.set_tooltip_text("More")
             actions.pack_end(more, False, False, 0)
         rm = Gtk.Button.new_from_icon_name("user-trash-symbolic", Gtk.IconSize.BUTTON)
@@ -151,10 +184,18 @@ class InstalledPage(Gtk.Box):
         self.grids = {}
         for k in [pling.Kind("active", "In use", "")] + kinds + [pling.Kind("other", "Other", "")]:
             k = pling.Kind(k.key, desktop.category_label(k.key, k.label), k.categories)
-            flow = CardFlow(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                               valign=Gtk.Align.START, max_children_per_line=8,
-                               margin=12, row_spacing=6, column_spacing=6)
-            empty = Gtk.Label(label=f"No {k.label.lower()} installed yet.", margin=48, no_show_all=True)
+            flow = CardFlow(
+                selection_mode=Gtk.SelectionMode.NONE,
+                homogeneous=True,
+                valign=Gtk.Align.START,
+                max_children_per_line=8,
+                margin=12,
+                row_spacing=6,
+                column_spacing=6,
+            )
+            empty = Gtk.Label(
+                label=f"No {k.label.lower()} installed yet.", margin=48, no_show_all=True
+            )
             if k.key == "active":  # a fixed breakdown, not a grid of equal cards
                 flow.set_homogeneous(False)
             empty.get_style_context().add_class("dim-label")
@@ -190,16 +231,24 @@ class InstalledPage(Gtk.Box):
         self._selection_changed()
 
         # category tabs that wrap onto more lines on narrow windows (a Gtk.StackSwitcher can't shrink)
-        self.chips = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=False,
-                                 column_spacing=6, row_spacing=6, margin=12, margin_bottom=0,
-                                 max_children_per_line=len(self.grids))
+        self.chips = Gtk.FlowBox(
+            selection_mode=Gtk.SelectionMode.NONE,
+            homogeneous=False,
+            column_spacing=6,
+            row_spacing=6,
+            margin=12,
+            margin_bottom=0,
+            max_children_per_line=len(self.grids),
+        )
         self.chip = {}
         group = None
         for key in self.grids:
             rb = Gtk.RadioButton.new_with_label_from_widget(group, self.grids[key][0].label)
             rb.set_mode(False)  # looks like a toggle button
             group = group or rb
-            rb.connect("toggled", lambda b, k=key: b.get_active() and self.tabs.set_visible_child_name(k))
+            rb.connect(
+                "toggled", lambda b, k=key: b.get_active() and self.tabs.set_visible_child_name(k)
+            )
             self.chips.add(rb)
             self.chip[key] = rb
         self.tabs.connect("notify::visible-child", lambda *_: self._sync_chip())
@@ -273,13 +322,20 @@ class InstalledPage(Gtk.Box):
         except installer.InstallError as exc:
             error_dialog(self.win, "Cannot load installed themes", exc)
             return
-        self.selected = {(key, path) for key, path in self.selected if key in m and
-                         (path is None or any(c["path"] == path for c in m[key]["components"]))}
+        self.selected = {
+            (key, path)
+            for key, path in self.selected
+            if key in m and (path is None or any(c["path"] == path for c in m[key]["components"]))
+        }
         self._selection_changed()
-        self._load_revision = getattr(self, '_load_revision', 0) + 1
+        self._load_revision = getattr(self, "_load_revision", 0) + 1
         revision = self._load_revision
-        hidden_old = {key for key, entry in m.items()
-                      if desktop.hide_outdated_cinnamon() and desktop.cinnamon_entry_outdated(entry["components"])}
+        hidden_old = {
+            key
+            for key, entry in m.items()
+            if desktop.hide_outdated_cinnamon()
+            and desktop.cinnamon_entry_outdated(entry["components"])
+        }
         placed = set()
         counts = {}
         for key_name, (k, sw, flow, empty) in self.grids.items():
@@ -291,8 +347,15 @@ class InstalledPage(Gtk.Box):
             if key_name == "active":
                 for part, label in ACTIVE_PARTS:
                     if part in ("login", "boot", "wallpapers") or desktop.supported(part):
-                        entries.append((part, object(), lambda part=part:
-                                        ActiveCard(self.win, part, desktop.category_label(part, label))))
+                        entries.append(
+                            (
+                                part,
+                                object(),
+                                lambda part=part: ActiveCard(
+                                    self.win, part, desktop.category_label(part, label)
+                                ),
+                            )
+                        )
                 flow.reconcile(entries)
                 counts["active"] = len(entries)
                 continue
@@ -301,7 +364,8 @@ class InstalledPage(Gtk.Box):
                 if key in hidden_old:
                     continue
                 if settings.get("only_applicable") and not any(
-                        c.get("system") or desktop.compatible_parts(c) for c in e["components"]):
+                    c.get("system") or desktop.compatible_parts(c) for c in e["components"]
+                ):
                     continue
                 if key_name == "packs" and not desktop.pack_components(e["components"]):
                     continue
@@ -318,24 +382,38 @@ class InstalledPage(Gtk.Box):
                 if key_name == "wallpapers":
                     for c in e["components"]:
                         if c["provides"] == ["wallpapers"]:
-                            entries.append(((key, c["path"]), (e, self.updates.get(key)),
-                                            lambda key=key, e=e, c=c: InstalledCard(
-                                                self.win, key_name, key, e, wallpaper=c)))
+                            entries.append(
+                                (
+                                    (key, c["path"]),
+                                    (e, self.updates.get(key)),
+                                    lambda key=key, e=e, c=c: InstalledCard(
+                                        self.win, key_name, key, e, wallpaper=c
+                                    ),
+                                )
+                            )
                             n += 1
                 else:
-                    entries.append(((key, None), (e, self.updates.get(key)),
-                                    lambda key=key, e=e: InstalledCard(
-                                        self.win, key_name, key, e, self.updates.get(key))))
+                    entries.append(
+                        (
+                            (key, None),
+                            (e, self.updates.get(key)),
+                            lambda key=key, e=e: InstalledCard(
+                                self.win, key_name, key, e, self.updates.get(key)
+                            ),
+                        )
+                    )
                     n += 1
             counts[key_name] = n
             self.tabs.child_set_property(sw, "title", f"{k.label} ({n})" if n else k.label)
             self.chip[key_name].set_label(f"{k.label} ({n})" if n else k.label)
             flow.reconcile(entries)
             if n == 0 and any(card.get_mapped() for card in flow.get_children()):
+
                 def show_empty(empty=empty):
                     if revision == self._load_revision and not empty.in_destruction():
                         empty.show()
                     return False
+
                 GLib.timeout_add(200, show_empty)
             else:
                 empty.set_visible(n == 0)
@@ -349,17 +427,24 @@ class InstalledPage(Gtk.Box):
         else:
             self.note.set_text(f"{len(m)} item(s) installed")
         if hidden_old:
-            self.note.set_text(self.note.get_text() + f" · {len(hidden_old)} older Cinnamon theme(s) hidden")
+            self.note.set_text(
+                self.note.get_text() + f" · {len(hidden_old)} older Cinnamon theme(s) hidden"
+            )
         # land on a tab that has something in it
         current = self.tabs.get_visible_child_name()
         if not counts.get(current):
             first = next((k for k in self.grids if counts.get(k)), None)
             if first:
+
                 def land():
-                    if (revision == self._load_revision and not self.in_destruction()
-                            and self.tabs.get_visible_child_name() == current):
+                    if (
+                        revision == self._load_revision
+                        and not self.in_destruction()
+                        and self.tabs.get_visible_child_name() == current
+                    ):
                         self.tabs.set_visible_child_name(first)
                     return False
+
                 if any(card.get_mapped() for card in self.grids[current][2].get_children()):
                     GLib.timeout_add(200, land)
                 else:

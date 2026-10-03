@@ -18,6 +18,9 @@ _mutex_guard = threading.Lock()
 _held = threading.local()
 
 
+# Cross-thread and cross-process locking
+
+
 @contextmanager
 def file_lock(path):
     """Serialize threads and processes; nested operations in one thread are reentrant."""
@@ -50,11 +53,16 @@ def file_lock(path):
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
 
+# Manifest validation and durable writes
+
+
 def _validate(data):
     if not isinstance(data, dict) or any(not isinstance(entry, dict) for entry in data.values()):
         raise ValueError("expected an object containing installation records")
     for entry in data.values():
-        if not isinstance(entry.get("paths"), list) or any(not isinstance(p, str) for p in entry["paths"]):
+        if not isinstance(entry.get("paths"), list) or any(
+            not isinstance(p, str) for p in entry["paths"]
+        ):
             raise ValueError("invalid installation paths")
         if not isinstance(entry.get("components"), list):
             raise ValueError("invalid installation components")
@@ -64,8 +72,14 @@ def _validate(data):
 def _atomic_write(path, text):
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                         prefix=path.name + ".", suffix=".tmp", delete=False) as stream:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=path.name + ".",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
             temporary = Path(stream.name)
             stream.write(text)
             stream.flush()
@@ -81,6 +95,9 @@ def _atomic_write(path, text):
             temporary.unlink(missing_ok=True)
 
 
+# Transactional installation records
+
+
 class ManifestStore:
     def __init__(self, path):
         self.path = Path(path)
@@ -91,13 +108,19 @@ class ManifestStore:
             return _validate(json.loads(self.path.read_text()))
         except FileNotFoundError:
             if self.backup.exists():
-                raise InstallError(f"Installation records are missing at {self.path}. "
-                                   f"A backup exists at {self.backup}; restore it before continuing.")
+                raise InstallError(
+                    f"Installation records are missing at {self.path}. "
+                    f"A backup exists at {self.backup}; restore it before continuing."
+                )
             return {}
         except (OSError, ValueError) as exc:
-            backup = f" A previous-version backup is at {self.backup}." if self.backup.exists() else ""
-            raise InstallError(f"Cannot read installation records at {self.path}: {exc}. "
-                               f"The records have not been reset or overwritten.{backup}") from exc
+            backup = (
+                f" A previous-version backup is at {self.backup}." if self.backup.exists() else ""
+            )
+            raise InstallError(
+                f"Cannot read installation records at {self.path}: {exc}. "
+                f"The records have not been reset or overwritten.{backup}"
+            ) from exc
 
     def _save(self, data):
         try:
@@ -109,7 +132,9 @@ class ManifestStore:
                 _atomic_write(self.backup, self.path.read_text())
             _atomic_write(self.path, json.dumps(data, indent=2, sort_keys=True))
         except (OSError, ValueError) as exc:
-            raise InstallError(f"Could not save installation records at {self.path}: {exc}") from exc
+            raise InstallError(
+                f"Could not save installation records at {self.path}: {exc}"
+            ) from exc
 
     def save(self, data):
         """Explicit replacement, for seeding/importing records. Use edit() for mutations."""

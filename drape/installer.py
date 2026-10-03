@@ -38,9 +38,14 @@ CINNAMON_BG_FOLDERS = CONFIG_HOME / "cinnamon" / "backgrounds" / "user-folders.l
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".svg", ".bmp", ".jxl", ".avif"}
 # theme sub-directories -> what they provide
 THEME_PARTS = {
-    "gtk-3.0": "gtk", "gtk-4.0": "gtk", "gtk-2.0": "gtk",
-    "metacity-1": "wm", "cinnamon": "desktop", "xfwm4": "xfwm",
-    "gnome-shell": "gnome-shell", "openbox-3": "openbox-3",
+    "gtk-3.0": "gtk",
+    "gtk-4.0": "gtk",
+    "gtk-2.0": "gtk",
+    "metacity-1": "wm",
+    "cinnamon": "desktop",
+    "xfwm4": "xfwm",
+    "gnome-shell": "gnome-shell",
+    "openbox-3": "openbox-3",
 }
 MAX_NESTING = 2
 
@@ -62,13 +67,15 @@ class ConflictError(InstallError):
 @dataclass
 class Component:
     """One installable thing found inside a download."""
+
     provides: tuple  # e.g. ("icons",), ("gtk", "wm", "desktop"), ("wallpapers",)
-    path: Path       # directory (or image file) in the extraction area
-    name: str        # name it is installed and applied under
+    path: Path  # directory (or image file) in the extraction area
+    name: str  # name it is installed and applied under
     windows: bool = False  # a Windows .cur/.ani pack that needs converting
 
 
 # ---------------------------------------------------------------- manifest
+
 
 def load_manifest():
     return ManifestStore(MANIFEST).load()
@@ -80,11 +87,13 @@ def save_manifest(m):
 
 def _serialized_files(fn):
     """Keep name checks, copies, removals and record commits in one file operation."""
+
     @wraps(fn)
     def run(*args, **kwargs):
         _report_status(kwargs.get("status"), "Waiting to install…")
         with ManifestStore(MANIFEST).operations():
             return fn(*args, **kwargs)
+
     return run
 
 
@@ -96,6 +105,7 @@ def _owner_of(path, manifest):
 
 
 # ---------------------------------------------------------------- download
+
 
 def _report_status(status, text, fraction=None):
     if status:
@@ -127,21 +137,31 @@ def download(url, dest_dir, filename=None, md5=None, progress=None, status=None)
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code in http.RETRY_STATUSES:
             host = urllib.parse.urlsplit(e.response.url or url).hostname or "the download server"
-            raise InstallError(f"{host} returned HTTP {e.response.status_code} after 3 attempts. "
-                               "The theme file could not be downloaded. Try again later or use the author's "
-                               "original download; no theme was installed.") from e
+            raise InstallError(
+                f"{host} returned HTTP {e.response.status_code} after 3 attempts. "
+                "The theme file could not be downloaded. Try again later or use the author's "
+                "original download; no theme was installed."
+            ) from e
         if e.response is not None and e.response.status_code == 404:
-            raise InstallError("The theme catalog no longer has this file - the upload is broken. "
-                               "Try another download for this item or let its author know.") from e
-        raise InstallError(f"Download failed (HTTP {e.response.status_code if e.response is not None else '?'}).") from e
+            raise InstallError(
+                "The theme catalog no longer has this file - the upload is broken. "
+                "Try another download for this item or let its author know."
+            ) from e
+        raise InstallError(
+            f"Download failed (HTTP {e.response.status_code if e.response is not None else '?'})."
+        ) from e
     except requests.RequestException as e:
-        raise InstallError(f"Download failed: {e.__class__.__name__}. Check your connection.") from e
+        raise InstallError(
+            f"Download failed: {e.__class__.__name__}. Check your connection."
+        ) from e
     _report_status(status, "Verifying download…", 0.40)
     with open(out, "rb") as f:
         head = f.read(512).lstrip().lower()
     if head.startswith((b"<!doctype html", b"<html")):
-        raise InstallError("This download is a web page, not a theme file - the upload is probably broken. "
-                           "Try another variant of this item.")
+        raise InstallError(
+            "This download is a web page, not a theme file - the upload is probably broken. "
+            "Try another variant of this item."
+        )
     if md5 and h.hexdigest() != md5:
         raise InstallError("Downloaded file is corrupt (checksum mismatch). Try again.")
     return out
@@ -149,8 +169,11 @@ def download(url, dest_dir, filename=None, md5=None, progress=None, status=None)
 
 # ---------------------------------------------------------------- extraction
 
+
 def _is_archive(p):
-    return p.is_file() and (tarfile.is_tarfile(p) or zipfile.is_zipfile(p) or p.suffix.lower() in (".7z", ".rar"))
+    return p.is_file() and (
+        tarfile.is_tarfile(p) or zipfile.is_zipfile(p) or p.suffix.lower() in (".7z", ".rar")
+    )
 
 
 def _safe_member(member, path):
@@ -171,8 +194,9 @@ def extract(archive, dest):
         with tarfile.open(archive) as t:
             t.extractall(dest, filter=_safe_member)
     elif archive.suffix.lower() in (".7z", ".rar") and shutil.which("7z"):
-        subprocess.run(["7z", "x", "-y", f"-o{dest}", str(archive)],
-                       check=True, capture_output=True)
+        subprocess.run(
+            ["7z", "x", "-y", f"-o{dest}", str(archive)], check=True, capture_output=True
+        )
     else:
         raise InstallError(f"Unsupported archive format: {archive.name}")
 
@@ -189,7 +213,9 @@ def unpack_all(path, work, status=None):
     extract(path, root)
     for _ in range(MAX_NESTING):
         _report_status(status, "Checking for nested archives…", 0.55)
-        nested = [p for p in root.rglob("*") if _is_archive(p) and p.suffix.lower() not in IMAGE_EXTS]
+        nested = [
+            p for p in root.rglob("*") if _is_archive(p) and p.suffix.lower() not in IMAGE_EXTS
+        ]
         if not nested:
             break
         for p in nested:
@@ -200,6 +226,7 @@ def unpack_all(path, work, status=None):
 
 
 # ---------------------------------------------------------------- classification
+
 
 def _icon_theme_section(d):
     idx = d / "index.theme"
@@ -230,15 +257,22 @@ def _system_kind(d):
     if any("[Plymouth Theme]" in _read(p) for p in d.glob("*.plymouth")):
         return "plymouth"
     meta = d / "metadata.desktop"
-    if (meta.is_file() and "SddmGreeterTheme" in _read(meta)) or \
-            ((d / "Main.qml").is_file() and ((d / "theme.conf").is_file() or meta.is_file())):
+    if (meta.is_file() and "SddmGreeterTheme" in _read(meta)) or (
+        (d / "Main.qml").is_file() and ((d / "theme.conf").is_file() or meta.is_file())
+    ):
         return "sddm"
     if (d / "index.html").is_file():
         markers = any((d / m).is_file() for m in ("index.yml", "index.theme", "theme.json"))
         scripts = [p for p in d.rglob("*.js") if "node_modules" not in p.parts][:40]
-        if markers or "lightdm" in _read(d / "index.html") or any("lightdm" in _read(js) for js in scripts):
+        if (
+            markers
+            or "lightdm" in _read(d / "index.html")
+            or any("lightdm" in _read(js) for js in scripts)
+        ):
             return "webgreeter"
-    if any(d.glob("*.gresource")) and ("gdm" in d.name.lower() or any("gnome-shell" in p.name for p in d.glob("*.gresource"))):
+    if any(d.glob("*.gresource")) and (
+        "gdm" in d.name.lower() or any("gnome-shell" in p.name for p in d.glob("*.gresource"))
+    ):
         return "gdm"
     return None
 
@@ -251,7 +285,9 @@ def _classify_dir(d):
     # [Icon Theme] is checked first: some icon packs ship extra gtk-3.0/ tweaks inside
     section = _icon_theme_section(d)
     # only real Xcursor files count - Windows packs also ship a cursors/ folder
-    has_cursors = (d / "cursors").is_dir() and any(wincursors.is_xcursor(p) for p in (d / "cursors").iterdir())
+    has_cursors = (d / "cursors").is_dir() and any(
+        wincursors.is_xcursor(p) for p in (d / "cursors").iterdir()
+    )
     if section is not None:
         # a cursor theme is an icon theme whose only content is cursors/
         other = [c for c in d.iterdir() if c.is_dir() and c.name != "cursors"]
@@ -296,26 +332,44 @@ def classify(root, fallback_name, include_wallpapers=False):
             components.append(Component(("cursors",), d, name.removesuffix(".d"), windows=True))
             return
         for c in sorted(d.iterdir()):
-            if c.is_dir() and not c.is_symlink() and c.name != ".git" and not c.name.startswith("__MACOSX"):
+            if (
+                c.is_dir()
+                and not c.is_symlink()
+                and c.name != ".git"
+                and not c.name.startswith("__MACOSX")
+            ):
                 walk(c)
 
     walk(root)
     if not components or include_wallpapers:
         # images inside a web page's assets (fonts, css, ...) aren't wallpapers
         skip = {"__MACOSX", ".git", "css", "fonts", "font", "js", "node_modules"}
-        images = [p for p in sorted(root.rglob("*"))
-                  if p.is_file() and p.suffix.lower() in IMAGE_EXTS and not skip & set(p.relative_to(root).parts[:-1])]
+        images = [
+            p
+            for p in sorted(root.rglob("*"))
+            if p.is_file()
+            and p.suffix.lower() in IMAGE_EXTS
+            and not skip & set(p.relative_to(root).parts[:-1])
+        ]
         if components:
             theme_roots = [c.path for c in components if c.path.is_dir()]
-            images = [p for p in images if
-                      (re.search(r"wallpaper|background", str(p.relative_to(root)), re.I) or
-                       not any(p.is_relative_to(folder) for folder in theme_roots))
-                      and not re.search(r"preview|screenshot|thumbnail|logo", str(p.relative_to(root)), re.I)]
+            images = [
+                p
+                for p in images
+                if (
+                    re.search(r"wallpaper|background", str(p.relative_to(root)), re.I)
+                    or not any(p.is_relative_to(folder) for folder in theme_roots)
+                )
+                and not re.search(
+                    r"preview|screenshot|thumbnail|logo", str(p.relative_to(root)), re.I
+                )
+            ]
         components.extend(Component(("wallpapers",), p, p.name) for p in images)
     return components
 
 
 # ---------------------------------------------------------------- install / remove
+
 
 def _system_name(name):
     """Names the root helper accepts: ASCII, starting with a letter or digit."""
@@ -351,8 +405,20 @@ def _register_wallpaper_folder(folder):
 
 
 @_serialized_files
-def install_file(path, key, title, changed="", source="", replace_foreign=False, file="", preview="",
-                 replace_items=False, only_applicable=None, status=None, required_kind=None):
+def install_file(
+    path,
+    key,
+    title,
+    changed="",
+    source="",
+    replace_foreign=False,
+    file="",
+    preview="",
+    replace_items=False,
+    only_applicable=None,
+    status=None,
+    required_kind=None,
+):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
@@ -360,18 +426,26 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
         _report_status(status, "Inspecting theme files…", 0.60)
         comps = classify(root, title, include_wallpapers=required_kind == "packs")
         if not comps:
-            raise InstallError("Couldn't find a supported theme, color scheme or wallpaper in this download.")
+            raise InstallError(
+                "Couldn't find a supported theme, color scheme or wallpaper in this download."
+            )
 
         wall_dir = WALLPAPER_DIR / _sanitize(title)
         installed, provides = [], []
         if any(c.provides == ("gdm",) for c in comps):
-            raise InstallError("This is a GDM login theme. Those work by replacing a core GNOME Shell file, which "
-                               "breaks when GNOME updates, so drape doesn't install them yet.")
+            raise InstallError(
+                "This is a GDM login theme. Those work by replacing a core GNOME Shell file, which "
+                "breaks when GNOME updates, so drape doesn't install them yet."
+            )
         from . import desktop, settings
+
         if desktop.hide_outdated_cinnamon() and desktop.cinnamon_entry_outdated(
-                [{"provides": c.provides, "path": str(c.path)} for c in comps]):
-            raise IncompatibleError("This theme was made for older Cinnamon and is hidden by your filter. "
-                                    "Turn off 'Hide themes made for older Cinnamon' in the menu to install it.")
+            [{"provides": c.provides, "path": str(c.path)} for c in comps]
+        ):
+            raise IncompatibleError(
+                "This theme was made for older Cinnamon and is hidden by your filter. "
+                "Turn off 'Hide themes made for older Cinnamon' in the menu to install it."
+            )
         if required_kind == "packs":
             only_applicable = True
         if only_applicable is None:
@@ -382,21 +456,27 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             usable = []
             for c in comps:
                 if c.provides[0] in SYSTEM_KINDS or desktop.compatible_parts(
-                        {"provides": c.provides, "path": str(c.path)}):
+                    {"provides": c.provides, "path": str(c.path)}
+                ):
                     usable.append(c)
                 else:
                     skipped.append(c.name)
             comps = usable
             if not comps:
-                raise IncompatibleError("This download has no supported themes for "
-                                   f"{desktop.current_desktop() or 'this desktop'} / "
-                                   f"{desktop.running_wm() or 'unknown window manager'}. "
-                                   "Nothing was installed. Turn off 'Only show themes that work on this computer' "
-                                   "to install themes for another session.")
+                raise IncompatibleError(
+                    "This download has no supported themes for "
+                    f"{desktop.current_desktop() or 'this desktop'} / "
+                    f"{desktop.running_wm() or 'unknown window manager'}. "
+                    "Nothing was installed. Turn off 'Only show themes that work on this computer' "
+                    "to install themes for another session."
+                )
         if required_kind == "packs" and not desktop.pack_components(
-                [{"provides": c.provides, "path": str(c.path)} for c in comps]):
-            raise IncompatibleError("This download is not a theme pack for the current desktop. "
-                                    "It needs multiple supported appearance parts or a compatible KDE global theme.")
+            [{"provides": c.provides, "path": str(c.path)} for c in comps]
+        ):
+            raise IncompatibleError(
+                "This download is not a theme pack for the current desktop. "
+                "It needs multiple supported appearance parts or a compatible KDE global theme."
+            )
         # check every name before copying anything, so a clash can't leave a half-installed pack
         _report_status(status, "Checking installed themes…", 0.65)
         conflicts, foreign = {}, []
@@ -405,7 +485,9 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             if dest.exists() or dest.is_symlink():
                 owner = _owner_of(dest, manifest)
                 if owner not in (None, key):
-                    conflicts.setdefault(owner, {"title": manifest[owner]["title"], "names": []})["names"].append(dest.name)
+                    conflicts.setdefault(owner, {"title": manifest[owner]["title"], "names": []})[
+                        "names"
+                    ].append(dest.name)
                 elif owner is None and not replace_foreign:
                     foreign.append(dest)
         if conflicts and not replace_items:
@@ -414,12 +496,18 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
             raise InstallError(f"'{foreign[0]}' already exists and wasn't installed by drape.")
         # system copies with the same name as something this item installs are simply replaced when
         # it's applied (even the active boot splash); any others must be removed first, which needs root
-        taking_over = {(c.provides[0], _system_name(c.name)) for c in comps if c.provides[0] in SYSTEM_KINDS}
+        taking_over = {
+            (c.provides[0], _system_name(c.name)) for c in comps if c.provides[0] in SYSTEM_KINDS
+        }
         for owner in conflicts:
-            leftover = [cp for cp in system_copies(manifest[owner]) if (cp[0], cp[1]) not in taking_over]
+            leftover = [
+                cp for cp in system_copies(manifest[owner]) if (cp[0], cp[1]) not in taking_over
+            ]
             if leftover:
-                raise InstallError(f"{manifest[owner]['title']} has copies for the login screen or boot splash, "
-                                   f"which need your password to remove: run `drape remove {owner}` first.")
+                raise InstallError(
+                    f"{manifest[owner]['title']} has copies for the login screen or boot splash, "
+                    f"which need your password to remove: run `drape remove {owner}` first."
+                )
         for owner in conflicts:  # the user chose to replace these
             remove(owner)
         manifest = load_manifest()
@@ -447,10 +535,14 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
                 comp["system"] = c.provides[0]  # still needs copying into /usr/share by the helper
             provides.append(comp)
             if "icons" in c.provides and shutil.which("gtk-update-icon-cache"):
-                _report_status(status, f"Updating icon cache for {c.name}…",
-                               0.68 + 0.22 * (index + 0.8) / len(comps))
-                subprocess.run(["gtk-update-icon-cache", "-q", "-f", "-t", str(dest)],
-                               capture_output=True)
+                _report_status(
+                    status,
+                    f"Updating icon cache for {c.name}…",
+                    0.68 + 0.22 * (index + 0.8) / len(comps),
+                )
+                subprocess.run(
+                    ["gtk-update-icon-cache", "-q", "-f", "-t", str(dest)], capture_output=True
+                )
 
         if any(c.provides == ("wallpapers",) for c in comps):
             if desktop.current_desktop() == "cinnamon":
@@ -488,8 +580,16 @@ def install_file(path, key, title, changed="", source="", replace_foreign=False,
     return entry
 
 
-def install_item(item, file_index=None, progress=None, replace_foreign=False, replace_items=False,
-                 only_applicable=None, status=None, required_kind=None):
+def install_item(
+    item,
+    file_index=None,
+    progress=None,
+    replace_foreign=False,
+    replace_items=False,
+    only_applicable=None,
+    status=None,
+    required_kind=None,
+):
     """Install a pling.Item. The item should be freshly fetched (download links expire)."""
     if not item.files:
         raise InstallError("This item has no direct downloads (it may link to an external site).")
@@ -504,17 +604,28 @@ def install_item(item, file_index=None, progress=None, replace_foreign=False, re
         for f in files:
             path = download(f.url, tmp, f.name, f.md5, progress, status)
             try:
-                return install_file(path, item.id, item.name, item.changed, item.page,
-                                    replace_foreign, file=f.name,
-                                    preview=item.previews[0] if item.previews else "", replace_items=replace_items,
-                                    only_applicable=True if required_kind == "packs" else only_applicable,
-                                    status=status, required_kind=required_kind)
+                return install_file(
+                    path,
+                    item.id,
+                    item.name,
+                    item.changed,
+                    item.page,
+                    replace_foreign,
+                    file=f.name,
+                    preview=item.previews[0] if item.previews else "",
+                    replace_items=replace_items,
+                    only_applicable=True if required_kind == "packs" else only_applicable,
+                    status=status,
+                    required_kind=required_kind,
+                )
             except IncompatibleError as e:
                 last_error = e
         raise last_error
 
 
-def install_url(url, progress=None, replace_foreign=False, replace_items=False, only_applicable=None):
+def install_url(
+    url, progress=None, replace_foreign=False, replace_items=False, only_applicable=None
+):
     """Install from an ocs://install?url=...&filename=... link (gnome-look "Install" buttons) or a
     plain download URL. Returns (manifest key, entry)."""
     u = urllib.parse.urlparse(url)
@@ -528,9 +639,16 @@ def install_url(url, progress=None, replace_foreign=False, replace_items=False, 
         path = download(url, tmp, filename, progress=progress)
         key = f"url:{path.name}"
         title = re.sub(r"(\.(tar|zip|tgz|gz|xz|bz2|zst|7z))+$", "", path.name, flags=re.I)
-        return key, install_file(path, key, title, source=url,
-                                 replace_foreign=replace_foreign, file=path.name, replace_items=replace_items,
-                                 only_applicable=only_applicable)
+        return key, install_file(
+            path,
+            key,
+            title,
+            source=url,
+            replace_foreign=replace_foreign,
+            file=path.name,
+            replace_items=replace_items,
+            only_applicable=only_applicable,
+        )
 
 
 def set_chosen(key, kind, name):
@@ -549,10 +667,18 @@ def set_preview(key, url):
 
 def _remove_path(p):
     # only ever delete inside the directories we install into
-    allowed = (ICONS_DIR, CURSORS_DIR, THEMES_DIR, WALLPAPER_DIR, STAGING_DIR,
-               *(kde.DATA_HOME / folder for folder in kde.DIRECTORIES.values()))
-    if not any(p.is_relative_to(a) and p != a and p.parent.resolve().is_relative_to(a.resolve())
-               for a in allowed):
+    allowed = (
+        ICONS_DIR,
+        CURSORS_DIR,
+        THEMES_DIR,
+        WALLPAPER_DIR,
+        STAGING_DIR,
+        *(kde.DATA_HOME / folder for folder in kde.DIRECTORIES.values()),
+    )
+    if not any(
+        p.is_relative_to(a) and p != a and p.parent.resolve().is_relative_to(a.resolve())
+        for a in allowed
+    ):
         raise InstallError(f"Refusing to delete outside drape's install folders: {p}")
     if p.is_dir() and not p.is_symlink():
         shutil.rmtree(p)
@@ -574,7 +700,9 @@ def removal_plan(selection, manifest):
         if path is not None:
             comps = [c for c in entry["components"] if c["path"] == path]
             if not comps or any(c["provides"] != ["wallpapers"] for c in comps):
-                raise InstallError("The selected wallpaper is no longer installed. Refresh your installed items.")
+                raise InstallError(
+                    "The selected wallpaper is no longer installed. Refresh your installed items."
+                )
             entry = dict(entry, components=comps, paths=[path])
         plan.append((key, path, entry))
     return plan
@@ -615,6 +743,7 @@ def remove(key):
 
 # ---------------------------------------------------------------- copies in system directories
 
+
 def system_file_name(component):
     """File name for a wallpaper copied to /usr/share/backgrounds/drape; includes the pack name,
     since packs often use generic names like 1920x1080.png."""
@@ -631,8 +760,11 @@ def system_copies(entry):
         if c.get("system"):
             path = helper.DIRS[c["system"]] / c["name"]
             if (path / helper.MARKER).exists():
-                label = {"plymouth": "Boot splash", "sddm": "SDDM login theme",
-                         "webgreeter": "Web greeter login theme"}[c["system"]]
+                label = {
+                    "plymouth": "Boot splash",
+                    "sddm": "SDDM login theme",
+                    "webgreeter": "Web greeter login theme",
+                }[c["system"]]
                 found.append((c["system"], c["name"], path, label + " (system copy)"))
             continue
         for kind in ("gtk", "icons", "background"):
@@ -640,7 +772,9 @@ def system_copies(entry):
                 continue
             name = system_file_name(c) if kind == "background" else c["name"]
             path = helper.DIRS[kind] / name
-            marker = Path(str(path) + helper.MARKER) if kind == "background" else path / helper.MARKER
+            marker = (
+                Path(str(path) + helper.MARKER) if kind == "background" else path / helper.MARKER
+            )
             if marker.exists():
                 found.append((kind, name, path, "Login screen copy"))
     return found

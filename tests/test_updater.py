@@ -32,8 +32,17 @@ class UpdaterTest(unittest.TestCase):
     def commit(self, checkout, text):
         (checkout / "app.txt").write_text(text)
         self.git_cmd("-C", str(checkout), "add", "app.txt")
-        self.git_cmd("-C", str(checkout), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-                 "commit", "-m", text)
+        self.git_cmd(
+            "-C",
+            str(checkout),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "commit",
+            "-m",
+            text,
+        )
 
     def publish(self):
         self.commit(self.writer, "new release")
@@ -90,7 +99,14 @@ class UpdaterTest(unittest.TestCase):
         with self.assertRaises(updater.UpdateError):
             updater.apply(update, self.client)
         self.git_cmd("-C", str(self.client), "checkout", "main")
-        self.git_cmd("-C", str(self.client), "remote", "set-url", "origin", "https://example.invalid/other.git")
+        self.git_cmd(
+            "-C",
+            str(self.client),
+            "remote",
+            "set-url",
+            "origin",
+            "https://example.invalid/other.git",
+        )
         with self.assertRaises(updater.UpdateError):
             updater.check(self.client)
 

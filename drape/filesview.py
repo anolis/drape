@@ -31,7 +31,12 @@ def _label(path, entry):
         return "Icon theme" + (" (includes cursors)" if "cursors" in provides else ""), "folder"
     if provides == ["cursors"]:
         return "Cursor theme", "input-mouse"
-    return "Theme: " + ", ".join(PART_LABELS.get(p, p) for p in provides), "preferences-desktop-theme"
+    return "Theme: " + ", ".join(
+        PART_LABELS.get(p, p) for p in provides
+    ), "preferences-desktop-theme"
+
+
+# Installed file discovery
 
 
 def scan(path):
@@ -63,15 +68,26 @@ def human(n):
         n /= 1024
 
 
+# Opening and displaying installed files
+
+
 def show_in_file_manager(path, parent):
     """Open the folder; for a file, ask the file manager to highlight it."""
     p = Path(path)
     if p.is_file():
         try:
             bus = Gio.bus_get_sync(Gio.BusType.SESSION)
-            bus.call_sync("org.freedesktop.FileManager1", "/org/freedesktop/FileManager1",
-                          "org.freedesktop.FileManager1", "ShowItems",
-                          GLib.Variant("(ass)", ([p.as_uri()], "")), None, Gio.DBusCallFlags.NONE, 3000, None)
+            bus.call_sync(
+                "org.freedesktop.FileManager1",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1",
+                "ShowItems",
+                GLib.Variant("(ass)", ([p.as_uri()], "")),
+                None,
+                Gio.DBusCallFlags.NONE,
+                3000,
+                None,
+            )
             return
         except GLib.Error:
             p = p.parent
@@ -80,7 +96,9 @@ def show_in_file_manager(path, parent):
 
 class FilesDialog(Gtk.Dialog):
     def __init__(self, window, entry, system_copies, only=None):
-        super().__init__(title=f"Files installed by {entry['title']}", transient_for=window, use_header_bar=True)
+        super().__init__(
+            title=f"Files installed by {entry['title']}", transient_for=window, use_header_bar=True
+        )
         self.set_default_size(760, 560)
         self.parent_window = window
 
@@ -92,11 +110,15 @@ class FilesDialog(Gtk.Dialog):
         else:
             locations = [(Path(p), *_label(p, entry)) for p in entry["paths"]]
             if len(entry["components"]) > 1:  # say which variant each one is
-                locations = [(p, f"{p.name} · {label}" if not label.startswith("Wallpaper") else label, icon)
-                             for p, label, icon in locations]
+                locations = [
+                    (p, f"{p.name} · {label}" if not label.startswith("Wallpaper") else label, icon)
+                    for p, label, icon in locations
+                ]
             # a wallpaper pack lists every image and the folder; the folder is enough
             folders = {p for p, *_ in locations if p.is_dir()}
-            locations = [loc for loc in locations if loc[0].parent not in folders or loc[0].is_dir()]
+            locations = [
+                loc for loc in locations if loc[0].parent not in folders or loc[0].is_dir()
+            ]
         locations += [(path, label, "system-run") for _k, _n, path, label in system_copies]
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12, margin=16)
@@ -106,8 +128,9 @@ class FilesDialog(Gtk.Dialog):
         note = Gtk.Label(xalign=0, wrap=True)
         note.set_markup(
             f"drape keeps track of these in <tt>{GLib.markup_escape_text(str(installer.MANIFEST))}</tt>. "
-            "Removing the theme deletes all of them" +
-            (" - system copies after asking for your password." if system_copies else "."))
+            "Removing the theme deletes all of them"
+            + (" - system copies after asking for your password." if system_copies else ".")
+        )
         note.get_style_context().add_class("dim-label")
         box.pack_start(note, False, False, 0)
 
@@ -126,8 +149,10 @@ class FilesDialog(Gtk.Dialog):
         title.set_markup(f"<b>{GLib.markup_escape_text(label)}</b>")
         text.pack_start(title, False, False, 0)
         home = str(Path.home())
-        shown = "~" + str(path)[len(home):] if str(path).startswith(home + os.sep) else str(path)
-        where = Gtk.Label(label=shown, xalign=0, selectable=True, ellipsize=Pango.EllipsizeMode.MIDDLE)
+        shown = "~" + str(path)[len(home) :] if str(path).startswith(home + os.sep) else str(path)
+        where = Gtk.Label(
+            label=shown, xalign=0, selectable=True, ellipsize=Pango.EllipsizeMode.MIDDLE
+        )
         where.set_tooltip_text(str(path))
         text.pack_start(where, False, False, 0)
         stats = Gtk.Label(label="Counting…", xalign=0)
@@ -142,15 +167,25 @@ class FilesDialog(Gtk.Dialog):
         copy_btn = Gtk.Button.new_from_icon_name("edit-copy-symbolic", Gtk.IconSize.BUTTON)
         copy_btn.set_tooltip_text("Copy location")
         copy_btn.set_valign(Gtk.Align.CENTER)
-        copy_btn.connect("clicked", lambda _b: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(str(path), -1))
+        copy_btn.connect(
+            "clicked", lambda _b: Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD).set_text(str(path), -1)
+        )
         top.pack_end(copy_btn, False, False, 0)
         top.pack_end(open_btn, False, False, 0)
         outer.pack_start(top, False, False, 0)
 
         expander = Gtk.Expander(label="Files")
-        view = Gtk.TextView(editable=False, cursor_visible=False, monospace=True, left_margin=8, top_margin=6,
-                            bottom_margin=6)
-        lsw = Gtk.ScrolledWindow(min_content_height=160, max_content_height=260, propagate_natural_height=True)
+        view = Gtk.TextView(
+            editable=False,
+            cursor_visible=False,
+            monospace=True,
+            left_margin=8,
+            top_margin=6,
+            bottom_margin=6,
+        )
+        lsw = Gtk.ScrolledWindow(
+            min_content_height=160, max_content_height=260, propagate_natural_height=True
+        )
         lsw.add(view)
         expander.add(lsw)
         outer.pack_start(expander, False, False, 0)
@@ -175,5 +210,6 @@ class FilesDialog(Gtk.Dialog):
             except OSError:
                 result = None
             GLib.idle_add(done, result)
+
         threading.Thread(target=work, daemon=True).start()
         return frame

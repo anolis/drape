@@ -13,35 +13,138 @@ from PIL import Image
 
 # Windows cursor roles -> the X cursor names apps ask for (first name gets the real file)
 ROLE_NAMES = {
-    "Arrow": ["left_ptr", "default", "arrow", "top_left_arrow", "left_arrow", "context-menu",
-              "copy", "alias", "dnd-copy", "dnd-link", "dnd-none", "right_ptr", "draft_large"],
-    "Help": ["help", "question_arrow", "whats_this", "left_ptr_help",
-             "5c6cd98b3f3ebcb1f9c7f1c204630408", "d9ce0ab605698f320427677b458ad60b"],
-    "AppStarting": ["progress", "left_ptr_watch", "half-busy", "00000000000000020006000e7e9ffc3f",
-                    "08e8e1c95fe2fc01f976f1e063a24ccd", "3ecb610c1bf2410f44200f48c40d3599"],
+    "Arrow": [
+        "left_ptr",
+        "default",
+        "arrow",
+        "top_left_arrow",
+        "left_arrow",
+        "context-menu",
+        "copy",
+        "alias",
+        "dnd-copy",
+        "dnd-link",
+        "dnd-none",
+        "right_ptr",
+        "draft_large",
+    ],
+    "Help": [
+        "help",
+        "question_arrow",
+        "whats_this",
+        "left_ptr_help",
+        "5c6cd98b3f3ebcb1f9c7f1c204630408",
+        "d9ce0ab605698f320427677b458ad60b",
+    ],
+    "AppStarting": [
+        "progress",
+        "left_ptr_watch",
+        "half-busy",
+        "00000000000000020006000e7e9ffc3f",
+        "08e8e1c95fe2fc01f976f1e063a24ccd",
+        "3ecb610c1bf2410f44200f48c40d3599",
+    ],
     "Wait": ["wait", "watch"],
     "Crosshair": ["crosshair", "cross", "tcross", "cross_reverse", "diamond_cross", "cell", "plus"],
     "IBeam": ["text", "xterm", "ibeam", "vertical-text"],
     "NWPen": ["pencil", "draft"],
-    "No": ["not-allowed", "no-drop", "crossed_circle", "forbidden", "circle", "dnd-no-drop",
-           "03b6e0fcb3499374a867c041f52298f0"],
-    "SizeNS": ["ns-resize", "n-resize", "s-resize", "size_ver", "sb_v_double_arrow", "v_double_arrow",
-               "top_side", "bottom_side", "row-resize", "split_v", "00008160000006810000408080010102"],
-    "SizeWE": ["ew-resize", "e-resize", "w-resize", "size_hor", "sb_h_double_arrow", "h_double_arrow",
-               "left_side", "right_side", "col-resize", "split_h", "028006030e0e7ebffc7f7070c0600140"],
-    "SizeNWSE": ["nwse-resize", "nw-resize", "se-resize", "size_fdiag", "bd_double_arrow",
-                 "top_left_corner", "bottom_right_corner", "c7088f0f3e6c8088236ef8e1e3e70000"],
-    "SizeNESW": ["nesw-resize", "ne-resize", "sw-resize", "size_bdiag", "fd_double_arrow",
-                 "top_right_corner", "bottom_left_corner", "fcf1c3c07f0a0a1e0c080f4c0f0b0b00"],
-    "SizeAll": ["move", "fleur", "all-scroll", "size_all", "grabbing", "dnd-move", "closedhand",
-                "4498f0e0c1937ffe01fd06f973665830", "9081237383d90e509aa00f00170e968f"],
+    "No": [
+        "not-allowed",
+        "no-drop",
+        "crossed_circle",
+        "forbidden",
+        "circle",
+        "dnd-no-drop",
+        "03b6e0fcb3499374a867c041f52298f0",
+    ],
+    "SizeNS": [
+        "ns-resize",
+        "n-resize",
+        "s-resize",
+        "size_ver",
+        "sb_v_double_arrow",
+        "v_double_arrow",
+        "top_side",
+        "bottom_side",
+        "row-resize",
+        "split_v",
+        "00008160000006810000408080010102",
+    ],
+    "SizeWE": [
+        "ew-resize",
+        "e-resize",
+        "w-resize",
+        "size_hor",
+        "sb_h_double_arrow",
+        "h_double_arrow",
+        "left_side",
+        "right_side",
+        "col-resize",
+        "split_h",
+        "028006030e0e7ebffc7f7070c0600140",
+    ],
+    "SizeNWSE": [
+        "nwse-resize",
+        "nw-resize",
+        "se-resize",
+        "size_fdiag",
+        "bd_double_arrow",
+        "top_left_corner",
+        "bottom_right_corner",
+        "c7088f0f3e6c8088236ef8e1e3e70000",
+    ],
+    "SizeNESW": [
+        "nesw-resize",
+        "ne-resize",
+        "sw-resize",
+        "size_bdiag",
+        "fd_double_arrow",
+        "top_right_corner",
+        "bottom_left_corner",
+        "fcf1c3c07f0a0a1e0c080f4c0f0b0b00",
+    ],
+    "SizeAll": [
+        "move",
+        "fleur",
+        "all-scroll",
+        "size_all",
+        "grabbing",
+        "dnd-move",
+        "closedhand",
+        "4498f0e0c1937ffe01fd06f973665830",
+        "9081237383d90e509aa00f00170e968f",
+    ],
     "UpArrow": ["up_arrow", "center_ptr", "sb_up_arrow"],
-    "Hand": ["pointer", "hand", "hand1", "hand2", "pointing_hand", "grab", "openhand",
-             "e29285e634086352946a0e7090d73106", "9d800788f1b08800ae810202380a0822"],
+    "Hand": [
+        "pointer",
+        "hand",
+        "hand1",
+        "hand2",
+        "pointing_hand",
+        "grab",
+        "openhand",
+        "e29285e634086352946a0e7090d73106",
+        "9d800788f1b08800ae810202380a0822",
+    ],
 }
 # order of files in an Install.inf [Scheme.Reg] line
-SCHEME_ORDER = ["Arrow", "Help", "AppStarting", "Wait", "Crosshair", "IBeam", "NWPen", "No",
-                "SizeNS", "SizeWE", "SizeNWSE", "SizeNESW", "SizeAll", "UpArrow", "Hand"]
+SCHEME_ORDER = [
+    "Arrow",
+    "Help",
+    "AppStarting",
+    "Wait",
+    "Crosshair",
+    "IBeam",
+    "NWPen",
+    "No",
+    "SizeNS",
+    "SizeWE",
+    "SizeNWSE",
+    "SizeNESW",
+    "SizeAll",
+    "UpArrow",
+    "Hand",
+]
 # filename hints for packs without a usable Install.inf; covers Windows' default names
 # ("Normal Select", "Link Select", "Diagonal Resize 1", "Working in Background", ...)
 NAME_HINTS = [
@@ -70,6 +173,9 @@ class ConversionError(Exception):
     pass
 
 
+# Input format detection
+
+
 def is_windows_cursor(p):
     return p.suffix.lower() in (".cur", ".ani")
 
@@ -84,6 +190,7 @@ def is_xcursor(p):
 
 # ---------------------------------------------------------------- reading Windows formats
 
+
 def _read_cur(data):
     """Return [(Image RGBA, xhot, yhot)] for every size in a .cur/.ico blob."""
     reserved, kind, count = struct.unpack_from("<HHH", data, 0)
@@ -92,12 +199,16 @@ def _read_cur(data):
     frames = []
     for i in range(count):
         w, h, _cc, _r, xhot, yhot, size, offset = struct.unpack_from("<BBBBHHII", data, 6 + 16 * i)
-        blob = data[offset:offset + size]
+        blob = data[offset : offset + size]
         if blob[:8] == b"\x89PNG\r\n\x1a\n":
             img = Image.open(io.BytesIO(blob))
         else:
             # wrap the DIB in a one-entry .ico so Pillow decodes the colour + AND mask for us
-            ico = struct.pack("<HHH", 0, 1, 1) + struct.pack("<BBBBHHII", w, h, 0, 0, 1, 32, size, 22) + blob
+            ico = (
+                struct.pack("<HHH", 0, 1, 1)
+                + struct.pack("<BBBBHHII", w, h, 0, 0, 1, 32, size, 22)
+                + blob
+            )
             img = Image.open(io.BytesIO(ico))
         img = img.convert("RGBA")
         if kind == 1:
@@ -116,8 +227,8 @@ def _read_ani(data):
         nonlocal rates, seq, jif
         pos = 0
         while pos + 8 <= len(buf):
-            cid, size = buf[pos:pos + 4], struct.unpack_from("<I", buf, pos + 4)[0]
-            body = buf[pos + 8:pos + 8 + size]
+            cid, size = buf[pos : pos + 4], struct.unpack_from("<I", buf, pos + 4)[0]
+            body = buf[pos + 8 : pos + 8 + size]
             if cid == b"anih" and len(body) >= 36:
                 jif = struct.unpack_from("<I", body, 28)[0] or 6
             elif cid == b"rate":
@@ -143,11 +254,14 @@ def _read_ani(data):
 
 # ---------------------------------------------------------------- writing Xcursor
 
+
 def _pixels(img):
     """RGBA image -> premultiplied ARGB little-endian words, as Xcursor wants."""
     out = bytearray()
     for r, g, b, a in img.getdata():
-        out += struct.pack("<I", (a << 24) | ((r * a // 255) << 16) | ((g * a // 255) << 8) | (b * a // 255))
+        out += struct.pack(
+            "<I", (a << 24) | ((r * a // 255) << 16) | ((g * a // 255) << 8) | (b * a // 255)
+        )
     return bytes(out)
 
 
@@ -160,11 +274,23 @@ def _write_xcursor(path, images):
         w, h = img.size
         nominal = max(w, h)
         toc += struct.pack("<III", XC_IMAGE, nominal, pos)
-        chunk = struct.pack("<IIIIIIIII", chunk_header, XC_IMAGE, nominal, 1, w, h,
-                            min(xhot, w - 1), min(yhot, h - 1), delay) + _pixels(img)
+        chunk = struct.pack(
+            "<IIIIIIIII",
+            chunk_header,
+            XC_IMAGE,
+            nominal,
+            1,
+            w,
+            h,
+            min(xhot, w - 1),
+            min(yhot, h - 1),
+            delay,
+        ) + _pixels(img)
         chunks += chunk
         pos += len(chunk)
-    Path(path).write_bytes(struct.pack("<4sIII", XC_MAGIC, header, 0x10000, len(images)) + toc + chunks)
+    Path(path).write_bytes(
+        struct.pack("<4sIII", XC_MAGIC, header, 0x10000, len(images)) + toc + chunks
+    )
 
 
 def convert_file(src, dest):
@@ -178,17 +304,27 @@ def convert_file(src, dest):
 
 # ---------------------------------------------------------------- role mapping
 
+
 def _parse_inf(inf):
     """Return {role: filename} from an Install.inf, or {}."""
     text = inf.read_text(errors="replace")
-    cp = configparser.ConfigParser(interpolation=None, strict=False, allow_no_value=True,
-                                   delimiters=("=",), comment_prefixes=(";",))
+    cp = configparser.ConfigParser(
+        interpolation=None,
+        strict=False,
+        allow_no_value=True,
+        delimiters=("=",),
+        comment_prefixes=(";",),
+    )
     cp.optionxform = str
     try:
         cp.read_string(text)
     except configparser.Error:
         return {}
-    strings = {k.lower(): v.strip().strip('"') for k, v in cp["Strings"].items()} if cp.has_section("Strings") else {}
+    strings = (
+        {k.lower(): v.strip().strip('"') for k, v in cp["Strings"].items()}
+        if cp.has_section("Strings")
+        else {}
+    )
 
     def resolve(s):
         s = re.sub(r"%(\w+)%", lambda m: strings.get(m.group(1).lower(), m.group(0)), s)
@@ -196,8 +332,11 @@ def _parse_inf(inf):
 
     roles = {}
     # explicit lines: HKCU,"Control Panel\Cursors",Arrow,0x00020000,"%10%\%CUR_DIR%\%pointer%"
-    for m in re.finditer(r'^\s*HKCU\s*,\s*"Control Panel\\Cursors"\s*,\s*"?(\w+)"?\s*,[^,]*,\s*"([^"]+)"',
-                         text, re.M | re.I):
+    for m in re.finditer(
+        r'^\s*HKCU\s*,\s*"Control Panel\\Cursors"\s*,\s*"?(\w+)"?\s*,[^,]*,\s*"([^"]+)"',
+        text,
+        re.M | re.I,
+    ):
         role = next((r for r in ROLE_NAMES if r.lower() == m.group(1).lower()), None)
         if role:
             roles.setdefault(role, resolve(m.group(2)))
@@ -229,11 +368,16 @@ def map_roles(folder):
     return roles
 
 
+# Theme conversion and metadata
+
+
 def convert_theme(src_folder, dest, name):
     """Build an Xcursor theme at `dest` from a folder of Windows cursors. Returns roles converted."""
     roles = map_roles(src_folder)
     if "Arrow" not in roles:
-        raise ConversionError("Couldn't tell which file is the normal pointer in this Windows cursor pack.")
+        raise ConversionError(
+            "Couldn't tell which file is the normal pointer in this Windows cursor pack."
+        )
     cursors = dest / "cursors"
     cursors.mkdir(parents=True)
     done = []
@@ -250,5 +394,6 @@ def convert_theme(src_folder, dest, name):
         raise ConversionError("The normal pointer in this Windows cursor pack couldn't be read.")
     # anything the pack doesn't provide falls back to Adwaita instead of X's ugly defaults
     (dest / "index.theme").write_text(
-        f"[Icon Theme]\nName={name}\nComment=Converted from a Windows cursor pack by drape\nInherits=Adwaita\n")
+        f"[Icon Theme]\nName={name}\nComment=Converted from a Windows cursor pack by drape\nInherits=Adwaita\n"
+    )
     return done

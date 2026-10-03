@@ -20,7 +20,9 @@ class GovernorTest(unittest.TestCase):
             t["now"] += 1
             t["cpu"] += cpu_per_second / 100
 
-        gov = animation.Governor(lambda: mode, busy=busy, sampler=lambda: t["cpu"], clock=lambda: t["now"])
+        gov = animation.Governor(
+            lambda: mode, busy=busy, sampler=lambda: t["cpu"], clock=lambda: t["now"]
+        )
         gov.last = (0.0, 0.0)
         switched = []
         gov.on_switch = switched.append
@@ -91,6 +93,7 @@ class ScheduleTest(unittest.TestCase):
 
     def test_builds_a_gtk_animation(self):
         from gi.repository import GdkPixbuf
+
         pb = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 4, 4)
         anim = animation.build_animation([(pb, 50), (pb, 50)], max_fps=15)
         self.assertFalse(anim.is_static_image())

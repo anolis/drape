@@ -9,7 +9,7 @@ class CardTransitionsTest(unittest.TestCase):
     def card(self, mapped=True, animations=True):
         card = SimpleNamespace(_tick=None, _finish=None, opacity=1.0, departing=False)
         card.get_opacity = lambda: card.opacity
-        card.set_opacity = lambda value: setattr(card, 'opacity', value)
+        card.set_opacity = lambda value: setattr(card, "opacity", value)
         card.get_mapped = lambda: mapped
         card.get_settings = lambda: SimpleNamespace(get_property=lambda _name: animations)
         card.get_frame_clock = lambda: SimpleNamespace(get_frame_time=lambda: 0)
@@ -28,7 +28,7 @@ class CardTransitionsTest(unittest.TestCase):
         card.set_sensitive.assert_called_once_with(False)
         tick = card.add_tick_callback.call_args.args[0]
         self.assertTrue(tick(card, SimpleNamespace(get_frame_time=lambda: DURATION_US / 2)))
-        self.assertAlmostEqual(card.opacity, .5)
+        self.assertAlmostEqual(card.opacity, 0.5)
         self.assertFalse(tick(card, SimpleNamespace(get_frame_time=lambda: DURATION_US)))
         card.destroy.assert_called_once()
         self.assertIsNone(card._tick)
@@ -60,12 +60,17 @@ class CardTransitionsTest(unittest.TestCase):
         self.assertIsNone(card._finish)
 
     def test_refresh_retains_unchanged_cards_and_removes_missing_ones(self):
-        keep = SimpleNamespace(_identity='keep', _snapshot={'title': 'Keep'}, dismiss=mock.Mock())
-        gone = SimpleNamespace(_identity='gone', _snapshot={}, dismiss=mock.Mock())
-        flow = SimpleNamespace(cards=lambda: [keep, gone], add=mock.Mock(),
-                               set_sort_func=mock.Mock(), invalidate_sort=mock.Mock(), show_all=mock.Mock())
+        keep = SimpleNamespace(_identity="keep", _snapshot={"title": "Keep"}, dismiss=mock.Mock())
+        gone = SimpleNamespace(_identity="gone", _snapshot={}, dismiss=mock.Mock())
+        flow = SimpleNamespace(
+            cards=lambda: [keep, gone],
+            add=mock.Mock(),
+            set_sort_func=mock.Mock(),
+            invalidate_sort=mock.Mock(),
+            show_all=mock.Mock(),
+        )
         create = mock.Mock()
-        CardFlow.reconcile(flow, [('keep', {'title': 'Keep'}, create)])
+        CardFlow.reconcile(flow, [("keep", {"title": "Keep"}, create)])
         create.assert_not_called()
         flow.add.assert_not_called()
         keep.dismiss.assert_not_called()

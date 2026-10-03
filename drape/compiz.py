@@ -20,10 +20,22 @@ gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk  # noqa: E402
 
 # what "Install Compiz" installs (all whitelisted in the root helper)
-COMPIZ_PACKAGES = ["compiz", "compiz-mate", "compizconfig-settings-manager", "compiz-plugins",
-                   "compiz-plugins-extra", "emerald"]
+COMPIZ_PACKAGES = [
+    "compiz",
+    "compiz-mate",
+    "compizconfig-settings-manager",
+    "compiz-plugins",
+    "compiz-plugins-extra",
+    "emerald",
+]
 # a minimal MATE session for Compiz to run in, for desktops (like Cinnamon) that can't host it
-MATE_SESSION_PACKAGES = ["mate-session-manager", "mate-panel", "mate-settings-daemon", "caja", "marco"]
+MATE_SESSION_PACKAGES = [
+    "mate-session-manager",
+    "mate-panel",
+    "mate-settings-daemon",
+    "caja",
+    "marco",
+]
 
 WINDOW_MANAGERS = {
     # key: (label, command to take over live)
@@ -31,6 +43,9 @@ WINDOW_MANAGERS = {
     "marco": ("Marco (MATE's own)", ["marco", "--replace"]),
     "xfwm4": ("Xfwm (Xfce's own)", ["xfwm4", "--replace"]),
 }
+
+
+# Session and package detection
 
 
 def session():
@@ -44,6 +59,7 @@ def session():
 
 def running_wm():
     from . import desktop
+
     return desktop.running_wm(refresh=True)
 
 
@@ -108,6 +124,7 @@ def package_manager_busy():
 def removable():
     """Packages drape's Compiz install added that are still installed (what 'Remove' takes out)."""
     from . import helper
+
     try:
         return helper.drape_installed_packages(COMPIZ_PACKAGES + MATE_SESSION_PACKAGES)
     except (OSError, subprocess.SubprocessError):
@@ -126,13 +143,20 @@ def packages_to_install():
     return pkgs
 
 
+# Persistent and live window-manager changes
+
+
 def use_compiz_in_mate(enabled=True):
     """Make the MATE session start Compiz (or its own Marco). Per user; no root needed. Uses the
     gsettings tool so a schema installed after drape started is still found."""
     wm = "compiz" if enabled else "marco"
     try:
-        r = subprocess.run(["gsettings", "set", "org.mate.session.required-components", "windowmanager", wm],
-                           capture_output=True, text=True, timeout=10)
+        r = subprocess.run(
+            ["gsettings", "set", "org.mate.session.required-components", "windowmanager", wm],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         return r.returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
@@ -140,8 +164,16 @@ def use_compiz_in_mate(enabled=True):
 
 def mate_wm_setting():
     try:
-        out = subprocess.run(["gsettings", "get", "org.mate.session.required-components", "windowmanager"],
-                             capture_output=True, text=True, timeout=10).stdout.strip().strip("'")
+        out = (
+            subprocess.run(
+                ["gsettings", "get", "org.mate.session.required-components", "windowmanager"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            .stdout.strip()
+            .strip("'")
+        )
         return out or None
     except (OSError, subprocess.SubprocessError):
         return None
@@ -150,14 +182,27 @@ def mate_wm_setting():
 def switch_live(wm):
     """Replace the running window manager right now (MATE / Xfce sessions)."""
     label, cmd = WINDOW_MANAGERS[wm]
-    subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    subprocess.Popen(
+        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
+    )
 
 
 # ---------------------------------------------------------------- ccsm, hosted inside drape
 
 # ccsm's pages call back into "the window they're in" (widget.get_toplevel()) with these names;
 # drape's window forwards them to the hosted ccsm.
-FORWARDED = ("SetPage", "BackToMain", "RefreshPage", "MainPage", "CurrentPage", "ShowingPlugin", "Context")
+FORWARDED = (
+    "SetPage",
+    "BackToMain",
+    "RefreshPage",
+    "MainPage",
+    "CurrentPage",
+    "ShowingPlugin",
+    "Context",
+)
+
+
+# Settings-manager UI
 
 
 def make_ccsm():
@@ -175,6 +220,7 @@ def make_ccsm():
 
     class HostedCcsm(Gtk.Box):
         """The body of ccm.MainWin, in a box instead of its own window."""
+
         SetPage = ccm.MainWin.SetPage
         BackToMain = ccm.MainWin.BackToMain
         RefreshPage = ccm.MainWin.RefreshPage
@@ -208,6 +254,7 @@ def make_ccsm():
                 elif isinstance(w, Gtk.Container):
                     for c in w.get_children():
                         walk(c)
+
             walk(self.MainPage.LeftWidget)
 
     return HostedCcsm()

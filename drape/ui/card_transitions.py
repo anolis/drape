@@ -13,9 +13,9 @@ class FadingCard(Gtk.FlowBoxChild):
         self._tick = None
         self._finish = None
         self.set_opacity(0)
-        self.connect('map', self._mapped)
-        self.connect('unmap', self._unmapped)
-        self.connect('destroy', self._cancel)
+        self.connect("map", self._mapped)
+        self.connect("unmap", self._unmapped)
+        self.connect("destroy", self._cancel)
 
     def _cancel(self, *_):
         if self._tick is not None:
@@ -37,7 +37,7 @@ class FadingCard(Gtk.FlowBoxChild):
 
     def fade(self, target, finish=None):
         self._cancel()
-        if not self.get_mapped() or not self.get_settings().get_property('gtk-enable-animations'):
+        if not self.get_mapped() or not self.get_settings().get_property("gtk-enable-animations"):
             self.set_opacity(target)
             if finish:
                 finish()
@@ -72,7 +72,7 @@ class CardFlow(Gtk.FlowBox):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._predicate = lambda _card: True
-        self.set_filter_func(lambda card: getattr(card, '_included', True))
+        self.set_filter_func(lambda card: getattr(card, "_included", True))
 
     def cards(self):
         return [card for card in self.get_children() if not card.departing]
@@ -101,9 +101,11 @@ class CardFlow(Gtk.FlowBox):
                 if card.get_mapped():
                     card.fade(1)
             else:
+
                 def hidden(card=card):
                     card._included = False
                     self.invalidate_filter()
+
                 card.fade(0, hidden)
 
     def clear(self):

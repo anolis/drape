@@ -19,10 +19,16 @@ LOGIN_OPTIONS = [
 ]
 
 
+# Current appearance and login-screen capabilities
+
+
 def _find_theme(kind, name):
     """(path, in_home) of an installed Controls theme / icon set / cursor theme called `name`."""
-    home = [installer.THEMES_DIR, installer.DATA_HOME / "themes"] if kind == "gtk" else \
-        [installer.ICONS_DIR, installer.CURSORS_DIR]
+    home = (
+        [installer.THEMES_DIR, installer.DATA_HOME / "themes"]
+        if kind == "gtk"
+        else [installer.ICONS_DIR, installer.CURSORS_DIR]
+    )
     for base in home:
         if (base / name).is_dir():
             return base / name, True
@@ -53,7 +59,9 @@ def current_look_commands(greeter, login_commands):
             if path.is_relative_to("/usr/share/backgrounds"):
                 cmds.append(["greeter-set", greeter, f"background={path}"])
             else:
-                cmds += login_commands(greeter, "wallpapers", {"name": path.name, "path": str(path)})
+                cmds += login_commands(
+                    greeter, "wallpapers", {"name": path.name, "path": str(path)}
+                )
     return cmds
 
 
@@ -68,6 +76,9 @@ def theme_styles_lock_screen(name):
         if gtk3.is_dir():
             return any("csstage" in p.read_text(errors="replace") for p in gtk3.glob("*.css"))
     return False
+
+
+# Reusable layout helpers
 
 
 def _section(title):
@@ -108,6 +119,9 @@ def _framed(rows):
     return frame
 
 
+# Lock and login settings page
+
+
 class LockLoginPage(Gtk.ScrolledWindow):
     def __init__(self, window, login_commands):
         super().__init__(hscrollbar_policy=Gtk.PolicyType.NEVER)
@@ -137,8 +151,12 @@ class LockLoginPage(Gtk.ScrolledWindow):
         if dm == "lightdm" and greeter in system.GTK_GREETERS:
             cur = system.greeter_settings(greeter)
             rows = []
-            for key, label in (("background", "Background"), ("theme-name", "Controls"),
-                               ("icon-theme-name", "Icons"), ("cursor-theme-name", "Cursor")):
+            for key, label in (
+                ("background", "Background"),
+                ("theme-name", "Controls"),
+                ("icon-theme-name", "Icons"),
+                ("cursor-theme-name", "Cursor"),
+            ):
                 value = cur.get(key)
                 shown = Path(value).name if key == "background" and value else (value or "Default")
                 v = Gtk.Label(label=shown, ellipsize=Pango.EllipsizeMode.MIDDLE, max_width_chars=36)
@@ -147,14 +165,22 @@ class LockLoginPage(Gtk.ScrolledWindow):
             use = Gtk.Button(label="Use my current desktop look")
             use.get_style_context().add_class("suggested-action")
             use.connect("clicked", lambda _b: self._use_current(greeter))
-            rows.append(_row("Match your desktop",
-                             use, "Your Controls theme, icons, cursor and wallpaper, copied so the login "
-                                  "screen can use them. Or pick single items with ⋯ → Use for login screen "
-                                  "on the Installed page."))
+            rows.append(
+                _row(
+                    "Match your desktop",
+                    use,
+                    "Your Controls theme, icons, cursor and wallpaper, copied so the login "
+                    "screen can use them. Or pick single items with ⋯ → Use for login screen "
+                    "on the Installed page.",
+                )
+            )
             box.pack_start(_framed(rows), False, False, 0)
         elif dm == "sddm":
-            note = Gtk.Label(xalign=0, wrap=True,
-                             label="SDDM uses its own themes: browse them on the Login screen page.")
+            note = Gtk.Label(
+                xalign=0,
+                wrap=True,
+                label="SDDM uses its own themes: browse them on the Login screen page.",
+            )
             note.get_style_context().add_class("dim-label")
             box.pack_start(note, False, False, 0)
 
@@ -164,14 +190,22 @@ class LockLoginPage(Gtk.ScrolledWindow):
         rows = []
         greeters = system.installed_greeters()
         for label, option_dm, option_greeter, package in LOGIN_OPTIONS:
-            installed = (option_greeter in greeters) if option_greeter else system.which(option_dm) is not None
+            installed = (
+                (option_greeter in greeters)
+                if option_greeter
+                else system.which(option_dm) is not None
+            )
             active = dm == option_dm and (option_greeter is None or greeter == option_greeter)
             if active:
                 w = Gtk.Label(label="✓ In use")
             elif installed or system.apt_available(package):
                 w = Gtk.Button(label="Switch" if installed else "Install and switch")
-                w.connect("clicked", lambda _b, o=(label, option_dm, option_greeter, package, installed):
-                          self._switch(*o))
+                w.connect(
+                    "clicked",
+                    lambda _b, o=(label, option_dm, option_greeter, package, installed): (
+                        self._switch(*o)
+                    ),
+                )
             else:
                 w = Gtk.Label(label="Not available")
                 w.get_style_context().add_class("dim-label")
@@ -181,19 +215,26 @@ class LockLoginPage(Gtk.ScrolledWindow):
 
     def _use_current(self, greeter):
         from .ui.common import login_commands
+
         cmds = current_look_commands(greeter, login_commands)
         if not cmds:
             self.win.notify("Couldn't find your current theme files to copy.")
             return
-        self.win.run_root(cmds, "Updating the login screen…",
-                          lambda: (self.win.notify("The login screen now matches your desktop."), self.load()))
+        self.win.run_root(
+            cmds,
+            "Updating the login screen…",
+            lambda: (self.win.notify("The login screen now matches your desktop."), self.load()),
+        )
 
     def _switch(self, label, dm, greeter, package, installed):
         esc = GLib.markup_escape_text
-        if not self.win.ask(f"Switch to {label}?",
-                            f"{'drape will install <tt>' + esc(package) + '</tt> and ' if not installed else ''}"
-                            f"your login screen will change after you restart.\n\nIf anything looks wrong you "
-                            "can switch back here.", "Switch"):
+        if not self.win.ask(
+            f"Switch to {label}?",
+            f"{'drape will install <tt>' + esc(package) + '</tt> and ' if not installed else ''}"
+            f"your login screen will change after you restart.\n\nIf anything looks wrong you "
+            "can switch back here.",
+            "Switch",
+        ):
             return
         cmds = [] if installed else [["apt-install", package]]
         if dm == "lightdm":
@@ -202,23 +243,36 @@ class LockLoginPage(Gtk.ScrolledWindow):
             cmds.append(["use-greeter", greeter])
         if system.display_manager() != dm:
             cmds.append(["display-manager", dm])
-        self.win.run_root(cmds, f"Switching to {label}…",
-                          lambda: (self.win.notify(f"{label} will be your login screen after a restart."),
-                                   self.load()))
+        self.win.run_root(
+            cmds,
+            f"Switching to {label}…",
+            lambda: (
+                self.win.notify(f"{label} will be your login screen after a restart."),
+                self.load(),
+            ),
+        )
 
     # ------------------------------------------------------------ lock screen
     def _lock_section(self):
         box = _section("Lock screen")
         de = desktop.current_desktop()
         if de == "gnome":
-            note = Gtk.Label(xalign=0, wrap=True, label="GNOME's lock screen has its own wallpaper: choose "
-                             "⋯ → Use for lock screen on a wallpaper on the Installed page.")
+            note = Gtk.Label(
+                xalign=0,
+                wrap=True,
+                label="GNOME's lock screen has its own wallpaper: choose "
+                "⋯ → Use for lock screen on a wallpaper on the Installed page.",
+            )
             box.pack_start(note, False, False, 0)
             return box
         src = Gio.SettingsSchemaSource.get_default()
         if de != "cinnamon" or not src or not src.lookup(SCREENSAVER, True):
-            box.pack_start(Gtk.Label(xalign=0, label="drape can't change this desktop's lock screen."),
-                           False, False, 0)
+            box.pack_start(
+                Gtk.Label(xalign=0, label="drape can't change this desktop's lock screen."),
+                False,
+                False,
+                0,
+            )
             return box
 
         theme = desktop.get("gtk") or ""
@@ -226,9 +280,13 @@ class LockLoginPage(Gtk.ScrolledWindow):
         note = Gtk.Label(xalign=0, wrap=True)
         note.set_markup(
             "Cinnamon's lock screen shows your desktop wallpaper, drawn with your Controls theme. "
-            + (f"<b>{GLib.markup_escape_text(theme)}</b> includes lock screen styling." if styled else
-               f"<b>{GLib.markup_escape_text(theme)}</b> doesn't style the lock screen, so it uses Cinnamon's "
-               "default look."))
+            + (
+                f"<b>{GLib.markup_escape_text(theme)}</b> includes lock screen styling."
+                if styled
+                else f"<b>{GLib.markup_escape_text(theme)}</b> doesn't style the lock screen, so it uses Cinnamon's "
+                "default look."
+            )
+        )
         note.get_style_context().add_class("dim-label")
         box.pack_start(note, False, False, 0)
 
@@ -239,14 +297,19 @@ class LockLoginPage(Gtk.ScrolledWindow):
         rows.append(_row("Show the clock", clock))
         custom = Gtk.Switch()
         s.bind("use-custom-format", custom, "active", Gio.SettingsBindFlags.DEFAULT)
-        rows.append(_row("Custom time and date format", custom, "Uses the formats below (strftime codes)"))
+        rows.append(
+            _row("Custom time and date format", custom, "Uses the formats below (strftime codes)")
+        )
         for key, label in (("time-format", "Time format"), ("date-format", "Date format")):
             e = Gtk.Entry(width_chars=16)
             s.bind(key, e, "text", Gio.SettingsBindFlags.DEFAULT)
             s.bind("use-custom-format", e, "sensitive", Gio.SettingsBindFlags.GET)
             rows.append(_row(label, e))
-        for key, label in (("font-time", "Time font"), ("font-date", "Date font"),
-                           ("font-message", "Message font")):
+        for key, label in (
+            ("font-time", "Time font"),
+            ("font-date", "Date font"),
+            ("font-message", "Message font"),
+        ):
             fb = Gtk.FontButton()
             s.bind(key, fb, "font", Gio.SettingsBindFlags.DEFAULT)
             rows.append(_row(label, fb))

@@ -14,13 +14,20 @@ from gi.repository import GLib, Gtk  # noqa: E402
 from .previews import H, W  # noqa: E402
 
 
+# Representative GTK controls
+
+
 def sample():
     root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     root.get_style_context().add_class("background")
 
     hb = Gtk.HeaderBar(title="Documents", subtitle="~/Documents", show_close_button=True)
     hb.pack_start(Gtk.Button.new_from_icon_name("go-previous-symbolic", Gtk.IconSize.BUTTON))
-    hb.pack_end(Gtk.MenuButton(image=Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON)))
+    hb.pack_end(
+        Gtk.MenuButton(
+            image=Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON)
+        )
+    )
     root.pack_start(hb, False, False, 0)
 
     body = Gtk.Box(spacing=0)
@@ -77,6 +84,9 @@ def sample():
     body.pack_start(main, True, True, 0)
     root.pack_start(body, True, True, 0)
     return root
+
+
+# Off-screen rendering entry point
 
 
 def main():

@@ -17,9 +17,12 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
 
-THRESHOLD = 10.0   # percent of one core, like `top`
-WINDOW = 5         # seconds averaged before deciding
+THRESHOLD = 10.0  # percent of one core, like `top`
+WINDOW = 5  # seconds averaged before deciding
 MODES = ("auto", "always", "hover")
+
+
+# Animation cost measurement
 
 
 def main_thread_cpu():
@@ -33,12 +36,21 @@ def main_thread_cpu():
         return time.process_time()
 
 
+# Shared playback policy
+
+
 class Governor:
-    def __init__(self, get_mode, busy=lambda: False, on_switch=None, sampler=main_thread_cpu,
-                 clock=time.monotonic):
-        self.get_mode = get_mode      # returns "auto", "always" or "hover"
-        self.busy = busy              # True while the UI is doing other work (loading a page)
-        self.on_switch = on_switch    # called once when auto mode falls back to hover
+    def __init__(
+        self,
+        get_mode,
+        busy=lambda: False,
+        on_switch=None,
+        sampler=main_thread_cpu,
+        clock=time.monotonic,
+    ):
+        self.get_mode = get_mode  # returns "auto", "always" or "hover"
+        self.busy = busy  # True while the UI is doing other work (loading a page)
+        self.on_switch = on_switch  # called once when auto mode falls back to hover
         self.sampler, self.clock = sampler, clock
         self.players = weakref.WeakSet()
         self.switched = False
@@ -112,6 +124,9 @@ def schedule(delays, max_fps=None):
     return step, ticks
 
 
+# Frame decoding and playback
+
+
 def build_animation(frames, max_fps=None):
     """A GdkPixbufSimpleAnim from [(Pixbuf, delay_ms)]. GtkImage plays these itself, redrawing
     only the picture (cheaper than swapping pixbufs) and stopping when the image is hidden."""
@@ -136,8 +151,10 @@ class Player:
         self.playing, self.hovered = False, False
         self.handlers = []
         if self.box is not None:
-            self.handlers += [(self.box, self.box.connect("enter-notify-event", self._enter)),
-                              (self.box, self.box.connect("leave-notify-event", self._leave))]
+            self.handlers += [
+                (self.box, self.box.connect("enter-notify-event", self._enter)),
+                (self.box, self.box.connect("leave-notify-event", self._leave)),
+            ]
         image.set_from_pixbuf(self.first)
         governor.register(self)
         self.update()
@@ -152,7 +169,9 @@ class Player:
         return False
 
     def _leave(self, _w, event):
-        if event.detail != Gdk.NotifyType.INFERIOR:  # moving onto the card's own spinner isn't leaving
+        if (
+            event.detail != Gdk.NotifyType.INFERIOR
+        ):  # moving onto the card's own spinner isn't leaving
             self.hovered = False
             self.update()
         return False

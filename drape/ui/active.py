@@ -9,10 +9,21 @@ from .common import CARD_H, CARD_W, _safe
 from .images import _renders, load_image
 
 
-ACTIVE_PARTS = [("gtk", "Controls"), ("wm", "Window borders"), ("desktop", "Desktop"), ("icons", "Icons"),
-                ("lookandfeel", "Global theme"), ("colors", "Color scheme"),
-                ("cursors", "Cursors"), ("wallpapers", "Wallpaper"), ("login", "Login screen"),
-                ("boot", "Boot splash")]
+ACTIVE_PARTS = [
+    ("gtk", "Controls"),
+    ("wm", "Window borders"),
+    ("desktop", "Desktop"),
+    ("icons", "Icons"),
+    ("lookandfeel", "Global theme"),
+    ("colors", "Color scheme"),
+    ("cursors", "Cursors"),
+    ("wallpapers", "Wallpaper"),
+    ("login", "Login screen"),
+    ("boot", "Boot splash"),
+]
+
+
+# Locate the currently applied component
 
 
 def locate_theme(part, name):
@@ -41,10 +52,16 @@ def theme_source(path):
     return "Came with your system", None
 
 
+# Preview sizing and fallback artwork
+
+
 def _fit(pb, width, height):
     scale = min(width / pb.get_width(), height / pb.get_height(), 1)
-    return pb.scale_simple(max(1, int(pb.get_width() * scale)), max(1, int(pb.get_height() * scale)),
-                           GdkPixbuf.InterpType.BILINEAR)
+    return pb.scale_simple(
+        max(1, int(pb.get_width() * scale)),
+        max(1, int(pb.get_height() * scale)),
+        GdkPixbuf.InterpType.BILINEAR,
+    )
 
 
 def plymouth_picture(theme_dir):
@@ -54,6 +71,9 @@ def plymouth_picture(theme_dir):
             return theme_dir / name
     frames = sorted(theme_dir.glob("*.png"), key=lambda p: (len(p.name), p.name))
     return frames[len(frames) // 2] if frames else None
+
+
+# Current appearance card
 
 
 class ActiveCard(FadingCard):
@@ -79,7 +99,9 @@ class ActiveCard(FadingCard):
         title.set_markup(f"<b>{GLib.markup_escape_text(name)}</b>")
         title.set_tooltip_text(name)
         box.pack_start(title, False, False, 0)
-        info = Gtk.Label(label=detail, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34)
+        info = Gtk.Label(
+            label=detail, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=34
+        )
         info.set_tooltip_text(detail)
         info.get_style_context().add_class("dim-label")
         box.pack_start(info, False, False, 0)
@@ -114,8 +136,13 @@ class ActiveCard(FadingCard):
 
         def work():
             out = previews.theme_preview_path(path, preview_kind)
-            pb = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(out), CARD_W, CARD_H, True) if out else None
+            pb = (
+                GdkPixbuf.Pixbuf.new_from_file_at_scale(str(out), CARD_W, CARD_H, True)
+                if out
+                else None
+            )
             GLib.idle_add(self._show_pixbuf, pb)
+
         _renders.submit(lambda: _safe(work))
 
     def _describe(self, part):
@@ -151,22 +178,36 @@ class ActiveCard(FadingCard):
                     load_image(bg, self.image, CARD_W, CARD_H)
                 else:
                     self.image.set_from_icon_name("system-users", Gtk.IconSize.DIALOG)
-                parts = [f"{label} {cur[k]}" for k, label in (("theme-name", "Controls"), ("icon-theme-name", "Icons"),
-                                                              ("cursor-theme-name", "Cursor")) if cur.get(k)]
+                parts = [
+                    f"{label} {cur[k]}"
+                    for k, label in (
+                        ("theme-name", "Controls"),
+                        ("icon-theme-name", "Icons"),
+                        ("cursor-theme-name", "Cursor"),
+                    )
+                    if cur.get(k)
+                ]
                 return f"LightDM · {greeter}", " · ".join(parts) or "Default look", None, "lock"
             if dm == "sddm":
                 theme = system.current_sddm_theme()
                 shot = None
                 tdir = Path("/usr/share/sddm/themes") / (theme or "")
                 if theme and (tdir / "metadata.desktop").is_file():
-                    for line in (tdir / "metadata.desktop").read_text(errors="replace").splitlines():
+                    for line in (
+                        (tdir / "metadata.desktop").read_text(errors="replace").splitlines()
+                    ):
                         if line.startswith("Screenshot="):
                             shot = tdir / line.split("=", 1)[1].strip()
                 if shot and shot.is_file():
                     load_image(str(shot), self.image, CARD_W, CARD_H)
                 else:
                     self.image.set_from_icon_name("system-users", Gtk.IconSize.DIALOG)
-                return "SDDM", f"Theme: {theme}" if theme else "SDDM's built-in theme", None, "login"
+                return (
+                    "SDDM",
+                    f"Theme: {theme}" if theme else "SDDM's built-in theme",
+                    None,
+                    "login",
+                )
             self.image.set_from_icon_name("system-users", Gtk.IconSize.DIALOG)
             return dm or "Unknown", "", None, "lock"
         if part == "boot":
@@ -174,21 +215,42 @@ class ActiveCard(FadingCard):
             tdir = system.PLYMOUTH_DIR / (name or "")
             pic = plymouth_picture(tdir) if name and tdir.is_dir() else None
             if pic:
+
                 def work():
                     pb = GdkPixbuf.Pixbuf.new_from_file(str(pic))
                     # boot splashes are drawn on black; show it that way
                     bg = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, CARD_W, CARD_H)
                     bg.fill(0x000000FF)
                     pb = _fit(pb, CARD_W - 40, CARD_H - 40)
-                    pb.composite(bg, (CARD_W - pb.get_width()) // 2, (CARD_H - pb.get_height()) // 2,
-                                 pb.get_width(), pb.get_height(), (CARD_W - pb.get_width()) // 2,
-                                 (CARD_H - pb.get_height()) // 2, 1, 1, GdkPixbuf.InterpType.BILINEAR, 255)
+                    pb.composite(
+                        bg,
+                        (CARD_W - pb.get_width()) // 2,
+                        (CARD_H - pb.get_height()) // 2,
+                        pb.get_width(),
+                        pb.get_height(),
+                        (CARD_W - pb.get_width()) // 2,
+                        (CARD_H - pb.get_height()) // 2,
+                        1,
+                        1,
+                        GdkPixbuf.InterpType.BILINEAR,
+                        255,
+                    )
                     GLib.idle_add(self._show_pixbuf, bg)
+
                 _renders.submit(lambda: _safe(work))
             else:
                 self.image.set_from_icon_name("system-run", Gtk.IconSize.DIALOG)
             source, key = theme_source(tdir if name else None)
             if key is None and name:
-                source = "Came with your system" if not (tdir / root_helper.MARKER).exists() else "Installed with drape"
-            return name or "None", source if system.plymouth_installed() else "Plymouth isn't installed", key, "boot"
+                source = (
+                    "Came with your system"
+                    if not (tdir / root_helper.MARKER).exists()
+                    else "Installed with drape"
+                )
+            return (
+                name or "None",
+                source if system.plymouth_installed() else "Plymouth isn't installed",
+                key,
+                "boot",
+            )
         raise KeyError(part)

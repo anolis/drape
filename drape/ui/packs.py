@@ -5,13 +5,24 @@ from .. import desktop, installer
 from .common import PART_NAMES, error_dialog, in_use
 
 
-ORDER = ['lookandfeel', 'plasma', 'colors', 'gtk', 'desktop', 'wm', 'xfwm', 'aurorae',
-         'icons', 'cursors', 'wallpapers']
+ORDER = [
+    "lookandfeel",
+    "plasma",
+    "colors",
+    "gtk",
+    "desktop",
+    "wm",
+    "xfwm",
+    "aurorae",
+    "icons",
+    "cursors",
+    "wallpapers",
+]
 
 
 def choices(entry):
     groups = {}
-    for component in entry['components']:
+    for component in entry["components"]:
         for part in desktop.compatible_parts(component):
             if part in desktop.PACK_PARTS:
                 groups.setdefault(part, []).append(component)
@@ -22,14 +33,14 @@ def apply_pack(window, key):
     try:
         entry = installer.load_manifest().get(key)
     except installer.InstallError as exc:
-        error_dialog(window, 'Cannot load installed themes', exc)
+        error_dialog(window, "Cannot load installed themes", exc)
         return
-    if not entry or not desktop.pack_components(entry['components']):
-        window.notify('This pack has no compatible combination for the current desktop.')
+    if not entry or not desktop.pack_components(entry["components"]):
+        window.notify("This pack has no compatible combination for the current desktop.")
         return
     groups = choices(entry)
     dialog = Gtk.Dialog(title=f"Apply {entry['title']}", transient_for=window, modal=True)
-    dialog.add_buttons('Cancel', Gtk.ResponseType.CANCEL, 'Apply pack', Gtk.ResponseType.ACCEPT)
+    dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Apply pack", Gtk.ResponseType.ACCEPT)
     area = dialog.get_content_area()
     grid = Gtk.Grid(column_spacing=16, row_spacing=10, margin=16)
     area.pack_start(grid, True, True, 0)
@@ -37,35 +48,53 @@ def apply_pack(window, key):
     for row, part in enumerate(p for p in ORDER if p in groups):
         components = groups[part]
         combo = Gtk.ComboBoxText()
-        combo.append('skip', 'Keep current')
+        combo.append("skip", "Keep current")
         for index, component in enumerate(components):
-            combo.append(str(index), component['name'])
-        chosen = entry.get('chosen', {}).get(part)
-        preferred = next((i for i, c in enumerate(components) if c['name'] == chosen),
-                         next((i for i, c in enumerate(components) if in_use(c)), 0))
+            combo.append(str(index), component["name"])
+        chosen = entry.get("chosen", {}).get(part)
+        preferred = next(
+            (i for i, c in enumerate(components) if c["name"] == chosen),
+            next((i for i, c in enumerate(components) if in_use(c)), 0),
+        )
         combo.set_active_id(str(preferred))
         grid.attach(Gtk.Label(label=PART_NAMES.get(part, part), xalign=0), 0, row, 1, 1)
         grid.attach(combo, 1, row, 1, 1)
         selectors[part] = combo
     dialog.show_all()
     accepted = dialog.run() == Gtk.ResponseType.ACCEPT
-    selected = [(part, groups[part][int(combo.get_active_id())]) for part, combo in selectors.items()
-                if combo.get_active_id() != 'skip'] if accepted else []
+    selected = (
+        [
+            (part, groups[part][int(combo.get_active_id())])
+            for part, combo in selectors.items()
+            if combo.get_active_id() != "skip"
+        ]
+        if accepted
+        else []
+    )
     dialog.destroy()
     applied = []
     for part, component in selected:
-        if part == 'desktop' and desktop.cinnamon_theme_outdated(component['path']) and not window.ask(
-                f"{component['name']} was made for an older Cinnamon", desktop.OUTDATED_NOTE, 'Apply anyway'):
+        if (
+            part == "desktop"
+            and desktop.cinnamon_theme_outdated(component["path"])
+            and not window.ask(
+                f"{component['name']} was made for an older Cinnamon",
+                desktop.OUTDATED_NOTE,
+                "Apply anyway",
+            )
+        ):
             break
         try:
             done = desktop.apply_component(component, [part])
             if done:
-                installer.set_chosen(key, part, component['name'])
+                installer.set_chosen(key, part, component["name"])
         except (desktop.ApplyError, installer.InstallError) as exc:
-            error_dialog(window, 'Could not apply theme pack', exc)
+            error_dialog(window, "Could not apply theme pack", exc)
             break
         if done:
             applied.extend(done)
     if applied:
-        window.notify(f"Applied {entry['title']} ({', '.join(PART_NAMES.get(p, p) for p in applied)}).")
+        window.notify(
+            f"Applied {entry['title']} ({', '.join(PART_NAMES.get(p, p) for p in applied)})."
+        )
         window.refresh_item(key)

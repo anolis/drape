@@ -23,19 +23,42 @@ CACHE = Path(GLib.get_user_cache_dir()) / "drape" / "variants"
 W, H = 420, 260
 
 SAMPLE_ICONS = [
-    ["folder"], ["user-home", "folder-home"], ["folder-documents"], ["folder-download"],
-    ["folder-pictures"], ["folder-music"], ["utilities-terminal", "terminal"],
-    ["accessories-text-editor", "text-editor"], ["web-browser", "firefox", "internet-web-browser"],
-    ["system-file-manager", "file-manager"], ["preferences-system", "preferences-desktop"],
-    ["user-trash", "trash-empty"], ["image-x-generic"], ["audio-x-generic"], ["video-x-generic"],
-    ["text-x-generic"], ["application-x-executable"], ["accessories-calculator"],
+    ["folder"],
+    ["user-home", "folder-home"],
+    ["folder-documents"],
+    ["folder-download"],
+    ["folder-pictures"],
+    ["folder-music"],
+    ["utilities-terminal", "terminal"],
+    ["accessories-text-editor", "text-editor"],
+    ["web-browser", "firefox", "internet-web-browser"],
+    ["system-file-manager", "file-manager"],
+    ["preferences-system", "preferences-desktop"],
+    ["user-trash", "trash-empty"],
+    ["image-x-generic"],
+    ["audio-x-generic"],
+    ["video-x-generic"],
+    ["text-x-generic"],
+    ["application-x-executable"],
+    ["accessories-calculator"],
 ]
 SAMPLE_CURSORS = [
-    ["left_ptr", "default"], ["pointer", "hand2"], ["text", "xterm"], ["wait", "watch"],
-    ["progress", "left_ptr_watch"], ["crosshair"], ["move", "fleur"], ["not-allowed", "crossed_circle"],
-    ["help", "question_arrow"], ["ns-resize", "sb_v_double_arrow"], ["ew-resize", "sb_h_double_arrow"],
+    ["left_ptr", "default"],
+    ["pointer", "hand2"],
+    ["text", "xterm"],
+    ["wait", "watch"],
+    ["progress", "left_ptr_watch"],
+    ["crosshair"],
+    ["move", "fleur"],
+    ["not-allowed", "crossed_circle"],
+    ["help", "question_arrow"],
+    ["ns-resize", "sb_v_double_arrow"],
+    ["ew-resize", "sb_h_double_arrow"],
     ["nwse-resize", "bd_double_arrow"],
 ]
+
+
+# Preview cache and drawing helpers
 
 
 def _cache_path(theme_dir, kind, marker):
@@ -75,11 +98,14 @@ def _grid(pixbufs, cell, cols, background=None):
 
 # ---------------------------------------------------------------- icons (main thread)
 
+
 def icon_preview(theme_dir):
     """A grid of common icons, taken from this theme only where it has them."""
     theme = Gtk.IconTheme.new()
-    theme.set_search_path([str(theme_dir.parent)] + [p for p in Gtk.IconTheme.get_default().get_search_path()
-                                                      if Path(p) != theme_dir.parent])
+    theme.set_search_path(
+        [str(theme_dir.parent)]
+        + [p for p in Gtk.IconTheme.get_default().get_search_path() if Path(p) != theme_dir.parent]
+    )
     theme.set_custom_theme(theme_dir.name)
     own, borrowed = [], []
     for names in SAMPLE_ICONS:
@@ -109,9 +135,20 @@ def icon_preview(theme_dir):
     return _surface_to_pixbuf(surface)
 
 
-PANEL_PREFERRED = ["audio-volume-high", "network-wireless-signal-excellent", "network-wired", "battery-full",
-                   "bluetooth-active", "mail-unread", "system-shutdown", "weather-clear", "nm-signal-100",
-                   "indicator-messages", "user-available", "update-none"]
+PANEL_PREFERRED = [
+    "audio-volume-high",
+    "network-wireless-signal-excellent",
+    "network-wired",
+    "battery-full",
+    "bluetooth-active",
+    "mail-unread",
+    "system-shutdown",
+    "weather-clear",
+    "nm-signal-100",
+    "indicator-messages",
+    "user-available",
+    "update-none",
+]
 
 
 def _panel_icons(theme_dir):
@@ -121,10 +158,13 @@ def _panel_icons(theme_dir):
             if not sub.is_dir():
                 continue
             files = {p.stem: p for p in sub.iterdir() if p.suffix.lower() in (".svg", ".png")}
-            picked = [files[n] for pref in PANEL_PREFERRED
-                      for n in sorted(files) if n.startswith(pref)][:8]
+            picked = [
+                files[n] for pref in PANEL_PREFERRED for n in sorted(files) if n.startswith(pref)
+            ][:8]
             if len(picked) < 8:
-                picked += [p for n, p in sorted(files.items()) if p not in picked][:8 - len(picked)]
+                picked += [p for n, p in sorted(files.items()) if p not in picked][
+                    : 8 - len(picked)
+                ]
             pbs = []
             for p in picked[:8]:
                 try:
@@ -137,6 +177,7 @@ def _panel_icons(theme_dir):
 
 
 # ---------------------------------------------------------------- cursors
+
 
 def _read_xcursor(path, want=32):
     """First frame of the size closest to `want`, as a Pixbuf."""
@@ -154,12 +195,14 @@ def _read_xcursor(path, want=32):
     if best is None:
         return None
     _h, _t, _s, _v, w, h, _xh, _yh, _d = struct.unpack_from("<9I", data, best[1])
-    argb = data[best[1] + 36:best[1] + 36 + w * h * 4]
+    argb = data[best[1] + 36 : best[1] + 36 + w * h * 4]
     # Xcursor is premultiplied ARGB (little-endian BGRA bytes); cairo uses the same layout
     surface = cairo.ImageSurface.create_for_data(bytearray(argb), cairo.FORMAT_ARGB32, w, h, w * 4)
     pb = _surface_to_pixbuf(surface)
     if max(w, h) > 48:
-        pb = pb.scale_simple(w * 48 // max(w, h), h * 48 // max(w, h), GdkPixbuf.InterpType.BILINEAR)
+        pb = pb.scale_simple(
+            w * 48 // max(w, h), h * 48 // max(w, h), GdkPixbuf.InterpType.BILINEAR
+        )
     return pb
 
 
@@ -183,14 +226,20 @@ def cursor_preview(theme_dir):
 
 # ---------------------------------------------------------------- themes (subprocess)
 
+
 def render_gtk_theme(theme_name, out):
     """Render a sample window with `theme_name` in a separate process (GTK_THEME only applies at
     startup). Returns True on success."""
     env = dict(os.environ, GTK_THEME=theme_name)
     env.pop("GSETTINGS_BACKEND", None)
     try:
-        r = subprocess.run([sys.executable, "-m", "drape.render_gtk", str(out)], env=env, timeout=20,
-                           capture_output=True, cwd=str(Path(__file__).resolve().parent.parent))
+        r = subprocess.run(
+            [sys.executable, "-m", "drape.render_gtk", str(out)],
+            env=env,
+            timeout=20,
+            capture_output=True,
+            cwd=str(Path(__file__).resolve().parent.parent),
+        )
     except subprocess.TimeoutExpired:
         return False
     return r.returncode == 0 and Path(out).exists()
@@ -208,6 +257,9 @@ def _button_strip(metacity):
                     continue
                 break
     return _grid(pbs, 64, 3, background=(0.85, 0.85, 0.86)) if pbs else None
+
+
+# Window-decoration previews
 
 
 def xfwm_preview(theme_dir):
@@ -286,8 +338,11 @@ def theme_preview_path(theme_dir, kind):
         for name in ("thumbnail.png", "preview.png"):
             if (directory / name).is_file():
                 return directory / name
-        stamps = "|".join(f"{p.name}:{p.stat().st_mtime_ns}:{p.stat().st_size}"
-                          for p in sorted(directory.iterdir()) if p.is_file())
+        stamps = "|".join(
+            f"{p.name}:{p.stat().st_mtime_ns}:{p.stat().st_size}"
+            for p in sorted(directory.iterdir())
+            if p.is_file()
+        )
         digest = hashlib.sha1(f"xfwm-v1|{theme_dir}|{stamps}".encode()).hexdigest()[:16]
         out = CACHE / f"xfwm-{digest}.png"
         if not out.exists():
@@ -297,8 +352,13 @@ def theme_preview_path(theme_dir, kind):
                 pb.savev(str(out), "png", [], [])
         if out.exists():
             return out
-    for name in ("contents/previews/fullscreenpreview.jpg", "contents/previews/preview.png",
-                 "contents/screenshot.png", "screenshot.png", "preview.png"):
+    for name in (
+        "contents/previews/fullscreenpreview.jpg",
+        "contents/previews/preview.png",
+        "contents/screenshot.png",
+        "screenshot.png",
+        "preview.png",
+    ):
         if (theme_dir / name).is_file():
             return theme_dir / name
     if kind == "desktop" and (theme_dir / "cinnamon" / "thumbnail.png").is_file():
@@ -317,6 +377,9 @@ def theme_preview_path(theme_dir, kind):
     return None
 
 
+# Preview selection by component type
+
+
 def preview(component, kind):
     """Return a Pixbuf for icons/cursors (fast, main thread) or None for themes that need
     theme_preview_path() on a worker thread."""
@@ -325,7 +388,11 @@ def preview(component, kind):
         return icon_preview(theme_dir)
     if kind == "cursors":
         return cursor_preview(theme_dir)
-    if kind == "wm" and not (theme_dir / "gtk-3.0").is_dir() and (theme_dir / "metacity-1").is_dir() \
-            and not (theme_dir / "metacity-1" / "thumbnail.png").is_file():
+    if (
+        kind == "wm"
+        and not (theme_dir / "gtk-3.0").is_dir()
+        and (theme_dir / "metacity-1").is_dir()
+        and not (theme_dir / "metacity-1" / "thumbnail.png").is_file()
+    ):
         return _button_strip(theme_dir / "metacity-1")
     return None

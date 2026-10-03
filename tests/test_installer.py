@@ -48,6 +48,7 @@ def make_cur(color, hot=(3, 5), size=32):
 def make_ani(frames, rate=10):
     def chunk(cid, body):
         return cid + struct.pack("<I", len(body)) + body + (b"\0" if len(body) % 2 else b"")
+
     anih = struct.pack("<9I", 36, len(frames), len(frames), 0, 0, 0, 0, rate, 1)
     fram = b"fram" + b"".join(chunk(b"icon", f) for f in frames)
     body = b"ACON" + chunk(b"anih", anih) + chunk(b"LIST", fram)
@@ -120,10 +121,16 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual(stages[-1], "Saving installation…")
             return save(store, manifest)
 
-        with mock.patch.object(installer.shutil, "copytree", side_effect=copy), \
-                mock.patch.object(installer.shutil, "which", return_value="/usr/bin/gtk-update-icon-cache"), \
-                mock.patch.object(installer.subprocess, "run", side_effect=cache), \
-                mock.patch.object(installer.ManifestStore, "_save", autospec=True, side_effect=persist) as saved:
+        with (
+            mock.patch.object(installer.shutil, "copytree", side_effect=copy),
+            mock.patch.object(
+                installer.shutil, "which", return_value="/usr/bin/gtk-update-icon-cache"
+            ),
+            mock.patch.object(installer.subprocess, "run", side_effect=cache),
+            mock.patch.object(
+                installer.ManifestStore, "_save", autospec=True, side_effect=persist
+            ) as saved,
+        ):
             installer.install_file(archive, "stage", "Test", status=report)
         saved.assert_called_once()
         self.assertIn("Extracting files…", stages)
@@ -135,8 +142,11 @@ class InstallerTest(unittest.TestCase):
 
     def test_icon_theme(self):
         a = self.src / "icons.tar.gz"
-        make_tar(a, {"MyIcons/index.theme": ICON_INDEX, "MyIcons/48x48/apps/foo.png": b"x"},
-                 links=[("MyIcons/48x48/apps/bar.png", "foo.png")])
+        make_tar(
+            a,
+            {"MyIcons/index.theme": ICON_INDEX, "MyIcons/48x48/apps/foo.png": b"x"},
+            links=[("MyIcons/48x48/apps/bar.png", "foo.png")],
+        )
         e = installer.install_file(a, "1", "My Icons")
         dest = self.p["ICONS_DIR"] / "MyIcons"
         self.assertTrue((dest / "48x48/apps/foo.png").is_file())
@@ -148,9 +158,17 @@ class InstallerTest(unittest.TestCase):
     @mock.patch("drape.desktop._schema_exists", return_value=True)
     def test_mate_installs_usable_components_of_mixed_archive(self, *_mocks):
         a = self.src / "mixed.zip"
-        make_zip(a, {"Usable/gtk-3.0/gtk.css": b"", "Usable/metacity-1/metacity-theme-1.xml": b"",
-                     "Usable/cinnamon/cinnamon.css": b"", "XfceOnly/xfwm4/themerc": b"",
-                     "ShellOnly/gnome-shell/gnome-shell.css": b"", "Gtk4Only/gtk-4.0/gtk.css": b""})
+        make_zip(
+            a,
+            {
+                "Usable/gtk-3.0/gtk.css": b"",
+                "Usable/metacity-1/metacity-theme-1.xml": b"",
+                "Usable/cinnamon/cinnamon.css": b"",
+                "XfceOnly/xfwm4/themerc": b"",
+                "ShellOnly/gnome-shell/gnome-shell.css": b"",
+                "Gtk4Only/gtk-4.0/gtk.css": b"",
+            },
+        )
         e = installer.install_file(a, "mixed", "Mixed", only_applicable=True)
         self.assertEqual([c["name"] for c in e["components"]], ["Usable"])
         self.assertEqual(set(e["skipped"]), {"XfceOnly", "ShellOnly", "Gtk4Only"})
@@ -187,11 +205,15 @@ class InstallerTest(unittest.TestCase):
     @mock.patch("drape.desktop._schema_exists", return_value=True)
     def test_default_download_tries_compatible_variant(self, *_mocks):
         from drape.pling import Item, Download
+
         wrong, right = self.src / "xfce.zip", self.src / "mate.zip"
         make_zip(wrong, {"Xfce/xfwm4/themerc": b""})
         make_zip(right, {"Mate/metacity-1/metacity-theme-1.xml": b""})
         it = Item.from_ocs({"id": "variants", "name": "Variants"})
-        it.files = [Download(1, "xfce.zip", str(wrong), 0, ""), Download(2, "mate.zip", str(right), 0, "")]
+        it.files = [
+            Download(1, "xfce.zip", str(wrong), 0, ""),
+            Download(2, "mate.zip", str(right), 0, ""),
+        ]
         with mock.patch.object(installer, "download", side_effect=lambda url, *args: Path(url)):
             e = installer.install_item(it, only_applicable=True)
             self.assertEqual(e["file"], "mate.zip")
@@ -200,14 +222,18 @@ class InstallerTest(unittest.TestCase):
 
     def test_icon_theme_with_gtk_extras_is_still_icons(self):
         a = self.src / "i.tar.gz"
-        make_tar(a, {"I/index.theme": ICON_INDEX, "I/gtk-3.0/gtk.css": b"", "I/48x48/apps/a.png": b""})
+        make_tar(
+            a, {"I/index.theme": ICON_INDEX, "I/gtk-3.0/gtk.css": b"", "I/48x48/apps/a.png": b""}
+        )
         e = installer.install_file(a, "12", "I")
         self.assertEqual(e["components"][0]["provides"], ["icons"])
         self.assertTrue((self.p["ICONS_DIR"] / "I").is_dir())
 
     def test_cursor_theme_goes_to_dot_icons(self):
         a = self.src / "cur.tar.gz"
-        make_tar(a, {"Cur/index.theme": b"[Icon Theme]\nName=Cur\n", "Cur/cursors/left_ptr": XCURSOR})
+        make_tar(
+            a, {"Cur/index.theme": b"[Icon Theme]\nName=Cur\n", "Cur/cursors/left_ptr": XCURSOR}
+        )
         e = installer.install_file(a, "2", "Cur")
         self.assertTrue((self.p["CURSORS_DIR"] / "Cur/cursors/left_ptr").is_file())
         self.assertEqual(e["components"][0]["provides"], ["cursors"])
@@ -227,11 +253,18 @@ class InstallerTest(unittest.TestCase):
     def test_windows_cursor_pack_is_converted_using_install_inf(self):
         # names deliberately meaningless so only Install.inf can map them
         a = self.src / "fox.zip"
-        make_zip(a, {"Fox/cursors/Install.inf": INF,
-                     "Fox/cursors/a1.cur": make_cur((255, 0, 0, 255), hot=(3, 5)),
-                     "Fox/cursors/a2.cur": make_cur((0, 255, 0, 255)),
-                     "Fox/cursors/a3.ani": make_ani([make_cur((0, 0, 255, 255)), make_cur((0, 0, 128, 255))]),
-                     "Fox/cursors/a4.cur": make_cur((255, 255, 0, 255), hot=(10, 2))})
+        make_zip(
+            a,
+            {
+                "Fox/cursors/Install.inf": INF,
+                "Fox/cursors/a1.cur": make_cur((255, 0, 0, 255), hot=(3, 5)),
+                "Fox/cursors/a2.cur": make_cur((0, 255, 0, 255)),
+                "Fox/cursors/a3.ani": make_ani(
+                    [make_cur((0, 0, 255, 255)), make_cur((0, 0, 128, 255))]
+                ),
+                "Fox/cursors/a4.cur": make_cur((255, 255, 0, 255), hot=(10, 2)),
+            },
+        )
         e = installer.install_file(a, "20", "Fox pack")
         self.assertEqual(e["components"][0]["name"], "Fox")
         self.assertEqual(e["components"][0]["provides"], ["cursors"])
@@ -250,8 +283,15 @@ class InstallerTest(unittest.TestCase):
 
     def test_windows_cursor_pack_without_inf_uses_filenames(self):
         a = self.src / "plain.zip"
-        make_zip(a, {"Normal Select.cur": make_cur((1, 2, 3, 255)), "Busy.ani": make_ani([make_cur((9, 9, 9, 255))]),
-                     "Text Select.cur": make_cur((4, 5, 6, 255)), "Link Select.cur": make_cur((7, 8, 9, 255))})
+        make_zip(
+            a,
+            {
+                "Normal Select.cur": make_cur((1, 2, 3, 255)),
+                "Busy.ani": make_ani([make_cur((9, 9, 9, 255))]),
+                "Text Select.cur": make_cur((4, 5, 6, 255)),
+                "Link Select.cur": make_cur((7, 8, 9, 255)),
+            },
+        )
         e = installer.install_file(a, "21", "Plain Pack")
         cur = self.p["CURSORS_DIR"] / "Plain Pack" / "cursors"
         self.assertEqual(e["components"][0]["name"], "Plain Pack")
@@ -260,8 +300,14 @@ class InstallerTest(unittest.TestCase):
 
     def test_windows_pack_without_a_pointer_fails_cleanly(self):
         a = self.src / "odd.zip"
-        make_zip(a, {"x/zzz1.cur": make_cur((0, 0, 0, 255)), "x/zzz2.cur": make_cur((0, 0, 0, 255)),
-                     "x/zzz3.cur": make_cur((0, 0, 0, 255))})
+        make_zip(
+            a,
+            {
+                "x/zzz1.cur": make_cur((0, 0, 0, 255)),
+                "x/zzz2.cur": make_cur((0, 0, 0, 255)),
+                "x/zzz3.cur": make_cur((0, 0, 0, 255)),
+            },
+        )
         with self.assertRaises(installer.InstallError):
             installer.install_file(a, "22", "Odd")
         self.assertFalse((self.p["CURSORS_DIR"] / "x").exists())
@@ -353,7 +399,9 @@ class InstallerTest(unittest.TestCase):
         self.assertNotIn("60", m)
         self.assertIn("61", m)
         self.assertEqual((self.p["THEMES_DIR"] / "Nordic/gtk-3.0/gtk.css").read_bytes(), b"new")
-        self.assertFalse((self.p["THEMES_DIR"] / "Nordic-Dark").exists())  # the rest of the old pack went too
+        self.assertFalse(
+            (self.p["THEMES_DIR"] / "Nordic-Dark").exists()
+        )  # the rest of the old pack went too
 
     def test_replace_refused_while_other_item_has_system_copies(self):
         old = self.src / "old.zip"
@@ -361,7 +409,9 @@ class InstallerTest(unittest.TestCase):
         installer.install_file(old, "60", "Nordic pack")
         new = self.src / "new.zip"
         make_zip(new, {"Nordic/gtk-3.0/gtk.css": b"new"})
-        with mock.patch.object(installer, "system_copies", lambda e: [("gtk", "Nordic", Path("/x"), "copy")]):
+        with mock.patch.object(
+            installer, "system_copies", lambda e: [("gtk", "Nordic", Path("/x"), "copy")]
+        ):
             with self.assertRaises(installer.InstallError) as cm:
                 installer.install_file(new, "61", "Other Nordic", replace_items=True)
         self.assertIn("drape remove 60", str(cm.exception))
@@ -375,12 +425,16 @@ class InstallerTest(unittest.TestCase):
             installer.install_file(old, "70", "Glow")
             new = self.src / "new.tar.gz"
             make_tar(new, {"glow/glow.plymouth": b"[Plymouth Theme]\nName=glow v2\n"})
-            same = lambda e: [("plymouth", "glow", Path("/usr/share/plymouth/themes/glow"), "Boot splash")]
+            same = lambda e: [
+                ("plymouth", "glow", Path("/usr/share/plymouth/themes/glow"), "Boot splash")
+            ]
             with mock.patch.object(installer, "system_copies", same):
                 e = installer.install_file(new, "71", "Glow 2", replace_items=True)
             self.assertEqual(e["components"][0]["name"], "glow")
             self.assertNotIn("70", installer.load_manifest())
-            other = lambda e: [("plymouth", "spinner", Path("/usr/share/plymouth/themes/spinner"), "Boot splash")]
+            other = lambda e: [
+                ("plymouth", "spinner", Path("/usr/share/plymouth/themes/spinner"), "Boot splash")
+            ]
             installer.install_file(old, "72", "Glow again", replace_items=True)  # takes it back
             with mock.patch.object(installer, "system_copies", other):
                 with self.assertRaises(installer.InstallError):
@@ -396,17 +450,23 @@ class InstallerTest(unittest.TestCase):
 
     def test_absolute_symlink_is_skipped_not_fatal(self):
         a = self.src / "abs.tar.gz"
-        make_tar(a, {"C/index.theme": b"[Icon Theme]\nName=C\n", "C/cursors/left_ptr": XCURSOR},
-                 links=[("C/cursors/pointer", "/home/author/cursors/left_ptr")])
+        make_tar(
+            a,
+            {"C/index.theme": b"[Icon Theme]\nName=C\n", "C/cursors/left_ptr": XCURSOR},
+            links=[("C/cursors/pointer", "/home/author/cursors/left_ptr")],
+        )
         installer.install_file(a, "30", "C")
         self.assertTrue((self.p["CURSORS_DIR"] / "C/cursors/left_ptr").is_file())
         self.assertFalse((self.p["CURSORS_DIR"] / "C/cursors/pointer").is_symlink())
 
     def test_best_file_skips_drafts_and_non_archives(self):
         from drape.pling import Download, Item
-        files = [Download(1, "full-drafts-FOR-MODIFICATION.tar.gz", "u", 1, ""),
-                 Download(2, "phainon", "u", 1, ""),
-                 Download(3, "theme-v1.tar.gz", "u", 1, "")]
+
+        files = [
+            Download(1, "full-drafts-FOR-MODIFICATION.tar.gz", "u", 1, ""),
+            Download(2, "phainon", "u", 1, ""),
+            Download(3, "theme-v1.tar.gz", "u", 1, ""),
+        ]
         item = Item("1", "x", "a", "", "cursors", "", 0, 0, "", files=files)
         self.assertEqual(item.best_file().index, 3)
 
@@ -414,19 +474,35 @@ class InstallerTest(unittest.TestCase):
         staging = Path(self.tmp.name) / "staging"
         with mock.patch.object(installer, "STAGING_DIR", staging):
             a = self.src / "splash.tar.gz"
-            make_tar(a, {"glow/glow.plymouth": b"[Plymouth Theme]\nName=glow\n", "glow/glow.script": b""})
+            make_tar(
+                a, {"glow/glow.plymouth": b"[Plymouth Theme]\nName=glow\n", "glow/glow.script": b""}
+            )
             e = installer.install_file(a, "50", "Glow splash")
             self.assertEqual(e["components"][0]["system"], "plymouth")
             self.assertTrue((staging / "plymouth/glow/glow.plymouth").is_file())
 
             a = self.src / "sddm.zip"
-            make_zip(a, {"sugar-candy/metadata.desktop": b"[SddmGreeterTheme]\nName=Sugar\n",
-                         "sugar-candy/Main.qml": b"", "sugar-candy/theme.conf": b""})
-            self.assertEqual(installer.install_file(a, "51", "Sugar")["components"][0]["system"], "sddm")
+            make_zip(
+                a,
+                {
+                    "sugar-candy/metadata.desktop": b"[SddmGreeterTheme]\nName=Sugar\n",
+                    "sugar-candy/Main.qml": b"",
+                    "sugar-candy/theme.conf": b"",
+                },
+            )
+            self.assertEqual(
+                installer.install_file(a, "51", "Sugar")["components"][0]["system"], "sddm"
+            )
 
             a = self.src / "web.zip"
-            make_zip(a, {"Neon Glow!/index.html": b"<script src=js/app.js></script>",
-                         "Neon Glow!/index.yml": b"name: neon", "Neon Glow!/app.js": b"lightdm.login()"})
+            make_zip(
+                a,
+                {
+                    "Neon Glow!/index.html": b"<script src=js/app.js></script>",
+                    "Neon Glow!/index.yml": b"name: neon",
+                    "Neon Glow!/app.js": b"lightdm.login()",
+                },
+            )
             c = installer.install_file(a, "52", "Neon")["components"][0]
             self.assertEqual((c["system"], c["name"]), ("webgreeter", "Neon Glow"))
 
@@ -466,6 +542,7 @@ if __name__ == "__main__":
 class FilesViewTest(unittest.TestCase):
     def test_scan_counts_without_following_links(self):
         from drape import filesview
+
         with tempfile.TemporaryDirectory() as t:
             d = Path(t) / "theme"
             (d / "a").mkdir(parents=True)
@@ -482,17 +559,28 @@ class FilesViewTest(unittest.TestCase):
 class CinnamonCompatTest(unittest.TestCase):
     def test_outdated_detection(self):
         from drape import desktop
-        with tempfile.TemporaryDirectory() as t, mock.patch.object(desktop, "cinnamon_version", lambda: (6, 4)):
+
+        with (
+            tempfile.TemporaryDirectory() as t,
+            mock.patch.object(desktop, "cinnamon_version", lambda: (6, 4)),
+        ):
             old = Path(t) / "old/cinnamon"
             new = Path(t) / "new/cinnamon"
             old.mkdir(parents=True)
             new.mkdir(parents=True)
-            (old / "cinnamon.css").write_text(".modal-dialog { color: #fff; }\n.modal-dialog-button {}\n")
-            (new / "cinnamon.css").write_text(".modal-dialog {}\n.dialog, .prompt-dialog { background: #222; }\n")
+            (old / "cinnamon.css").write_text(
+                ".modal-dialog { color: #fff; }\n.modal-dialog-button {}\n"
+            )
+            (new / "cinnamon.css").write_text(
+                ".modal-dialog {}\n.dialog, .prompt-dialog { background: #222; }\n"
+            )
             self.assertTrue(desktop.cinnamon_theme_outdated(old.parent))
             self.assertFalse(desktop.cinnamon_theme_outdated(new.parent))
             self.assertFalse(desktop.cinnamon_theme_outdated(Path(t) / "gtk-only"))
-        with tempfile.TemporaryDirectory() as t, mock.patch.object(desktop, "cinnamon_version", lambda: (5, 2)):
+        with (
+            tempfile.TemporaryDirectory() as t,
+            mock.patch.object(desktop, "cinnamon_version", lambda: (5, 2)),
+        ):
             old = Path(t) / "old/cinnamon"
             old.mkdir(parents=True)
             (old / "cinnamon.css").write_text(".modal-dialog {}\n")
@@ -502,10 +590,17 @@ class CinnamonCompatTest(unittest.TestCase):
 class CacheTest(unittest.TestCase):
     def test_search_results_are_remembered(self):
         from drape import pling
-        data = {"status": "ok", "totalitems": 1, "data": [{"id": 7, "name": "Seven", "downloadlink1": "u",
-                                                           "downloadname1": "s.tar.gz"}]}
-        with tempfile.TemporaryDirectory() as t, mock.patch.object(pling, "CACHE", Path(t)), \
-                mock.patch.object(pling, "_get", lambda path, params: data):
+
+        data = {
+            "status": "ok",
+            "totalitems": 1,
+            "data": [{"id": 7, "name": "Seven", "downloadlink1": "u", "downloadname1": "s.tar.gz"}],
+        }
+        with (
+            tempfile.TemporaryDirectory() as t,
+            mock.patch.object(pling, "CACHE", Path(t)),
+            mock.patch.object(pling, "_get", lambda path, params: data),
+        ):
             self.assertIsNone(pling.cached_search("icons", "seven"))
             pling.search("icons", "seven")
             items, total = pling.cached_search("icons", "seven")
@@ -515,6 +610,7 @@ class CacheTest(unittest.TestCase):
 
     def test_animated_gif_previews_decode(self):
         from drape.ui import images
+
         with tempfile.TemporaryDirectory() as t:
             gif = Path(t) / "anim.gif"
             frames = [Image.new("RGB", (300, 200), c) for c in ("red", "blue", "green")]
@@ -526,10 +622,13 @@ class CacheTest(unittest.TestCase):
 class AnimationTest(unittest.TestCase):
     def test_gif_frames_keep_their_delays(self):
         from drape.ui import images
+
         with tempfile.TemporaryDirectory() as t:
             gif = Path(t) / "anim.gif"
             frames = [Image.new("RGB", (400, 200), c) for c in ("red", "blue", "green")]
-            frames[0].save(gif, save_all=True, append_images=frames[1:], duration=[50, 200, 80], loop=0)
+            frames[0].save(
+                gif, save_all=True, append_images=frames[1:], duration=[50, 200, 80], loop=0
+            )
             out = images._frames(gif, 200, 200)
             self.assertEqual([d for _pb, d in out], [50, 200, 80])
             self.assertEqual((out[0][0].get_width(), out[0][0].get_height()), (200, 100))
@@ -541,10 +640,15 @@ class AnimationTest(unittest.TestCase):
 class WindowBordersTest(unittest.TestCase):
     def test_which_windows_the_window_manager_decorates(self):
         from drape import desktop
-        self.assertTrue(desktop.classify_window(False, ""))                           # plain window
-        self.assertTrue(desktop.classify_window(False, "0x3, 0x3e, 0x7e, 0x0, 0x0"))  # some decorations
-        self.assertFalse(desktop.classify_window(False, "0x2, 0x0, 0x0, 0x0, 0x0"))   # asked for none
-        self.assertFalse(desktop.classify_window(True, ""))                           # draws its own
+
+        self.assertTrue(desktop.classify_window(False, ""))  # plain window
+        self.assertTrue(
+            desktop.classify_window(False, "0x3, 0x3e, 0x7e, 0x0, 0x0")
+        )  # some decorations
+        self.assertFalse(
+            desktop.classify_window(False, "0x2, 0x0, 0x0, 0x0, 0x0")
+        )  # asked for none
+        self.assertFalse(desktop.classify_window(True, ""))  # draws its own
 
 
 class PackageManagerBusyTest(unittest.TestCase):
@@ -553,17 +657,27 @@ class PackageManagerBusyTest(unittest.TestCase):
         import subprocess
         import sys as _sys
         from drape import compiz
+
         with tempfile.TemporaryDirectory() as t:
             lock = Path(t) / "lock-frontend"
             lock.touch()
-            with mock.patch.object(compiz, "DPKG_LOCKS", (str(lock),)), \
-                    mock.patch.object(compiz, "PACKAGE_TOOLS", set()):
+            with (
+                mock.patch.object(compiz, "DPKG_LOCKS", (str(lock),)),
+                mock.patch.object(compiz, "PACKAGE_TOOLS", set()),
+            ):
                 self.assertFalse(compiz.package_manager_busy())
                 # another process holds the lock, like apt does while installing
-                holder = subprocess.Popen([_sys.executable, "-c",
-                                           "import fcntl,sys,time; f=open(sys.argv[1],'w'); "
-                                           "fcntl.lockf(f, fcntl.LOCK_EX); print('locked', flush=True); time.sleep(30)",
-                                           str(lock)], stdout=subprocess.PIPE, text=True)
+                holder = subprocess.Popen(
+                    [
+                        _sys.executable,
+                        "-c",
+                        "import fcntl,sys,time; f=open(sys.argv[1],'w'); "
+                        "fcntl.lockf(f, fcntl.LOCK_EX); print('locked', flush=True); time.sleep(30)",
+                        str(lock),
+                    ],
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )
                 try:
                     holder.stdout.readline()
                     self.assertTrue(compiz.package_manager_busy())

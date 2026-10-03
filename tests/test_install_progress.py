@@ -57,9 +57,15 @@ class InstallProgressTest(unittest.TestCase):
     def test_progress_is_monotonic_and_reserves_completion_for_success(self):
         bar = mock.Mock()
         self.feedback.attach(bar)
-        for text, fraction in (("Extracting…", 0.42), ("Inspecting…", 0.60),
-                               ("Downloading another variant…", 0.0), ("Installing…", 0.68),
-                               ("Updating cache…", 0.85), ("Cleaning up…", 0.90), ("Saving…", 0.98)):
+        for text, fraction in (
+            ("Extracting…", 0.42),
+            ("Inspecting…", 0.60),
+            ("Downloading another variant…", 0.0),
+            ("Installing…", 0.68),
+            ("Updating cache…", 0.85),
+            ("Cleaning up…", 0.90),
+            ("Saving…", 0.98),
+        ):
             self.feedback.status(text, fraction)
             self.feedback._tick()
         fractions = [call.args[0] for call in bar.set_fraction.call_args_list]
@@ -82,11 +88,21 @@ class InstallProgressTest(unittest.TestCase):
         self.assertIsNone(feedback._source)
 
     def test_success_failure_and_conflict_stop_progress(self):
-        for outcome in ({"components": []}, installer.InstallError("failed"), installer.ConflictError({}, "Pack")):
+        for outcome in (
+            {"components": []},
+            installer.InstallError("failed"),
+            installer.ConflictError({}, "Pack"),
+        ):
             with self.subTest(outcome=outcome):
-                window = SimpleNamespace(busy={}, _closing=threading.Event(), refresh_item=mock.Mock(),
-                                         installed=SimpleNamespace(updates={}), notify=mock.Mock(),
-                                         reapply_replaced=mock.Mock(return_value=False), resolve_conflict=mock.Mock())
+                window = SimpleNamespace(
+                    busy={},
+                    _closing=threading.Event(),
+                    refresh_item=mock.Mock(),
+                    installed=SimpleNamespace(updates={}),
+                    notify=mock.Mock(),
+                    reapply_replaced=mock.Mock(return_value=False),
+                    resolve_conflict=mock.Mock(),
+                )
                 item = SimpleNamespace(id="1", name="Pack")
 
                 def run(work, done, error):
@@ -98,11 +114,13 @@ class InstallProgressTest(unittest.TestCase):
                         done(result)
 
                 feedback = mock.Mock()
-                with mock.patch.object(theme_actions, "InstallProgress", return_value=feedback), \
-                        mock.patch.object(theme_actions, "run_async", side_effect=run), \
-                        mock.patch.object(theme_actions.pling, "get"), \
-                        mock.patch.object(theme_actions, "error_dialog"), \
-                        mock.patch.object(installer, "install_item") as install:
+                with (
+                    mock.patch.object(theme_actions, "InstallProgress", return_value=feedback),
+                    mock.patch.object(theme_actions, "run_async", side_effect=run),
+                    mock.patch.object(theme_actions.pling, "get"),
+                    mock.patch.object(theme_actions, "error_dialog"),
+                    mock.patch.object(installer, "install_item") as install,
+                ):
                     if isinstance(outcome, Exception):
                         install.side_effect = outcome
                     else:

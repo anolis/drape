@@ -16,6 +16,9 @@ WEB_GREETERS = ("nody-greeter", "web-greeter", "lightdm-webkit2-greeter")
 GTK_GREETERS = ("slick-greeter", "lightdm-gtk-greeter")
 
 
+# System tools and active login-manager detection
+
+
 def which(name):
     return shutil.which(name) or shutil.which(name, path="/usr/sbin:/sbin")
 
@@ -43,9 +46,14 @@ def display_manager():
 
 
 def lightdm_greeter():
-    confs = sorted(Path("/usr/share/lightdm/lightdm.conf.d").glob("*.conf")) + \
-        sorted(Path("/etc/lightdm/lightdm.conf.d").glob("*.conf")) + [Path("/etc/lightdm/lightdm.conf")]
-    session = _ini(confs, "Seat:*", "greeter-session") or _ini(confs, "SeatDefaults", "greeter-session")
+    confs = (
+        sorted(Path("/usr/share/lightdm/lightdm.conf.d").glob("*.conf"))
+        + sorted(Path("/etc/lightdm/lightdm.conf.d").glob("*.conf"))
+        + [Path("/etc/lightdm/lightdm.conf")]
+    )
+    session = _ini(confs, "Seat:*", "greeter-session") or _ini(
+        confs, "SeatDefaults", "greeter-session"
+    )
     if session == "lightdm-greeter":
         # Debian's alternatives-managed default
         link = XGREETERS / "lightdm-greeter.desktop"
@@ -69,6 +77,9 @@ def plymouth_installed():
     return bool(which("plymouthd") or which("plymouth-set-default-theme"))
 
 
+# Current system appearance
+
+
 def current_plymouth():
     cp = configparser.ConfigParser(interpolation=None, strict=False)
     try:
@@ -83,9 +94,12 @@ def current_plymouth():
 
 
 def current_sddm_theme():
-    confs = [Path("/usr/lib/sddm/sddm.conf.d/default.conf")] + \
-        sorted(Path("/usr/lib/sddm/sddm.conf.d").glob("*.conf")) + [Path("/etc/sddm.conf")] + \
-        sorted(Path("/etc/sddm.conf.d").glob("*.conf"))
+    confs = (
+        [Path("/usr/lib/sddm/sddm.conf.d/default.conf")]
+        + sorted(Path("/usr/lib/sddm/sddm.conf.d").glob("*.conf"))
+        + [Path("/etc/sddm.conf")]
+        + sorted(Path("/etc/sddm.conf.d").glob("*.conf"))
+    )
     return _ini(confs, "Theme", "Current")
 
 
@@ -99,50 +113,69 @@ def current_web_greeter_theme():
 
 def greeter_settings(greeter):
     """Current background/theme/icons/cursor of slick-greeter or lightdm-gtk-greeter."""
-    path, section = {"slick-greeter": ("/etc/lightdm/slick-greeter.conf", "Greeter"),
-                     "lightdm-gtk-greeter": ("/etc/lightdm/lightdm-gtk-greeter.conf", "greeter")}[greeter]
+    path, section = {
+        "slick-greeter": ("/etc/lightdm/slick-greeter.conf", "Greeter"),
+        "lightdm-gtk-greeter": ("/etc/lightdm/lightdm-gtk-greeter.conf", "greeter"),
+    }[greeter]
     keys = ("background", "theme-name", "icon-theme-name", "cursor-theme-name")
     return {k: _ini([Path(path)], section, k) for k in keys}
 
 
 # ---------------------------------------------------------------- requirements per theme type
 
+
 @dataclass
 class Requirement:
-    label: str               # what it needs, in words
-    installed: bool          # the software is present
-    active: bool             # ...and it's what the system actually uses
-    package: str = None      # apt package that provides it, if installable
-    activate: list = None    # helper command that makes it the active one
-    url: str = None          # where to get it when there's no package
-    note: str = ""           # what switching means
+    label: str  # what it needs, in words
+    installed: bool  # the software is present
+    active: bool  # ...and it's what the system actually uses
+    package: str = None  # apt package that provides it, if installable
+    activate: list = None  # helper command that makes it the active one
+    url: str = None  # where to get it when there's no package
+    note: str = ""  # what switching means
 
 
 def requirement(kind):
     dm = display_manager()
     if kind == "plymouth":
         ok = plymouth_installed()
-        return Requirement("Plymouth (the boot splash system)", ok, ok,
-                           package="plymouth" if apt_available("plymouth") else None,
-                           url="https://www.freedesktop.org/wiki/Software/Plymouth/")
+        return Requirement(
+            "Plymouth (the boot splash system)",
+            ok,
+            ok,
+            package="plymouth" if apt_available("plymouth") else None,
+            url="https://www.freedesktop.org/wiki/Software/Plymouth/",
+        )
     if kind == "sddm":
         ok = which("sddm") is not None
-        return Requirement("the SDDM login manager", ok, ok and dm == "sddm",
-                           package="sddm" if apt_available("sddm") else None,
-                           activate=["display-manager", "sddm"], url="https://github.com/sddm/sddm",
-                           note="Your login screen will switch from "
-                                f"{dm or 'the current login manager'} to SDDM after a restart. "
-                                "You can switch back from drape's Lock & login page.")
+        return Requirement(
+            "the SDDM login manager",
+            ok,
+            ok and dm == "sddm",
+            package="sddm" if apt_available("sddm") else None,
+            activate=["display-manager", "sddm"],
+            url="https://github.com/sddm/sddm",
+            note="Your login screen will switch from "
+            f"{dm or 'the current login manager'} to SDDM after a restart. "
+            "You can switch back from drape's Lock & login page.",
+        )
     if kind == "webgreeter":
         have = [g for g in WEB_GREETERS if g in installed_greeters()]
-        return Requirement("a web-based LightDM greeter (nody-greeter or web-greeter)", bool(have),
-                           bool(have) and dm == "lightdm" and lightdm_greeter() in have,
-                           activate=["use-greeter", have[0]] if have else None,
-                           url="https://github.com/JezerM/nody-greeter",
-                           note="LightDM will use the web greeter for your login screen from the next login.")
+        return Requirement(
+            "a web-based LightDM greeter (nody-greeter or web-greeter)",
+            bool(have),
+            bool(have) and dm == "lightdm" and lightdm_greeter() in have,
+            activate=["use-greeter", have[0]] if have else None,
+            url="https://github.com/JezerM/nody-greeter",
+            note="LightDM will use the web greeter for your login screen from the next login.",
+        )
     if kind == "gdm":
-        return Requirement("GDM", which("gdm3") is not None, dm in ("gdm3", "gdm"),
-                           url="https://wiki.gnome.org/Projects/GDM")
+        return Requirement(
+            "GDM",
+            which("gdm3") is not None,
+            dm in ("gdm3", "gdm"),
+            url="https://wiki.gnome.org/Projects/GDM",
+        )
     raise KeyError(kind)
 
 
@@ -157,11 +190,15 @@ def login_categories(filtered):
 
 # ---------------------------------------------------------------- running the helper
 
+
 @dataclass
 class Result:
     ok: bool
     output: str
     cancelled: bool = False
+
+
+# Privileged helper execution and progress
 
 
 def run_helper(*commands, on_progress=None):
@@ -175,8 +212,13 @@ def run_helper(*commands, on_progress=None):
         if i:
             args.append(";;")
         args += [str(a) for a in cmd]
-    proc = subprocess.Popen([pkexec, sys.executable or "/usr/bin/python3", str(HELPER), "batch", *args],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    proc = subprocess.Popen(
+        [pkexec, sys.executable or "/usr/bin/python3", str(HELPER), "batch", *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
     lines = []
     for line in proc.stdout:
         if line.startswith("PROGRESS "):

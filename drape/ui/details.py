@@ -1,7 +1,5 @@
 """Catalog item details and download variant selection."""
 
-
-
 from .gtk import GLib, Gtk
 from .. import installer
 from .images import load_image
@@ -35,9 +33,11 @@ class DetailsDialog(Gtk.Dialog):
         self.show_preview(0)
 
         meta = Gtk.Label(xalign=0, wrap=True)
-        meta.set_markup(f"by <b>{GLib.markup_escape_text(item.author)}</b> · updated {item.changed[:10]} · "
-                        f"{item.downloads:,} downloads · "
-                        f"<a href=\"{GLib.markup_escape_text(item.page)}\">view on theme catalog</a>")
+        meta.set_markup(
+            f"by <b>{GLib.markup_escape_text(item.author)}</b> · updated {item.changed[:10]} · "
+            f"{item.downloads:,} downloads · "
+            f'<a href="{GLib.markup_escape_text(item.page)}">view on theme catalog</a>'
+        )
         area.pack_start(meta, False, False, 0)
         summary = Gtk.Label(label=item.summary, xalign=0, wrap=True, selectable=True)
         area.pack_start(summary, False, False, 0)
@@ -77,6 +77,10 @@ class DetailsDialog(Gtk.Dialog):
         if resp == 1:
             self.win.remove(self.item.id)
         elif resp in (2, 3):
-            self.win.install(self.item, file_index, apply_kind=self.kind if resp == 3 else None,
-                             required_kind="packs" if self.kind == "packs" else None)
+            self.win.install(
+                self.item,
+                file_index,
+                apply_kind=self.kind if resp == 3 else None,
+                required_kind="packs" if self.kind == "packs" else None,
+            )
         self.destroy()

@@ -43,10 +43,26 @@ INITRD_TOOLS = [
     ("dracut", ["dracut", "--regenerate-all", "--force"]),
 ]
 # only these packages can be installed through the helper
-PACKAGES = {"plymouth", "plymouth-themes", "lightdm-gtk-greeter", "slick-greeter", "sddm", "lightdm",
-            # Compiz, and a minimal MATE session for it on desktops that can't host it (Cinnamon)
-            "compiz", "compiz-mate", "compizconfig-settings-manager", "compiz-plugins", "compiz-plugins-extra",
-            "emerald", "mate-session-manager", "mate-panel", "mate-settings-daemon", "caja", "marco"}
+PACKAGES = {
+    "plymouth",
+    "plymouth-themes",
+    "lightdm-gtk-greeter",
+    "slick-greeter",
+    "sddm",
+    "lightdm",
+    # Compiz, and a minimal MATE session for it on desktops that can't host it (Cinnamon)
+    "compiz",
+    "compiz-mate",
+    "compizconfig-settings-manager",
+    "compiz-plugins",
+    "compiz-plugins-extra",
+    "emerald",
+    "mate-session-manager",
+    "mate-panel",
+    "mate-settings-daemon",
+    "caja",
+    "marco",
+}
 DISPLAY_MANAGERS = {"lightdm": "/usr/sbin/lightdm", "sddm": "/usr/bin/sddm"}
 GREETER_CONF = {
     "slick-greeter": (Path("/etc/lightdm/slick-greeter.conf"), "Greeter"),
@@ -67,7 +83,12 @@ def log(msg):
 
 
 def which(name):
-    for p in os.environ.get("PATH", "").split(os.pathsep) + ["/usr/sbin", "/sbin", "/usr/bin", "/bin"]:
+    for p in os.environ.get("PATH", "").split(os.pathsep) + [
+        "/usr/sbin",
+        "/sbin",
+        "/usr/bin",
+        "/bin",
+    ]:
         cand = Path(p) / name
         if cand.is_file() and os.access(cand, os.X_OK):
             return str(cand)
@@ -84,6 +105,9 @@ def run(cmd, env=None, check=True):
     if check and proc.returncode != 0:
         raise HelperError(f"'{cmd[0]}' failed with exit code {proc.returncode}")
     return proc
+
+
+# Destination validation and ownership
 
 
 def validate_name(name):
@@ -107,6 +131,7 @@ def owned(path):
 
 
 # ---------------------------------------------------------------- safe copying (from Plymouth Configurator)
+
 
 def _open_source(path):
     """Pin each directory component without following a swapped-in symlink."""
@@ -148,7 +173,11 @@ def _copy_source(fd, dest, allow_links=False):
         child = os.open(name, flags, dir_fd=fd)
         try:
             after = os.fstat(child)
-            if (before.st_dev, before.st_ino, before.st_mode) != (after.st_dev, after.st_ino, after.st_mode):
+            if (before.st_dev, before.st_ino, before.st_mode) != (
+                after.st_dev,
+                after.st_ino,
+                after.st_mode,
+            ):
                 raise HelperError(f"Theme changed while being copied: {name}")
             if stat.S_ISDIR(after.st_mode):
                 _copy_source(child, dest / name, allow_links)
@@ -179,6 +208,7 @@ def _copy_file(src, dest):
 
 # ---------------------------------------------------------------- plymouth (from Plymouth Configurator)
 
+
 def plymouth_file_in(theme_dir):
     preferred = theme_dir / f"{theme_dir.name}.plymouth"
     if preferred.is_file():
@@ -191,7 +221,11 @@ def plymouth_file_in(theme_dir):
 
 def uses_alternatives():
     default = DIRS["plymouth"] / "default.plymouth"
-    return which("update-alternatives") is not None and default.is_symlink() and "alternatives" in os.readlink(default)
+    return (
+        which("update-alternatives") is not None
+        and default.is_symlink()
+        and "alternatives" in os.readlink(default)
+    )
 
 
 def rewrite_plymouth_file(plymouth_file, dest, source=None):
@@ -205,7 +239,11 @@ def rewrite_plymouth_file(plymouth_file, dest, source=None):
     def relocate(value, key):
         path = Path(value)
         if path.is_absolute():
-            roots = [dest, DIRS["plymouth"] / dest.name, Path("/usr/local/share/plymouth/themes") / dest.name]
+            roots = [
+                dest,
+                DIRS["plymouth"] / dest.name,
+                Path("/usr/local/share/plymouth/themes") / dest.name,
+            ]
             if source is not None:
                 roots.insert(0, source)
             for root in roots:
@@ -216,8 +254,14 @@ def rewrite_plymouth_file(plymouth_file, dest, source=None):
                 candidates = [Path(*path.parts[i:]) for i in range(1, len(path.parts))]
                 if key == "ImageDir" and path.name == dest.name:
                     candidates.append(Path("."))
-                path = next((p for p in candidates if
-                             ((staged / p).is_dir() if key == "ImageDir" else (staged / p).is_file())), path)
+                path = next(
+                    (
+                        p
+                        for p in candidates
+                        if ((staged / p).is_dir() if key == "ImageDir" else (staged / p).is_file())
+                    ),
+                    path,
+                )
                 if path.is_absolute():
                     raise HelperError(f"Cannot locate {key} inside theme: {value}")
         if ".." in path.parts:
@@ -256,6 +300,9 @@ def active_plymouth_themes():
     return names
 
 
+# Boot splash installation and activation
+
+
 def cmd_rebuild_initrd(_args=None):
     for name, cmd in INITRD_TOOLS:
         tool = which(name)
@@ -278,8 +325,17 @@ def cmd_set_plymouth(args):
         _set_ini(PLYMOUTHD_CONF, "Daemon", {"Theme": name})
     if uses_alternatives():
         ua = which("update-alternatives")
-        run([ua, "--install", str(DIRS["plymouth"] / "default.plymouth"), "default.plymouth",
-             str(plymouth_file), "100"], check=False)
+        run(
+            [
+                ua,
+                "--install",
+                str(DIRS["plymouth"] / "default.plymouth"),
+                "default.plymouth",
+                str(plymouth_file),
+                "100",
+            ],
+            check=False,
+        )
         run([ua, "--set", "default.plymouth", str(plymouth_file)], check=False)
     log(f"Boot splash set to '{name}'.")
     if args.rebuild:
@@ -287,6 +343,7 @@ def cmd_set_plymouth(args):
 
 
 # ---------------------------------------------------------------- generic install / remove
+
 
 def cmd_install(args):
     kind = args.kind
@@ -296,7 +353,9 @@ def cmd_install(args):
     base = DIRS[kind]
     base.mkdir(parents=True, exist_ok=True)
     if dest.exists() and not owned(dest):
-        raise HelperError(f"{dest} already exists and wasn't installed by drape - refusing to replace it.")
+        raise HelperError(
+            f"{dest} already exists and wasn't installed by drape - refusing to replace it."
+        )
     log(f"Installing {name} → {dest}")
 
     if kind == "background":
@@ -326,8 +385,17 @@ def cmd_install(args):
     finally:
         shutil.rmtree(work, ignore_errors=True)
     if kind == "plymouth" and uses_alternatives():
-        run([which("update-alternatives"), "--install", str(base / "default.plymouth"), "default.plymouth",
-             str(plymouth_file_in(dest)), "100"], check=False)
+        run(
+            [
+                which("update-alternatives"),
+                "--install",
+                str(base / "default.plymouth"),
+                "default.plymouth",
+                str(plymouth_file_in(dest)),
+                "100",
+            ],
+            check=False,
+        )
     if kind == "icons" and which("gtk-update-icon-cache"):
         run([which("gtk-update-icon-cache"), "-q", "-f", "-t", str(dest)], check=False)
     log("Installed.")
@@ -343,8 +411,15 @@ def cmd_uninstall(args):
         if args.name in active_plymouth_themes():
             raise HelperError(f"'{args.name}' is the current boot splash; pick another one first.")
         if uses_alternatives():
-            run([which("update-alternatives"), "--remove", "default.plymouth", str(plymouth_file_in(dest))],
-                check=False)
+            run(
+                [
+                    which("update-alternatives"),
+                    "--remove",
+                    "default.plymouth",
+                    str(plymouth_file_in(dest)),
+                ],
+                check=False,
+            )
     log(f"Removing {dest}")
     if dest.is_dir():
         shutil.rmtree(dest)
@@ -354,6 +429,7 @@ def cmd_uninstall(args):
 
 
 # ---------------------------------------------------------------- configuration
+
 
 def _set_ini(path, section, values):
     """Set keys in one section of an ini-style file, keeping everything else as it was."""
@@ -396,8 +472,13 @@ def cmd_greeter_set(args):
             raise HelperError(f"Unsupported setting: {key}")
         if key == "background":
             p = Path(value)
-            if not (p.is_relative_to(DIRS["background"]) or p.is_relative_to("/usr/share/backgrounds")) \
-                    or ".." in p.parts:
+            if (
+                not (
+                    p.is_relative_to(DIRS["background"])
+                    or p.is_relative_to("/usr/share/backgrounds")
+                )
+                or ".." in p.parts
+            ):
                 raise HelperError("Login screen backgrounds must be in /usr/share/backgrounds")
         elif value and not NAME_RE.fullmatch(value):
             raise HelperError(f"Invalid value for {key}: {value!r}")
@@ -421,7 +502,9 @@ def cmd_web_greeter_theme(args):
         raise HelperError(f"Web greeter theme '{name}' is not installed")
     text = WEB_GREETER_CONF.read_text() if WEB_GREETER_CONF.is_file() else "branding:\ngreeter:\n"
     if re.search(r"^(\s+)theme:.*$", text, re.M):
-        text = re.sub(r"^(\s+)theme:.*$", lambda m: f"{m.group(1)}theme: {name}", text, count=1, flags=re.M)
+        text = re.sub(
+            r"^(\s+)theme:.*$", lambda m: f"{m.group(1)}theme: {name}", text, count=1, flags=re.M
+        )
     else:
         text = re.sub(r"^greeter:\s*$", f"greeter:\n    theme: {name}", text, count=1, flags=re.M)
     WEB_GREETER_CONF.write_text(text)
@@ -431,7 +514,10 @@ def cmd_web_greeter_theme(args):
 def cmd_use_greeter(args):
     """Make LightDM use a different greeter (e.g. lightdm-gtk-greeter)."""
     session = args.greeter
-    if not re.fullmatch(r"[a-z0-9-]+", session) or not Path(f"/usr/share/xgreeters/{session}.desktop").is_file():
+    if (
+        not re.fullmatch(r"[a-z0-9-]+", session)
+        or not Path(f"/usr/share/xgreeters/{session}.desktop").is_file()
+    ):
         raise HelperError(f"Greeter '{session}' is not installed")
     _set_ini(LIGHTDM_DROPIN, "Seat:*", {"greeter-session": session})
     log(f"LightDM will use {session} from the next login.")
@@ -449,19 +535,34 @@ def cmd_display_manager(args):
     log(f"{dm} will be the login screen after you restart.")
 
 
+# Package installation and removal tracking
+
+
 def cmd_apt_install(args):
     bad = [p for p in args.packages if p not in PACKAGES]
     if bad:
         raise HelperError(f"Not allowed to install: {', '.join(bad)}")
     apt = which("apt-get")
     if not apt:
-        raise HelperError("apt-get not found - install the packages with your distribution's tools.")
+        raise HelperError(
+            "apt-get not found - install the packages with your distribution's tools."
+        )
     env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
     # Drape::Install marks this in apt's history, so drape can later remove exactly what it added
-    cmd = [apt, "install", "-y", "--no-install-recommends", "-o", "APT::Status-Fd=1",
-           "-o", "Drape::Install=1"] + args.packages
+    cmd = [
+        apt,
+        "install",
+        "-y",
+        "--no-install-recommends",
+        "-o",
+        "APT::Status-Fd=1",
+        "-o",
+        "Drape::Install=1",
+    ] + args.packages
     log("$ " + " ".join(cmd))
-    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    proc = subprocess.Popen(
+        cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
     for line in proc.stdout:
         report = apt_progress(line)
         if report:
@@ -479,12 +580,18 @@ APT_HISTORY = Path("/var/log/apt")
 def _history_entries():
     """apt's history, oldest first, as dicts of its fields (Commandline, Install, ...)."""
     import gzip
-    files = sorted(APT_HISTORY.glob("history.log.*.gz"), key=lambda p: int(p.name.split(".")[2]), reverse=True)
+
+    files = sorted(
+        APT_HISTORY.glob("history.log.*.gz"), key=lambda p: int(p.name.split(".")[2]), reverse=True
+    )
     files.append(APT_HISTORY / "history.log")
     for path in files:
         try:
-            text = gzip.open(path, "rt", errors="replace").read() if path.suffix == ".gz" else \
-                path.read_text(errors="replace")
+            text = (
+                gzip.open(path, "rt", errors="replace").read()
+                if path.suffix == ".gz"
+                else path.read_text(errors="replace")
+            )
         except OSError:
             continue
         for block in text.split("\n\n"):
@@ -518,21 +625,34 @@ def drape_installed_packages(of=None):
             continue
         if of and not set(cmd.split()) & set(of):
             continue
-        for item in re.findall(r"([a-z0-9][a-z0-9+.-]*)(?::[a-z0-9]+)? \(", entry.get("Install", "")):
+        for item in re.findall(
+            r"([a-z0-9][a-z0-9+.-]*)(?::[a-z0-9]+)? \(", entry.get("Install", "")
+        ):
             if item not in added:
                 added.append(item)
     if not added:
         return []
-    r = subprocess.run(["dpkg-query", "-W", "-f", "${Package} ${db:Status-Abbrev}\n", *added],
-                       capture_output=True, text=True)
-    present = {line.split()[0] for line in r.stdout.splitlines() if len(line.split()) > 1 and line.split()[1] == "ii"}
+    r = subprocess.run(
+        ["dpkg-query", "-W", "-f", "${Package} ${db:Status-Abbrev}\n", *added],
+        capture_output=True,
+        text=True,
+    )
+    present = {
+        line.split()[0]
+        for line in r.stdout.splitlines()
+        if len(line.split()) > 1 and line.split()[1] == "ii"
+    }
     return [p for p in added if p in present]
 
 
 def removal_plan(packages):
     """(what apt would remove, anything beyond `packages` it would also remove)."""
-    r = subprocess.run(["apt-get", "-s", "remove", *packages], capture_output=True, text=True,
-                       env=dict(os.environ, LC_ALL="C"))
+    r = subprocess.run(
+        ["apt-get", "-s", "remove", *packages],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, LC_ALL="C"),
+    )
     removed = re.findall(r"^Remv (\S+)", r.stdout, re.M)
     return removed, [p for p in removed if p not in packages]
 
@@ -553,8 +673,14 @@ def cmd_remove_drape_packages(args):
     apt = which("apt-get")
     cmd = [apt, "remove", "-y", "-o", "APT::Status-Fd=1", *args.packages]
     log("$ " + " ".join(cmd))
-    proc = subprocess.Popen(cmd, env=dict(os.environ, DEBIAN_FRONTEND="noninteractive"), stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, bufsize=1)
+    proc = subprocess.Popen(
+        cmd,
+        env=dict(os.environ, DEBIAN_FRONTEND="noninteractive"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
     for line in proc.stdout:
         report = apt_progress(line)
         if report:
@@ -564,6 +690,9 @@ def cmd_remove_drape_packages(args):
     if proc.wait() != 0:
         raise HelperError(f"apt-get failed with exit code {proc.returncode}")
     progress(100, "Done")
+
+
+# Progress protocol consumed by the GUI
 
 
 def apt_progress(line):
@@ -581,6 +710,9 @@ def apt_progress(line):
 def progress(percent, text):
     """A line drape shows as a progress bar (other output is just logged)."""
     print(f"PROGRESS {percent:.1f} {text}", flush=True)
+
+
+# Privileged command dispatch
 
 
 def main(argv=None):
@@ -627,7 +759,9 @@ def main(argv=None):
     p.set_defaults(func=cmd_display_manager)
 
     p = sub.add_parser("remove-drape-packages")
-    p.add_argument("--of", nargs="*", default=[], help="only installs that asked for these packages")
+    p.add_argument(
+        "--of", nargs="*", default=[], help="only installs that asked for these packages"
+    )
     p.add_argument("packages", nargs="*")
     p.set_defaults(func=cmd_remove_drape_packages)
 
@@ -655,7 +789,13 @@ def main(argv=None):
             fcntl.flock(lock, fcntl.LOCK_EX)
             for args in parsed:
                 args.func(args)
-    except (HelperError, OSError, ValueError, configparser.Error, subprocess.SubprocessError) as exc:
+    except (
+        HelperError,
+        OSError,
+        ValueError,
+        configparser.Error,
+        subprocess.SubprocessError,
+    ) as exc:
         print(f"Error: {exc}", file=sys.stderr, flush=True)
         return 1
     return 0

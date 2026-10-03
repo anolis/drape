@@ -10,13 +10,25 @@ import sys
 import threading
 
 
-LABELS = {"pillow": "Pillow (PIL)", "requests": "Requests",
-          "gi": "PyGObject", "gtk": "GTK 3 bindings"}
+LABELS = {
+    "pillow": "Pillow (PIL)",
+    "requests": "Requests",
+    "gi": "PyGObject",
+    "gtk": "GTK 3 bindings",
+}
 PACKAGES = {
-    "arch": {"pillow": "python-pillow", "requests": "python-requests",
-             "gi": "python-gobject", "gtk": "gtk3"},
-    "debian": {"pillow": "python3-pil", "requests": "python3-requests",
-               "gi": "python3-gi", "gtk": "gir1.2-gtk-3.0"},
+    "arch": {
+        "pillow": "python-pillow",
+        "requests": "python-requests",
+        "gi": "python-gobject",
+        "gtk": "gtk3",
+    },
+    "debian": {
+        "pillow": "python3-pil",
+        "requests": "python3-requests",
+        "gi": "python3-gi",
+        "gtk": "gir1.2-gtk-3.0",
+    },
 }
 
 
@@ -30,8 +42,13 @@ def missing():
     if "gi" not in result:
         try:
             gi = importlib.import_module("gi")
-            for namespace, version in (("Gtk", "3.0"), ("Gdk", "3.0"),
-                                       ("GdkPixbuf", "2.0"), ("Pango", "1.0"), ("Gio", "2.0")):
+            for namespace, version in (
+                ("Gtk", "3.0"),
+                ("Gdk", "3.0"),
+                ("GdkPixbuf", "2.0"),
+                ("Pango", "1.0"),
+                ("Gio", "2.0"),
+            ):
                 gi.require_version(namespace, version)
                 importlib.import_module("gi.repository." + namespace)
         except (ImportError, ValueError):
@@ -74,16 +91,22 @@ class Dialogs:
                 self.gtk = gtk
         except (ImportError, ValueError, RuntimeError):
             pass
-        if self.gtk is None and any(os.environ.get(key) for key in ("DISPLAY", "WAYLAND_DISPLAY", "BROADWAY_DISPLAY")):
-            self.external = next((name for name in ("kdialog", "zenity") if shutil.which(name)), None)
+        if self.gtk is None and any(
+            os.environ.get(key) for key in ("DISPLAY", "WAYLAND_DISPLAY", "BROADWAY_DISPLAY")
+        ):
+            self.external = next(
+                (name for name in ("kdialog", "zenity") if shutil.which(name)), None
+            )
 
     def message(self, text, question=False):
         if self.gtk:
             gtk = self.gtk
             dialog = gtk.MessageDialog(
-                modal=True, message_type=gtk.MessageType.QUESTION if question else gtk.MessageType.ERROR,
+                modal=True,
+                message_type=gtk.MessageType.QUESTION if question else gtk.MessageType.ERROR,
                 buttons=gtk.ButtonsType.YES_NO if question else gtk.ButtonsType.CLOSE,
-                text="Drape needs additional packages" if question else "Drape could not start")
+                text="Drape needs additional packages" if question else "Drape could not start",
+            )
             dialog.format_secondary_text(text)
             response = dialog.run()
             dialog.destroy()
@@ -92,7 +115,12 @@ class Dialogs:
             if self.external == "kdialog":
                 args = ["kdialog", "--title", "Drape", "--yesno" if question else "--error", text]
             else:
-                args = ["zenity", "--title=Drape", "--question" if question else "--error", "--text=" + text]
+                args = [
+                    "zenity",
+                    "--title=Drape",
+                    "--question" if question else "--error",
+                    "--text=" + text,
+                ]
             return subprocess.run(args).returncode == 0
         print(text, file=sys.stderr)
         return False
@@ -103,8 +131,17 @@ class Dialogs:
             progress = None
             if shutil.which("zenity"):
                 progress = subprocess.Popen(
-                    ["zenity", "--progress", "--pulsate", "--auto-close", "--no-cancel",
-                     "--title=Drape", "--text=Installing dependencies…"], stdin=subprocess.PIPE)
+                    [
+                        "zenity",
+                        "--progress",
+                        "--pulsate",
+                        "--auto-close",
+                        "--no-cancel",
+                        "--title=Drape",
+                        "--text=Installing dependencies…",
+                    ],
+                    stdin=subprocess.PIPE,
+                )
             try:
                 return run_install(command)
             finally:
@@ -137,9 +174,15 @@ class Dialogs:
 
 def run_install(command, terminal=False):
     try:
-        proc = subprocess.run(command, text=True, stdout=None if terminal else subprocess.PIPE,
-                              stderr=None if terminal else subprocess.STDOUT)
-        return proc.returncode == 0, (proc.stdout or "See the package manager output above.")[-4000:]
+        proc = subprocess.run(
+            command,
+            text=True,
+            stdout=None if terminal else subprocess.PIPE,
+            stderr=None if terminal else subprocess.STDOUT,
+        )
+        return proc.returncode == 0, (proc.stdout or "See the package manager output above.")[
+            -4000:
+        ]
     except OSError as exc:
         return False, str(exc)
 
@@ -160,16 +203,28 @@ def ensure():
     description = "Missing: " + ", ".join(LABELS[key] for key in keys) + "."
     command = install_command(keys)
     if command is None:
-        error(description + "\nInstall these through your distribution's package manager, then launch Drape again.")
+        error(
+            description
+            + "\nInstall these through your distribution's package manager, then launch Drape again."
+        )
         return False
     privilege = "sudo" if terminal else "pkexec"
     if os.geteuid() != 0:
         if not shutil.which(privilege):
-            error(description + "\nAutomatic installation requires " + privilege +
-                  ".\nRun as administrator: " + shlex.join(command))
+            error(
+                description
+                + "\nAutomatic installation requires "
+                + privilege
+                + ".\nRun as administrator: "
+                + shlex.join(command)
+            )
             return False
         command = [privilege, *command]
-    prompt = description + "\nInstall them now? Administrator authentication may be required.\n\n" + shlex.join(command)
+    prompt = (
+        description
+        + "\nInstall them now? Administrator authentication may be required.\n\n"
+        + shlex.join(command)
+    )
     if terminal:
         print(prompt, file=sys.stderr)
         try:
@@ -186,12 +241,19 @@ def ensure():
         error("Dependency installation failed or was canceled.\n\n" + output)
         return False
     # Validate with a fresh interpreter, including when running inside a virtualenv.
-    check = subprocess.run([sys.executable, "-m", "drape.dependencies", "--check"],
-                           cwd=os.path.dirname(os.path.dirname(__file__)),
-                           text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    check = subprocess.run(
+        [sys.executable, "-m", "drape.dependencies", "--check"],
+        cwd=os.path.dirname(os.path.dirname(__file__)),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     if check.returncode:
-        error("Packages were installed, but this Python interpreter still cannot load them.\n"
-              "Check the interpreter or virtual environment used to launch Drape.\n\n" + check.stderr[-2000:])
+        error(
+            "Packages were installed, but this Python interpreter still cannot load them.\n"
+            "Check the interpreter or virtual environment used to launch Drape.\n\n"
+            + check.stderr[-2000:]
+        )
         return False
     # Restart as the ordinary user, keeping the original launch mode and arguments.
     os.execv(sys.executable, [sys.executable, *sys.orig_argv[1:]])
