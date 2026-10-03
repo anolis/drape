@@ -83,7 +83,9 @@ class CinnamonFilterTest(unittest.TestCase):
             member = tarfile.TarInfo("Theme/cinnamon/cinnamon.css")
             member.size = len(css)
             archive.addfile(member, io.BytesIO(css))
-        response = SimpleNamespace(content=data.getvalue(), raise_for_status=lambda: None)
+        response = SimpleNamespace(
+            content=data.getvalue(), status_code=200, raise_for_status=lambda: None
+        )
         with mock.patch.object(peek.requests, "get", return_value=response):
             names, complete = peek.list_archive("url", "theme.tar.gz")
         self.assertIn("cinnamon-legacy", peek.classify_names(names))

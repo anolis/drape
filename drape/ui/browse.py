@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
+import math
 
 from .card_transitions import CardFlow, FadingCard
 from .gtk import GLib, Gtk, Pango
@@ -30,6 +31,9 @@ class Card(FadingCard):
         self.compatibility_pending = bool(item.files)
         self._peek_started = False
         self._checks = checks
+        self._rate_limited = bool(checks and any(result is None for result in checks.values()))
+        self._scan_alive = True
+        self.connect("destroy", lambda *_: setattr(self, "_scan_alive", False))
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin=8)
         frame = Gtk.Frame()
@@ -108,7 +112,7 @@ class Card(FadingCard):
             self._peek(None)
         else:
             best = item.best_file()
-            parts, complete = checks.get(best.index, (set(), False)) if best else (set(), False)
+            parts, complete = (checks.get(best.index) or (set(), False)) if best else (set(), False)
             self._show_glyphs(parts, complete, checked=bool(checks))
 
         self.actions = Gtk.Box(spacing=6)
@@ -120,17 +124,20 @@ class Card(FadingCard):
 
     def _peek(self, alive):
         """Find out what the download contains (cached, or a small partial read) and show glyphs."""
-        if self._checks is not None:
+        if not self._scan_alive or self._checks is not None:
             return
         f = self.item.best_file()
         if not f:
             return
         hit = peek.cached(self.item.id, f.name)
         if hit is not None:
-            self._show_glyphs(*hit)
-            if desktop.archive_compatible(*hit, self.kind) or all(
+            complete_check = desktop.archive_compatible(*hit, self.kind) or all(
                 peek.cached(self.item.id, other.name) is not None for other in self.item.files
-            ):
+            )
+            if complete_check:
+                self._rate_limited = False
+            self._show_glyphs(*hit, checked=complete_check)
+            if complete_check:
                 return
 
         if self._peek_started:
@@ -140,16 +147,36 @@ class Card(FadingCard):
         def work():
             if self.departing or (alive is not None and not alive.is_set()):
                 return
-            result = peek.contents(self.item.id, f.url, f.name)
-            if not desktop.archive_compatible(*result, self.kind):
-                for other in self.item.files:
-                    if self.departing:
-                        return
-                    if other != f:
-                        peek.contents(self.item.id, other.url, other.name)
-            GLib.idle_add(self._show_glyphs, *result, True)
+            try:
+                result = peek.contents(self.item.id, f.url, f.name)
+                if not desktop.archive_compatible(*result, self.kind):
+                    for other in self.item.files:
+                        if self.departing:
+                            return
+                        if other != f:
+                            peek.contents(self.item.id, other.url, other.name)
+            except peek.RateLimited as exc:
+                GLib.idle_add(self._defer_peek, exc.retry_after, alive)
+            else:
+
+                def done():
+                    if self._scan_alive:
+                        self._rate_limited = False
+                        self._show_glyphs(*result, checked=True)
+                    return False
+
+                GLib.idle_add(done)
 
         _peeks.submit(lambda: _safe(work))
+
+    def _defer_peek(self, delay, alive):
+        if not self._scan_alive or self.departing:
+            return False
+        self._rate_limited = True
+        self._peek_started = False
+        self._show_glyphs(set(), False)
+        GLib.timeout_add_seconds(max(1, math.ceil(delay)), lambda: (self._peek(alive), False)[1])
+        return False
 
     def _show_glyphs(self, parts, complete, checked=False):
         if self.in_destruction() or self.departing:
@@ -161,9 +188,12 @@ class Card(FadingCard):
             for f in self.item.files
         ]
         state = desktop.download_status(checks, self.kind)
+        deferred = getattr(self, "_rate_limited", False)
         self.compatible = state == "compatible"
         self.compatibility_note.set_text(
-            "Incompatible with this desktop"
+            "Compatibility check rate-limited; retrying…"
+            if deferred
+            else "Incompatible with this desktop"
             if state == "incompatible"
             else "Compatibility unverified"
         )
@@ -171,12 +201,11 @@ class Card(FadingCard):
         self.pack_pending = (
             self.kind == "packs"
             and not self.compatible
-            and not checked
-            and any(hit is None for hit in checks)
+            and (deferred or (not checked and any(hit is None for hit in checks)))
         )
         parent = self.get_parent()
-        self.compatibility_pending = (
-            state != "compatible" and not checked and any(hit is None for hit in checks)
+        self.compatibility_pending = state != "compatible" and (
+            deferred or (not checked and any(hit is None for hit in checks))
         )
         if isinstance(parent, Gtk.FlowBox):
             parent.refilter()
@@ -251,6 +280,7 @@ class BrowsePage(Gtk.Box):
         self._first_scan_pending = False
         self._initial_fetching = False
         self.generation = 0
+        self.connect("destroy", lambda *_: setattr(self, "generation", self.generation + 1))
         self.total = 0
         self.next_chunk = 0
         self.fetching = False
@@ -371,7 +401,7 @@ class BrowsePage(Gtk.Box):
             self._scanned_checks[item.id] = {}
         ready()
 
-        def finished(item, checks):
+        def finished(item, checks, retry_after=None):
             if generation != self.generation or self.flow.in_destruction():
                 return False
             self._scanned_checks[item.id] = checks
@@ -379,11 +409,20 @@ class BrowsePage(Gtk.Box):
                 if card.item.id == item.id:
                     card.item = item
                     card._checks = checks
+                    card._rate_limited = retry_after is not None
                     best = item.best_file()
-                    result = checks.get(best.index, (set(), False)) if best else (set(), False)
+                    result = (checks.get(best.index) or (set(), False)) if best else (set(), False)
                     card._show_glyphs(*result, checked=True)
             self._filtered_status()
             self._maybe_more()
+            if retry_after is not None:
+
+                def retry():
+                    if generation == self.generation and not self.flow.in_destruction():
+                        _peeks.submit(lambda: work(item))
+                    return False
+
+                GLib.timeout_add_seconds(max(1, math.ceil(retry_after)), retry)
             return False
 
         def work(item):
@@ -392,6 +431,9 @@ class BrowsePage(Gtk.Box):
             try:
                 installed = installer.load_manifest() if self.kind == "packs" else None
                 checks = peek.inspect_downloads(item, self.kind, installed)
+            except peek.RateLimited as exc:
+                GLib.idle_add(finished, item, exc.checks, exc.retry_after)
+                return
             except Exception:
                 # A failed check stays unverified and can be retried on a later visit.
                 checks = {}

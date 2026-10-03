@@ -2,6 +2,7 @@
 
 import configparser
 import hashlib
+import math
 import os
 import re
 import shutil
@@ -140,6 +141,11 @@ def download(url, dest_dir, filename=None, md5=None, progress=None, status=None)
                     done += len(chunk)
                     if progress:
                         progress(done, total)
+    except http.RateLimited as e:
+        raise InstallError(
+            "The download server is rate-limiting requests (HTTP 429). "
+            f"Try again in {math.ceil(e.retry_after)} seconds. No theme was installed."
+        ) from e
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code in http.RETRY_STATUSES:
             host = urllib.parse.urlsplit(e.response.url or url).hostname or "the download server"

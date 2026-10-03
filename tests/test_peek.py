@@ -8,6 +8,16 @@ from drape.peek import classify_names
 
 
 class ClassifyTest(unittest.TestCase):
+    def test_rate_limited_inspection_does_not_write_archive_cache(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(peek, "CACHE", Path(tmp) / "peek.json"),
+            mock.patch.object(peek, "list_archive", side_effect=peek.RateLimited(120)),
+        ):
+            with self.assertRaises(peek.RateLimited):
+                peek.contents("1", "https://example.test/theme.zip", "theme.zip")
+            self.assertFalse(peek.CACHE.exists())
+
     def test_parts_from_paths(self):
         self.assertEqual(
             classify_names(

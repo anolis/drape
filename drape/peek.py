@@ -23,6 +23,7 @@ from pathlib import Path
 import requests
 
 from .pling import USER_AGENT
+from . import http
 
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "peek-v4.json"
 TAR_BUDGETS = (
@@ -32,6 +33,12 @@ TAR_BUDGETS = (
 BLOCK = 128 * 1024  # zip reads are fetched and cached in blocks this size
 IMAGE_RE = re.compile(r"\.(jpe?g|png|webp|jxl|avif|bmp)$", re.I)
 _lock = threading.Lock()
+# The transport layer shares rate-limit cooldowns with catalog requests and installs.
+RateLimited = http.RateLimited
+
+
+def _get(url, **kwargs):
+    return http.get(url, **kwargs)
 
 
 # ---------------------------------------------------------------- what a list of paths contains
@@ -144,7 +151,7 @@ class _RangeFile(io.RawIOBase):
         if i not in self.blocks:
             start = i * BLOCK
             end = min(start + BLOCK, self.size) - 1
-            r = requests.get(
+            r = _get(
                 self.url,
                 headers={"User-Agent": USER_AGENT, "Range": f"bytes={start}-{end}"},
                 timeout=(15, 60),
@@ -170,9 +177,7 @@ class _RangeFile(io.RawIOBase):
 
 
 def _size(url):
-    r = requests.get(
-        url, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"}, timeout=(15, 30)
-    )
+    r = _get(url, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"}, timeout=(15, 30))
     r.raise_for_status()
     total = r.headers.get("content-range", "").rsplit("/", 1)[-1]
     return int(total) if total.isdigit() else 0
@@ -282,7 +287,7 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
                     remaining -= info.file_size
             return names + _cinnamon_markers(names, styles, True), True
     if re.search(r"\.(tar(\.(gz|xz|bz2|zst))?|tgz|txz|tbz2?)$", name):
-        r = requests.get(
+        r = _get(
             url,
             headers={"User-Agent": USER_AGENT, "Range": f"bytes=0-{budget - 1}"},
             timeout=(15, 60),
@@ -334,6 +339,8 @@ def cached(item_id, filename):
     if not entry:
         return None
     parts = set(entry["parts"])
+    if not parts and not entry["complete"]:
+        return None  # Older releases cached failed requests as empty inspections.
     if "desktop" in parts:
         from .desktop import cinnamon_filter_active
 
@@ -368,6 +375,8 @@ def contents(item_id, url, filename, use_cache=True):
             )
             if complete or (parts - {"wallpapers"} and not needs_css):
                 break
+    except RateLimited:
+        raise  # A server cooldown is not an inspection result and must not be cached.
     except (requests.RequestException, OSError, zipfile.BadZipFile, ValueError):
         return set(), False
     if "desktop" in parts and not parts & CINNAMON_MARKERS:
@@ -404,7 +413,7 @@ def installed_parts(entry):
 
 
 def inspect_downloads(item, kind, installed=None):
-    """Build the local index as downloads arrive, before publishing filtered cards."""
+    """Inspect download variants and add successful checks to the local index."""
     from . import compatibility, desktop
     import sqlite3
     import sys
@@ -415,6 +424,7 @@ def inspect_downloads(item, kind, installed=None):
     index = compatibility.Index()
     context = compatibility.context()
     results = {}
+    limited = None
     for file in [best, *(file for file in item.files if file != best)]:
         entry = (installed or {}).get(item.id)
         if (
@@ -447,7 +457,12 @@ def inspect_downloads(item, kind, installed=None):
         # The legacy cache lacks a checksum/revision key, so it must not seed this
         # index with stale evidence for a newly uploaded file of the same name.
         if result is None:
-            result = contents(item.id, file.url, file.name, use_cache=False)
+            try:
+                result = contents(item.id, file.url, file.name, use_cache=False)
+            except RateLimited as exc:
+                results[file.index] = None
+                limited = exc
+                continue
         results[file.index] = result
         status = desktop.archive_status(*result, kind)
         try:
@@ -455,5 +470,7 @@ def inspect_downloads(item, kind, installed=None):
         except (OSError, sqlite3.Error) as exc:
             print(f"drape: could not save compatibility evidence: {exc}", file=sys.stderr)
         if status == "compatible":
-            break
+            return results
+    if limited is not None:
+        raise RateLimited(limited.retry_after, checks=results)
     return results

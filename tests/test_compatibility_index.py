@@ -96,6 +96,28 @@ class CompatibilityIndexTest(unittest.TestCase):
             self.assertEqual(peek.inspect_downloads(self.item, "gtk"), {1: self.result})
             contents.assert_not_called()
 
+    def test_rate_limit_never_becomes_compatibility_evidence(self):
+        with (
+            mock.patch.object(compatibility, "Index", return_value=self.index),
+            mock.patch.object(compatibility, "context", return_value=self.context),
+            mock.patch.object(peek, "contents", side_effect=peek.RateLimited(60)),
+        ):
+            with self.assertRaises(peek.RateLimited) as error:
+                peek.inspect_downloads(self.item, "gtk")
+            self.assertEqual(error.exception.checks, {1: None})
+            self.assertIsNone(self.index.inspection(self.item, self.file))
+            self.assertEqual(self.index.export()["observations"], [])
+
+    def test_compatible_alternative_still_wins_after_rate_limit(self):
+        item = replace(self.item, files=[self.file, replace(self.file, index=2, name="other.zip")])
+        with (
+            mock.patch.object(compatibility, "Index", return_value=self.index),
+            mock.patch.object(compatibility, "context", return_value=self.context),
+            mock.patch.object(peek, "contents", side_effect=[peek.RateLimited(60), self.result]),
+            mock.patch.object(desktop, "supported", return_value=True),
+        ):
+            self.assertEqual(peek.inspect_downloads(item, "gtk"), {1: None, 2: self.result})
+
     def test_installed_bundle_proof_requires_matching_download(self):
         entry = {"file": self.file.name, "changed": self.item.changed, "components": []}
         parts = {"gtk", "gtk-3.0", "icons"}

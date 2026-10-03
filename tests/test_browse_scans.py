@@ -7,6 +7,51 @@ from drape import pling
 
 
 class BrowseScansTest(unittest.TestCase):
+    def test_rate_limited_scan_retries_later_and_cancels_on_navigation(self):
+        item = pling.Item(
+            "rate",
+            "Theme",
+            "",
+            "",
+            "",
+            "",
+            0,
+            0,
+            "",
+            files=[pling.Download(1, "theme.zip", "url", 1, "")],
+        )
+        card = SimpleNamespace(item=item, _show_glyphs=mock.Mock())
+        page = SimpleNamespace(
+            kind="gtk",
+            generation=1,
+            _scanned_checks={},
+            flow=mock.Mock(),
+            cards=lambda: [card],
+            _filtered_status=mock.Mock(),
+            _maybe_more=mock.Mock(),
+        )
+        page.flow.in_destruction.return_value = False
+        with (
+            mock.patch.object(browse._peeks, "submit") as submit,
+            mock.patch.object(
+                browse.peek,
+                "inspect_downloads",
+                side_effect=browse.peek.RateLimited(90, checks={1: None}),
+            ),
+            mock.patch.object(
+                browse.GLib, "idle_add", side_effect=lambda callback, *args: callback(*args)
+            ),
+            mock.patch.object(browse.GLib, "timeout_add_seconds") as timer,
+        ):
+            browse.BrowsePage._preflight(page, [item], mock.Mock(), mock.Mock(), 1)
+            submit.call_args.args[0]()
+            self.assertTrue(card._rate_limited)
+            self.assertEqual(card._checks, {1: None})
+            self.assertEqual(timer.call_args.args[0], 90)
+            page.generation = 2
+            timer.call_args.args[1]()
+            self.assertEqual(submit.call_count, 1)
+
     def test_stale_scan_never_changes_current_results(self):
         page = SimpleNamespace(
             kind="gtk",

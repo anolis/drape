@@ -9,6 +9,27 @@ from drape.ui.widgets import ApplyControl
 
 
 class CompatibilityUiTest(unittest.TestCase):
+    def test_rate_limited_card_stays_pending_instead_of_incompatible(self):
+        card = SimpleNamespace(
+            kind="gtk",
+            _checks={1: None},
+            _rate_limited=True,
+            item=SimpleNamespace(files=[SimpleNamespace(index=1)]),
+            in_destruction=lambda: False,
+            departing=False,
+            get_parent=lambda: None,
+            compatibility_note=mock.Mock(),
+            glyphs=mock.Mock(),
+            misfiled=mock.Mock(),
+        )
+        card.glyphs.show_parts.return_value = False
+        Card._show_glyphs(card, set(), False, checked=True)
+        self.assertFalse(card.compatible)
+        self.assertTrue(card.compatibility_pending)
+        card.compatibility_note.set_text.assert_called_once_with(
+            "Compatibility check rate-limited; retrying…"
+        )
+
     def test_bad_download_with_unchecked_alternative_does_not_pass_filter(self):
         card = SimpleNamespace(
             kind="gtk",

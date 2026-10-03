@@ -50,6 +50,8 @@ Cinnamon checks work in both directions across the 5.4 dialog-style change. Newe
 
 Window border formats follow the active window manager: Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae. GTK controls require GTK 3 content. Plasma global-theme catalogs follow Plasma 5/6 and installation validates their extracted metadata. Login-theme formats follow the detected display manager. Installed files and records are preserved when filtering hides an item.
 
+HTTP 429 responses leave cards visible with a pending compatibility check. Background checks retry after the server's `Retry-After` delay, or after 60 seconds when no valid delay is provided. Catalog requests, archive checks and installation downloads share a cooldown for the affected host. Rate-limited checks do not save compatibility evidence; installation errors explain when to retry the download.
+
 ## Xfce wallpaper, panel and border support
 
 Xfce uses `xfconf-query` for GTK controls, icons, cursors, Xfwm borders and wallpapers.

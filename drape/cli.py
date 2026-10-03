@@ -41,14 +41,22 @@ def cmd_search(a):
     items, total = pling.search(a.kind, a.query, a.sort, a.page, max(a.limit, 10), categories)
     if only:
         installed = installer.load_manifest() if a.kind == "packs" else None
-        items = [
-            item
-            for item in items
-            if desktop.download_status(
-                list(peek.inspect_downloads(item, a.kind, installed).values()), a.kind
-            )
-            == "compatible"
-        ]
+        visible = []
+        for item in items:
+            try:
+                status = desktop.download_status(
+                    list(peek.inspect_downloads(item, a.kind, installed).values()), a.kind
+                )
+            except peek.RateLimited as exc:
+                print(
+                    f"{item.name}: compatibility check rate-limited; retry in {int(exc.retry_after) + 1}s.",
+                    file=sys.stderr,
+                )
+                visible.append(item)
+            else:
+                if status == "compatible":
+                    visible.append(item)
+        items = visible
     items = items[: a.limit]  # the API won't return pages smaller than 10
     for it in items:
         print(

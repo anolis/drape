@@ -45,11 +45,14 @@ class Index:
                 (item.id, file.name, self.revision(item, file), RULES_VERSION),
             ).fetchall()
         for parts, complete, checked in rows:
+            parsed = set(json.loads(parts))
+            if not parsed and not complete:
+                continue  # Legacy transport failures were stored as empty evidence.
             # Partial/failed inspection gets another opportunity soon; durable evidence
             # is reused for a week, and changed checksums always require a fresh record.
             lifetime = 7 * 86400 if complete else 600
             if time.time() - checked < lifetime:
-                return set(json.loads(parts)), bool(complete)
+                return parsed, bool(complete)
         return None
 
     def record(self, item, file, result, kind, context, status, basis="archive"):
