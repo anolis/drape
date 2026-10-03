@@ -27,7 +27,9 @@ class ThemeActions:
 
     # Installation, retries and completion feedback
 
-    def install(self, item, file_index=None, apply_kind=None, required_kind=None):
+    def install(
+        self, item, file_index=None, apply_kind=None, required_kind=None, context_kind=None
+    ):
         if item.id in self.busy:
             return
         feedback = InstallProgress(self._closing)
@@ -83,6 +85,10 @@ class ThemeActions:
             self.refresh_item(item.id)
             if self.reapply_replaced(result, flags.get("reapply")):
                 return
+            if (context_kind or apply_kind) and self.choose_installed_components(
+                item.id, result, context_kind or apply_kind
+            ):
+                return
             if any(c.get("system") for c in result["components"]) and not apply_kind:
                 self.notify(
                     f"Downloaded {item.name}. Apply it to install it for the whole system "
@@ -132,6 +138,41 @@ class ThemeActions:
             error_dialog(self, f"Couldn't install {item.name}", e)
 
         run_async(work, done, error)
+
+    def choose_installed_components(self, key, entry, kind):
+        """A download's extra components require an explicit scope choice, not implicit application."""
+        from .packs import choices, apply_pack
+
+        groups = choices(entry)
+        if not kind or len(groups) < 2:
+            return False
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text=f"Apply {entry['title']}?",
+        )
+        dialog.format_secondary_text(
+            "This download includes "
+            + ", ".join(PART_NAMES.get(p, p) for p in groups)
+            + ". Choose which components to apply. You can select variants in the next step."
+        )
+        dialog.add_button("Later", Gtk.ResponseType.CANCEL)
+        part = desktop.theme_part(kind) if kind != "packs" else None
+        if part in groups:
+            dialog.add_button(f"Only {PART_NAMES.get(part, part)}", 1)
+        dialog.add_button("All components", 2)
+        dialog.set_default_response(Gtk.ResponseType.CANCEL)
+        response = dialog.run()
+        dialog.destroy()
+        if response == 2:
+            apply_pack(self, key)
+        elif response == 1 and part in groups:
+            apply_pack(self, key, only_kind=kind)
+        else:
+            self.notify(f"Installed {entry['title']}. Apply it later from Installed.")
+        return True
 
     def reapply_replaced(self, entry, names):
         """After replacing the boot splash / login theme in use, put the new one's files in place."""

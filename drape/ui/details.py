@@ -34,7 +34,7 @@ class DetailsDialog(Gtk.Dialog):
 
         meta = Gtk.Label(xalign=0, wrap=True)
         meta.set_markup(
-            f"by <b>{GLib.markup_escape_text(item.author)}</b> · updated {item.changed[:10]} · "
+            f"by {GLib.markup_escape_text(item.author)} · updated {item.changed[:10]} · "
             f"{item.downloads:,} downloads · "
             f'<a href="{GLib.markup_escape_text(item.page)}">view on theme catalog</a>'
         )
@@ -59,7 +59,7 @@ class DetailsDialog(Gtk.Dialog):
             rm.get_style_context().add_class("destructive-action")
         if item.files:
             b = self.add_button("Reinstall" if installed else "Install", 2)
-            if not installed:
+            if not installed and kind:
                 b2 = self.add_button("Install & apply", 3)
                 b2.get_style_context().add_class("suggested-action")
         self.connect("response", self.on_response)
@@ -82,5 +82,6 @@ class DetailsDialog(Gtk.Dialog):
                 file_index,
                 apply_kind=self.kind if resp == 3 else None,
                 required_kind="packs" if self.kind == "packs" else None,
+                context_kind=self.kind or "all",
             )
         self.destroy()

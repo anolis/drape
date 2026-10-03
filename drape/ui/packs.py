@@ -1,6 +1,8 @@
 """Choose one compatible variant per appearance part of a downloaded bundle."""
 
 from .gtk import Gtk
+import configparser
+from pathlib import Path
 from .. import desktop, installer
 from .common import PART_NAMES, error_dialog, in_use
 
@@ -20,6 +22,9 @@ ORDER = [
 ]
 
 
+# Group compatible variants by appearance component
+
+
 def choices(entry):
     groups = {}
     for component in entry["components"]:
@@ -29,18 +34,45 @@ def choices(entry):
     return groups
 
 
-def apply_pack(window, key):
+def component_notes(entry, groups):
+    """Metatheme references suggest companion themes; they do not install those files."""
+    notes = [f"{len(groups)} compatible components for this desktop."]
+    included = {part for component in entry["components"] for part in component["provides"]}
+    references = set()
+    for component in entry["components"]:
+        metadata = Path(component["path"]) / "index.theme"
+        parser = configparser.ConfigParser(interpolation=None, strict=False)
+        try:
+            parser.read(metadata)
+            section = parser["X-GNOME-Metatheme"]
+            for part, key in (("icons", "IconTheme"), ("cursors", "CursorTheme")):
+                name = section.get(key)
+                if name and part not in included:
+                    references.add(f"{PART_NAMES[part]}: {name} (separate download)")
+        except (OSError, UnicodeError, configparser.Error, KeyError):
+            continue
+    notes.extend(sorted(references))
+    return "\n".join(notes)
+
+
+# Explicit per-component selection and application
+
+
+def apply_pack(window, key, only_kind=None):
     try:
         entry = installer.load_manifest().get(key)
     except installer.InstallError as exc:
         error_dialog(window, "Cannot load installed themes", exc)
         return
-    if not entry or not desktop.pack_components(entry["components"]):
+    groups = choices(entry) if entry else {}
+    if only_kind:
+        part = desktop.theme_part(only_kind)
+        groups = {part: groups[part]} if part in groups else {}
+    if not groups:
         window.notify("This pack has no compatible combination for the current desktop.")
         return
-    groups = choices(entry)
     dialog = Gtk.Dialog(title=f"Apply {entry['title']}", transient_for=window, modal=True)
-    dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Apply pack", Gtk.ResponseType.ACCEPT)
+    dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Apply selected", Gtk.ResponseType.ACCEPT)
     area = dialog.get_content_area()
     grid = Gtk.Grid(column_spacing=16, row_spacing=10, margin=16)
     area.pack_start(grid, True, True, 0)
@@ -60,6 +92,9 @@ def apply_pack(window, key):
         grid.attach(Gtk.Label(label=PART_NAMES.get(part, part), xalign=0), 0, row, 1, 1)
         grid.attach(combo, 1, row, 1, 1)
         selectors[part] = combo
+    note = Gtk.Label(label=component_notes(entry, groups), xalign=0, wrap=True, margin=16)
+    note.get_style_context().add_class("dim-label")
+    area.pack_start(note, False, False, 0)
     dialog.show_all()
     accepted = dialog.run() == Gtk.ResponseType.ACCEPT
     selected = (
@@ -74,16 +109,6 @@ def apply_pack(window, key):
     dialog.destroy()
     applied = []
     for part, component in selected:
-        if (
-            part == "desktop"
-            and desktop.cinnamon_theme_outdated(component["path"])
-            and not window.ask(
-                f"{component['name']} was made for an older Cinnamon",
-                desktop.OUTDATED_NOTE,
-                "Apply anyway",
-            )
-        ):
-            break
         try:
             done = desktop.apply_component(component, [part])
             if done:

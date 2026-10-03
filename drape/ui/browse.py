@@ -221,6 +221,7 @@ class Card(FadingCard):
                 lambda _b: self.win.install(
                     self.item,
                     required_kind="packs" if self.kind == "packs" else None,
+                    context_kind=self.kind or "all",
                 ),
             )
             self.actions.pack_start(b, False, False, 0)
