@@ -75,6 +75,72 @@ with tempfile.TemporaryDirectory() as temp:
             assert page.flow.get_visible()
         win.remove(page)
         page.destroy()
+    # Off-screen removals keep row allocations, including cards above the viewport.
+    from drape.ui.card_transitions import CardFlow, FadingCard
+
+    scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
+    flow = CardFlow(min_children_per_line=1, max_children_per_line=1)
+    scroller.add(flow)
+    cards = []
+    for index in range(20):
+        card = FadingCard()
+        card.add(Gtk.Label(label=f"Card {index}", height_request=120))
+        cards.append(card)
+        flow.add(card)
+    win.add(scroller)
+    win.show_all()
+    pump(0.3)
+    adjustment = scroller.get_vadjustment()
+    initial_height = adjustment.get_upper()
+    last = cards[-1]
+    assert last.get_mapped() and not flow.in_view(last)
+    rejected = {last}
+    flow.set_card_filter(lambda card: card not in rejected)
+    pump(0.25)
+    assert last._included and last in flow._deferred
+    assert adjustment.get_upper() == initial_height
+    adjustment.set_value(1000)
+    pump(0.1)
+    first = cards[0]
+    middle = cards[9]
+    assert not flow.in_view(first)
+    before = middle.translate_coordinates(scroller, 0, 0)
+    rejected.add(first)
+    flow.refilter()
+    pump(0.25)
+    assert first._included and first in flow._deferred
+    assert adjustment.get_upper() == initial_height
+    assert middle.translate_coordinates(scroller, 0, 0) == before
+    adjustment.set_value(0)
+    pump(0.3)
+    assert not first._included and first not in flow._deferred
+    assert last._included and last in flow._deferred
+    adjustment.set_value(adjustment.get_upper() - adjustment.get_page_size())
+    pump(0.3)
+    assert not last._included and not flow._deferred
+    # Restoring the filter cancels a queued removal before scrolling back to it.
+    restored = cards[2]
+    rejected.add(restored)
+    flow.refilter()
+    assert restored in flow._deferred
+    rejected.remove(restored)
+    flow.refilter()
+    assert restored._included and restored not in flow._deferred
+    # Actual deletion follows the same rule; explicit reload can still clear the grid.
+    adjustment.set_value(0)
+    pump(0.1)
+    removed = cards[10]
+    removed.dismiss()
+    assert removed.get_parent() is flow and removed in flow._deferred
+    adjustment.set_value(removed.get_allocation().y - 50)
+    pump(0.3)
+    assert removed.get_parent() is None
+    cards[15].dismiss()
+    flow.clear()
+    pump(0.3)
+    assert not flow.get_children() and not flow._deferred
+    win.remove(scroller)
+    scroller.destroy()
     # Profile renders public fields, paginates and opens each upload's own category.
     callbacks = []
     with mock.patch.object(
@@ -171,7 +237,7 @@ with tempfile.TemporaryDirectory() as temp:
             assert theme_actions.ThemeActions.choose_installed_components(win, "1", entry, "gtk")
     win.destroy()
 print(
-    "GTK smoke passed: immediate cards, background filtering, uploader pagination, scroll persistence, four component chooser."
+    "GTK smoke passed: immediate cards, deferred off-screen removals, uploader pagination, scroll persistence, four component chooser."
 )
 """
 

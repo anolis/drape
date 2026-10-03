@@ -11,6 +11,7 @@ class CardTransitionsTest(unittest.TestCase):
         card.get_opacity = lambda: card.opacity
         card.set_opacity = lambda value: setattr(card, "opacity", value)
         card.get_mapped = lambda: mapped
+        card.get_parent = lambda: None
         card.get_settings = lambda: SimpleNamespace(get_property=lambda _name: animations)
         card.get_frame_clock = lambda: SimpleNamespace(get_frame_time=lambda: 0)
         card.add_tick_callback = mock.Mock(return_value=42)
@@ -75,3 +76,59 @@ class CardTransitionsTest(unittest.TestCase):
         flow.add.assert_not_called()
         keep.dismiss.assert_not_called()
         gone.dismiss.assert_called_once()
+
+    def test_offscreen_removal_waits_until_card_reenters_view(self):
+        card = mock.Mock()
+        remove = mock.Mock()
+        flow = SimpleNamespace(_deferred={}, in_view=mock.Mock(return_value=False))
+        card.get_parent.return_value = flow
+        CardFlow.defer_removal(flow, card, remove)
+        remove.assert_not_called()
+        self.assertIn(card, flow._deferred)
+        flow.in_view.return_value = True
+        CardFlow._check_deferred(flow)
+        remove.assert_called_once()
+        self.assertEqual(flow._deferred, {})
+
+    def test_visible_removal_starts_without_waiting_for_scroll(self):
+        card, remove = mock.Mock(), mock.Mock()
+        flow = SimpleNamespace(_deferred={}, in_view=lambda _card: True)
+        CardFlow.defer_removal(flow, card, remove)
+        remove.assert_called_once()
+        self.assertEqual(flow._deferred, {})
+
+    def test_scrolling_away_during_a_fade_defers_the_layout_change(self):
+        card = mock.Mock(_wanted=False, _included=True)
+        flow = SimpleNamespace(
+            _deferred={},
+            in_view=lambda _card: False,
+            invalidate_filter=mock.Mock(),
+            _hide_card=mock.Mock(),
+        )
+        flow.defer_removal = MethodType(CardFlow.defer_removal, flow)
+        CardFlow._finish_hide(flow, card)
+        self.assertTrue(card._included)
+        self.assertIn(card, flow._deferred)
+        flow.invalidate_filter.assert_not_called()
+
+    def test_reversing_filter_cancels_offscreen_removal(self):
+        card = mock.Mock(departing=False, _wanted=False, _included=True)
+        remove = mock.Mock()
+        flow = SimpleNamespace(
+            _deferred={card: remove},
+            _predicate=lambda _card: True,
+            cards=lambda: [card],
+            invalidate_filter=mock.Mock(),
+        )
+        CardFlow.refilter(flow)
+        self.assertEqual(flow._deferred, {})
+        self.assertTrue(card._included)
+        remove.assert_not_called()
+        card.fade.assert_called_once_with(1)
+
+    def test_clear_discards_offscreen_departures_without_leaving_old_rows(self):
+        card = mock.Mock()
+        flow = SimpleNamespace(_deferred={card: mock.Mock()}, get_children=lambda: [card])
+        CardFlow.clear(flow)
+        self.assertEqual(flow._deferred, {})
+        card.dismiss.assert_called_once_with(defer=False)
