@@ -121,6 +121,8 @@ def apply_pack(window, key, only_kind=None):
             applied.extend(done)
     if applied:
         note = " " + desktop.qt.RESTART_NOTE if "kvantum" in applied else ""
+        if "cursors" in applied:
+            note += " " + desktop.cursors.RESTART_NOTE
         window.notify(
             f"Applied {entry['title']} ({', '.join(PART_NAMES.get(p, p) for p in applied)})." + note
         )

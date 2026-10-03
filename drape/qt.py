@@ -8,10 +8,10 @@ import platform
 import re
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 from .records import file_lock
+from .session import atomic_text as _atomic_text
 
 HOME = Path.home()
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config")
@@ -91,20 +91,6 @@ def get():
         return ""
 
 
-def _atomic_text(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(prefix=".drape-", dir=path.parent)
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
-            stream.write(text)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary, path.stat().st_mode & 0o777 if path.exists() else 0o600)
-        os.replace(temporary, path)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
-
-
 def enable(theme=None):
     """Persist the engine for both systemd sessions and display-manager login shells.
 
@@ -118,7 +104,7 @@ def enable(theme=None):
     environment = CONFIG_HOME / "environment.d" / "90-drape-qt.conf"
     profile = HOME / ".profile"
     config = THEMES_DIR / "kvantum.kvconfig"
-    with file_lock(CONFIG_HOME / "drape" / "qt.lock"):
+    with file_lock(CONFIG_HOME / "drape" / "session.lock"):
         before = {
             path: path.read_text() if path.exists() else None
             for path in (environment, profile, config)
@@ -178,7 +164,7 @@ def disable():
     """Remove Drape's session override, preserving the selected theme and other setup."""
     profile = HOME / ".profile"
     environment = CONFIG_HOME / "environment.d" / "90-drape-qt.conf"
-    with file_lock(CONFIG_HOME / "drape" / "qt.lock"):
+    with file_lock(CONFIG_HOME / "drape" / "session.lock"):
         if profile.exists():
             original = profile.read_text()
             text = re.sub(

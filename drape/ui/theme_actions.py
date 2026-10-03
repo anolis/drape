@@ -277,6 +277,8 @@ class ThemeActions:
                 )
             else:
                 note = " " + desktop.qt.RESTART_NOTE if "kvantum" in applied else ""
+                if "cursors" in applied:
+                    note += " " + desktop.cursors.RESTART_NOTE
                 self.notify(f"Now using {component['name']} ({', '.join(applied)})." + note)
         else:
             self.notify(

@@ -43,6 +43,10 @@ click. No hunting for archives, no guessing which folder things go in.
   during this app session. Xfwm variants show previews from their own title-bar artwork.
   Wallpaper application covers configured monitors/workspaces, discovers active displays on X11
   even before their wallpaper settings exist, and stops wallpaper cycling.
+- **Keeps cursors consistent across apps.** Cursor application updates desktop settings,
+  Xcursor defaults, X11 resources and the login environment. Apps such as Kitty can retain
+  cursor images until restarted; apps reading launch-time environment settings may need
+  one logout/login. Existing profile, Qt and Xft settings are preserved.
 - **Themes Qt widget applications.** The **Qt applications** catalog offers Kvantum themes
   across desktops, including companions in theme packs. **Settings → Qt appearance** detects
   Qt 5/6 engines, offers repository installation, enables the style and restores the system

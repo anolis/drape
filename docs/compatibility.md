@@ -42,6 +42,12 @@ dependencies work on every release.
 
 ## Desktop-aware compatibility filtering
 
+Cursor application also updates Xcursor default inheritance, `Xcursor.theme` and
+`Xcursor.size` in `~/.Xresources`, and `XCURSOR_THEME`/`XCURSOR_SIZE` in Drape's
+environment.d file and a marked login-profile block. X11 resources are merged live
+without replacing unrelated Xft settings. Applications such as Kitty can cache cursor
+images and need restarting; environment-only clients need a logout/login after setup.
+
 Qt widget themes work independently of the desktop shell. See [Qt setup](qt.md) for
 engine installation, the first-login requirement and application-specific overrides.
 

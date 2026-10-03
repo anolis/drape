@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from gi.repository import Gio
-from . import kde, xfce, settings, qt
+from . import kde, xfce, settings, qt, cursors
 from .kde import ApplyError
 from .theme_css import NEW_DIALOG_RE, OLD_DIALOG_RE, cinnamon_css_imports, cinnamon_css_outdated
 
@@ -254,13 +254,27 @@ def set_(part, value):
 
 
 def _set_default_cursor(name):
-    """Point ~/.icons/default at the theme, for apps that don't follow the desktop's live setting."""
-    index = Path.home() / ".icons" / "default" / "index.theme"
+    """Keep desktop settings and non-GTK cursor clients on the same theme and size."""
+    size = 24
+    de = current_desktop()
     try:
-        index.parent.mkdir(parents=True, exist_ok=True)
-        index.write_text(f"[Icon Theme]\nName=Default\nComment=Set by drape\nInherits={name}\n")
-    except OSError:
-        pass
+        if de in ("cinnamon", "mate", "gnome"):
+            schema = "org.mate.peripherals-mouse" if de == "mate" else f"org.{de}.desktop.interface"
+            if _schema_exists(schema):
+                size = Gio.Settings.new(schema).get_int("cursor-size")
+        elif de == "xfce":
+            size = int(_xfconf(("xsettings", "/Gtk/CursorThemeSize")) or 24)
+        elif de == "kde":
+            parser = configparser.ConfigParser(interpolation=None, strict=False)
+            parser.read(cursors.CONFIG_HOME / "kcminputrc")
+            size = parser.getint("Mouse", "cursorSize", fallback=24)
+        if size <= 0:
+            size = 24
+        cursors.apply(name, size)
+    except (OSError, ValueError, configparser.Error) as exc:
+        raise ApplyError(
+            f"The desktop cursor was selected, but shared cursor settings could not be saved: {exc}"
+        ) from exc
 
 
 # Applying and validating extracted components

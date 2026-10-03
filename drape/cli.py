@@ -132,6 +132,10 @@ def _apply(entry, name=None):
         applied += changed
         seen.update(changed)
     print("Applied: " + (", ".join(applied) or "nothing (unsupported desktop?)"))
+    if "kvantum" in applied:
+        print(desktop.qt.RESTART_NOTE)
+    if "cursors" in applied:
+        print(desktop.cursors.RESTART_NOTE)
 
 
 def _apply_system(c):
