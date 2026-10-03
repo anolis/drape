@@ -98,6 +98,8 @@ def _play(image, frames):
 
 
 def _show(image, result):
+    if getattr(image, "_drape_destroyed", False):
+        return False
     old = getattr(image, "_drape_anim", None)
     if old:
         old()
@@ -143,11 +145,25 @@ def load_image(url, image, width, height, on_done=None, alive=None):
     """Show a preview in `image`, scaled to fit. Downloads once, keeps a card-sized copy on disk and
     decoded images in memory, so revisiting a tab is instant. Local paths work too."""
     key = (url, width, height)
+    if not hasattr(image, "_drape_destroyed"):
+        image._drape_destroyed = False
+        image.connect("destroy", lambda *_: setattr(image, "_drape_destroyed", True))
+
+    def deliver(result=None, ok=True):
+        # Jobs may finish after navigating away; never deliver to a destroyed GTK widget.
+        if image._drape_destroyed or (alive is not None and not alive()):
+            return False
+        if ok:
+            _show(image, result)
+        else:
+            image.set_from_icon_name("image-missing", Gtk.IconSize.DIALOG)
+        if on_done:
+            on_done(ok)
+        return False
+
     cached = _pixbufs.get(key)
     if cached is not None:
-        _show(image, cached)
-        if on_done:
-            on_done(True)
+        deliver(cached)
         return
 
     def work():
@@ -177,9 +193,7 @@ def load_image(url, image, width, height, on_done=None, alive=None):
         if len(_pixbufs) > _PIXBUF_LIMIT:
             _pixbufs.clear()
         _pixbufs[key] = pb
-        GLib.idle_add(_show, image, pb)
-        if on_done:
-            GLib.idle_add(on_done, True)
+        GLib.idle_add(deliver, pb)
 
     def safe():
         try:
@@ -187,9 +201,7 @@ def load_image(url, image, width, height, on_done=None, alive=None):
                 return  # the card was thrown away before its turn came
             work()
         except Exception:  # noqa: BLE001 - a missing preview is not worth an error dialog
-            GLib.idle_add(image.set_from_icon_name, "image-missing", Gtk.IconSize.DIALOG)
-            if on_done:
-                GLib.idle_add(on_done, False)
+            GLib.idle_add(deliver, None, False)
         finally:
             with _fg_lock:
                 _foreground["pending"] -= 1
