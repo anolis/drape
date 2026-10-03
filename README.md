@@ -202,6 +202,10 @@ ruff format --check drape tests bin/drape
 Ruff is a development tool; it is not needed to run Drape. Formatting settings live in
 `pyproject.toml`.
 
+The website changelog lives in `docs/changelog.html`. Add daily highlights to
+`docs/changelog-highlights.json`, then run `python3 tools/update_changelog.py` from a
+full checkout to rebuild it with every commit in the current branch's history.
+
 The GUI entry point is `drape/app.py`; its implementation is in `drape/ui/`:
 
 - `application.py`: GTK lifecycle and incoming OCS links.

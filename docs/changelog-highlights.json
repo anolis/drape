@@ -1,0 +1,51 @@
+{
+  "2026-10-03": {
+    "title": "Theme packs, compatibility and reliable browsing",
+    "changes": [
+      "Added a Theme packs category for downloadable bundles that contain usable components for the current desktop. Multi-component installs offer to apply everything, apply the current section or apply later.",
+      "Expanded compatibility filtering across desktops, window managers and Cinnamon versions. Background archive checks build a local SQLite index with import/export support while cards load immediately.",
+      "Added smooth card transitions. Off-screen cards wait until they re-enter the viewport before disappearing, preserving the rows currently in view.",
+      "Remembered scroll positions across launches for browsing, Installed categories and settings. Added uploader profiles with normal theme cards, ratings, pagination and an expanded view.",
+      "Added prompts to install missing dependencies, app update notifications and Update and restart. Fresh Arch/CachyOS sessions can refresh missing package databases after the user agrees to a full system upgrade.",
+      "Kept rate-limited checks pending without saving incompatibility evidence. One retry queue per host waits through the cooldown and runs checks sequentially; leaving a page cancels waiting checks. Refused download links are refreshed once rather than on every retry.",
+      "Separated failed requests from genuine empty inspections, bounded Retry-After delays and fixed rate limits hidden inside ZIP errors. Background archive reads fail fast on server errors; cards retain known component information during deferred checks.",
+      "Formatted the Python codebase and clarified ambiguous sections. Updated installation, update and compatibility documentation."
+    ]
+  },
+  "2026-09-30": {
+    "title": "Keep installed themes recorded",
+    "changes": [
+      "Fixed installation records being lost when installs or metadata updates overlap. Theme operations and record updates now use thread and process locks.",
+      "Added durable atomic saves and a previous-version backup. Unreadable records are reported instead of silently replaced, and failed saves preserve existing records."
+    ]
+  },
+  "2026-09-29": {
+    "title": "KDE, Xfce and clearer installation progress",
+    "changes": [
+      "Added KDE Plasma support and desktop-aware catalog selection, including Plasma styles, global themes, color schemes and Aurorae window borders.",
+      "Added Xfce appearance controls and panel presets with Undo, along with wallpaper handling and Xfwm previews. Added bulk removal of installed wallpapers and theme packs.",
+      "Hid unsupported theme sections for the current desktop and window manager. Installation progress now includes downloading, extraction, copying, caching and saving records.",
+      "Split the GTK interface into focused modules and refreshed the website, README and screenshots."
+    ]
+  },
+  "2026-09-26": {
+    "title": "Faster browsing and a clearer view of your desktop",
+    "changes": [
+      "Added cached catalog results, smaller previews, background loading and infinite scroll. Fixed hidden tabs starving visible previews and reduced animated-preview CPU use with automatic and hover-only playback.",
+      "Added an In use view with previews of every active theme component, including themes installed outside Drape. Cards show component glyphs based on archive contents and warn about misplaced uploads.",
+      "Flagged Cinnamon themes using pre-5.4 dialog styles and warned before applying them. Added a sample window and an optional check showing which open apps use window-manager borders.",
+      "Added a Window manager settings page with Compiz installation, embedded settings, live package progress and removal of packages Drape installed. Cinnamon gets a separate Compiz login session; MATE and Xfce can switch live.",
+      "Added replacement of conflicting theme names, including active boot and login themes. Improved the layout for small screens, separated settings in the sidebar and added Drape's application icon."
+    ]
+  },
+  "2026-09-25": {
+    "title": "Drape begins",
+    "changes": [
+      "Introduced a per-component Linux theme manager backed by GNOME-Look: browse, install and apply icons, cursors, GTK controls, window borders, Cinnamon themes and wallpapers. Added command-line commands and support for catalog install links.",
+      "Verified downloads, unpacked nested archives, classified theme contents and tracked installs for updates and removal. Added conversion of Windows cursor packs to Linux Xcursor themes and improved download selection.",
+      "Built the Installed picture grid with category tabs, previews, individual wallpaper removal and an installed-files viewer. Added a variant picker with live previews drawn from theme files.",
+      "Added boot splash, login screen and lock screen support, including Plymouth, SDDM and LightDM themes. A privileged helper applies system changes with administrator authentication and tracks files Drape owns.",
+      "Launched the project website, published screenshots and documentation, and added the GPL-3.0 license."
+    ]
+  }
+}
