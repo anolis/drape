@@ -37,8 +37,20 @@ _lock = threading.Lock()
 RateLimited = http.RateLimited
 
 
-def _get(url, **kwargs):
-    return http.get(url, **kwargs)
+class InspectionFailed(Exception):
+    """No archive evidence was obtained; callers must not record a verdict."""
+
+
+def fresh_item(item):
+    """Refresh expiring download links, preserving a catalog cooldown for the caller."""
+    from . import pling
+
+    try:
+        return pling.get(item.id)
+    except pling.PlingError as exc:
+        if isinstance(exc.__cause__, RateLimited):
+            raise exc.__cause__ from None
+        raise InspectionFailed("Could not refresh download links.") from exc
 
 
 # ---------------------------------------------------------------- what a list of paths contains
@@ -151,10 +163,11 @@ class _RangeFile(io.RawIOBase):
         if i not in self.blocks:
             start = i * BLOCK
             end = min(start + BLOCK, self.size) - 1
-            r = _get(
+            r = http.get(
                 self.url,
                 headers={"User-Agent": USER_AGENT, "Range": f"bytes={start}-{end}"},
                 timeout=(15, 60),
+                retry_server_errors=False,
             )
             r.raise_for_status()
             self.blocks[i] = r.content
@@ -177,7 +190,12 @@ class _RangeFile(io.RawIOBase):
 
 
 def _size(url):
-    r = _get(url, headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"}, timeout=(15, 30))
+    r = http.get(
+        url,
+        headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"},
+        timeout=(15, 30),
+        retry_server_errors=False,
+    )
     r.raise_for_status()
     total = r.headers.get("content-range", "").rsplit("/", 1)[-1]
     return int(total) if total.isdigit() else 0
@@ -287,10 +305,11 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
                     remaining -= info.file_size
             return names + _cinnamon_markers(names, styles, True), True
     if re.search(r"\.(tar(\.(gz|xz|bz2|zst))?|tgz|txz|tbz2?)$", name):
-        r = _get(
+        r = http.get(
             url,
             headers={"User-Agent": USER_AGENT, "Range": f"bytes=0-{budget - 1}"},
             timeout=(15, 60),
+            retry_server_errors=False,
         )
         r.raise_for_status()
         raw = r.content
@@ -339,8 +358,10 @@ def cached(item_id, filename):
     if not entry:
         return None
     parts = set(entry["parts"])
-    if not parts and not entry["complete"]:
+    if not parts and not entry["complete"] and entry.get("evidence_version", 1) < 2:
         return None  # Older releases cached failed requests as empty inspections.
+    if not entry["complete"] and time.time() - entry.get("cinnamon_checked_at", 0) >= 600:
+        return None
     if "desktop" in parts:
         from .desktop import cinnamon_filter_active
 
@@ -377,8 +398,16 @@ def contents(item_id, url, filename, use_cache=True):
                 break
     except RateLimited:
         raise  # A server cooldown is not an inspection result and must not be cached.
-    except (requests.RequestException, OSError, zipfile.BadZipFile, ValueError):
-        return set(), False
+    except (requests.RequestException, OSError, zipfile.BadZipFile, ValueError) as exc:
+        # zipfile turns OSErrors (RateLimited included) from the end-record read into BadZipFile.
+        cause = exc
+        while cause is not None:
+            if isinstance(cause, RateLimited):
+                raise cause from None
+            cause = cause.__cause__ or cause.__context__
+        raise InspectionFailed(
+            "Could not inspect the download; no compatibility evidence obtained."
+        ) from exc
     if "desktop" in parts and not parts & CINNAMON_MARKERS:
         parts.add("cinnamon-unknown")
     if not complete and parts == {"wallpapers"}:
@@ -389,6 +418,7 @@ def contents(item_id, url, filename, use_cache=True):
             "parts": sorted(parts),
             "complete": complete,
             "cinnamon_checked_at": time.time(),
+            "evidence_version": 2,
         }
         try:
             CACHE.parent.mkdir(parents=True, exist_ok=True)
@@ -463,6 +493,9 @@ def inspect_downloads(item, kind, installed=None):
                 results[file.index] = None
                 limited = exc
                 continue
+            except InspectionFailed:
+                results[file.index] = None
+                continue
         results[file.index] = result
         status = desktop.archive_status(*result, kind)
         try:
@@ -472,5 +505,5 @@ def inspect_downloads(item, kind, installed=None):
         if status == "compatible":
             return results
     if limited is not None:
-        raise RateLimited(limited.retry_after, checks=results)
+        raise RateLimited(limited.retry_after, checks=results, host=limited.host)
     return results

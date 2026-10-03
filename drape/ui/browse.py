@@ -122,7 +122,7 @@ class Card(FadingCard):
 
     # Archive checks independent of image previews
 
-    def _peek(self, alive):
+    def _peek(self, alive, refresh=False):
         """Find out what the download contains (cached, or a small partial read) and show glyphs."""
         if not self._scan_alive or self._checks is not None:
             return
@@ -148,19 +148,24 @@ class Card(FadingCard):
             if self.departing or (alive is not None and not alive.is_set()):
                 return
             try:
-                result = peek.contents(self.item.id, f.url, f.name)
+                item = peek.fresh_item(self.item) if refresh else self.item
+                best = item.best_file()
+                if best is None:
+                    return
+                result = peek.contents(item.id, best.url, best.name)
                 if not desktop.archive_compatible(*result, self.kind):
-                    for other in self.item.files:
+                    for other in item.files:
                         if self.departing:
                             return
-                        if other != f:
-                            peek.contents(self.item.id, other.url, other.name)
+                        if other != best:
+                            peek.contents(item.id, other.url, other.name)
             except peek.RateLimited as exc:
-                GLib.idle_add(self._defer_peek, exc.retry_after, alive)
+                GLib.idle_add(self._defer_peek, exc.retry_delay(), alive)
             else:
 
                 def done():
                     if self._scan_alive:
+                        self.item = item
                         self._rate_limited = False
                         self._show_glyphs(*result, checked=True)
                     return False
@@ -174,8 +179,11 @@ class Card(FadingCard):
             return False
         self._rate_limited = True
         self._peek_started = False
-        self._show_glyphs(set(), False)
-        GLib.timeout_add_seconds(max(1, math.ceil(delay)), lambda: (self._peek(alive), False)[1])
+        best = self.item.best_file()
+        self._show_glyphs(*((best and peek.cached(self.item.id, best.name)) or (set(), False)))
+        GLib.timeout_add_seconds(
+            max(1, math.ceil(delay)), lambda: (self._peek(alive, True), False)[1]
+        )
         return False
 
     def _show_glyphs(self, parts, complete, checked=False):
@@ -419,20 +427,22 @@ class BrowsePage(Gtk.Box):
 
                 def retry():
                     if generation == self.generation and not self.flow.in_destruction():
-                        _peeks.submit(lambda: work(item))
+                        _peeks.submit(lambda: work(item, refresh=True))
                     return False
 
                 GLib.timeout_add_seconds(max(1, math.ceil(retry_after)), retry)
             return False
 
-        def work(item):
+        def work(item, refresh=False):
             if generation != self.generation:
                 return
             try:
+                if refresh:
+                    item = peek.fresh_item(item)
                 installed = installer.load_manifest() if self.kind == "packs" else None
                 checks = peek.inspect_downloads(item, self.kind, installed)
             except peek.RateLimited as exc:
-                GLib.idle_add(finished, item, exc.checks, exc.retry_after)
+                GLib.idle_add(finished, item, exc.checks, exc.retry_delay())
                 return
             except Exception:
                 # A failed check stays unverified and can be retried on a later visit.

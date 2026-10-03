@@ -1,4 +1,5 @@
 import copy
+from contextlib import closing
 import tempfile
 import unittest
 from dataclasses import replace
@@ -44,8 +45,28 @@ class CompatibilityIndexTest(unittest.TestCase):
     def test_partial_evidence_expires_so_unknown_can_be_retried(self):
         with mock.patch.object(compatibility.time, "time", return_value=1000):
             self.record(result=(set(), False))
+            self.assertEqual(self.index.inspection(self.item, self.file), (set(), False))
         with mock.patch.object(compatibility.time, "time", return_value=1601):
             self.assertIsNone(self.index.inspection(self.item, self.file))
+
+    def test_legacy_empty_rows_are_ignored_without_discarding_positive_evidence(self):
+        self.record(result=(set(), False))
+        with closing(self.index.connect()) as db, db:
+            db.execute("UPDATE inspections SET rules=1")
+        self.assertIsNone(self.index.inspection(self.item, self.file))
+        self.record()
+        with closing(self.index.connect()) as db, db:
+            db.execute("UPDATE inspections SET rules=1")
+        self.assertEqual(self.index.inspection(self.item, self.file), self.result)
+
+    def test_transport_failure_is_not_recorded_as_inspection(self):
+        with (
+            mock.patch.object(compatibility, "Index", return_value=self.index),
+            mock.patch.object(peek, "contents", side_effect=peek.InspectionFailed("failed")),
+        ):
+            self.assertEqual(peek.inspect_downloads(self.item, "gtk"), {1: None})
+        self.assertEqual(self.index.export()["observations"], [])
+        self.assertIsNone(self.index.inspection(self.item, self.file))
 
     def test_diff_cursor_only_advances_for_changes(self):
         self.record()

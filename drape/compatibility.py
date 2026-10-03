@@ -12,7 +12,7 @@ PATH = (
     / "drape"
     / "compatibility.sqlite3"
 )
-RULES_VERSION = 1
+RULES_VERSION = 2
 FORMAT = "drape-compatibility/v1"
 
 
@@ -38,17 +38,19 @@ class Index:
 
     def inspection(self, item, file):
         with closing(self.connect()) as db:
+            # v2 distinguishes genuine empty listings from legacy failed requests.
+            # Positive v1 evidence can still be evaluated by the current desktop rules.
             rows = db.execute(
-                """SELECT parts, complete, checked FROM inspections
-                WHERE item=? AND filename=? AND revision=? AND rules=?
+                """SELECT parts, complete, checked, rules FROM inspections
+                WHERE item=? AND filename=? AND revision=? AND rules IN (1, ?)
                 ORDER BY CASE origin WHEN 'local' THEN 0 ELSE 1 END""",
                 (item.id, file.name, self.revision(item, file), RULES_VERSION),
             ).fetchall()
-        for parts, complete, checked in rows:
+        for parts, complete, checked, rules in rows:
             parsed = set(json.loads(parts))
-            if not parsed and not complete:
+            if not parsed and not complete and rules < 2:
                 continue  # Legacy transport failures were stored as empty evidence.
-            # Partial/failed inspection gets another opportunity soon; durable evidence
+            # Partial inspection gets another opportunity soon; durable evidence
             # is reused for a week, and changed checksums always require a fresh record.
             lifetime = 7 * 86400 if complete else 600
             if time.time() - checked < lifetime:

@@ -13,6 +13,35 @@ class HttpRetryTest(unittest.TestCase):
         cooldowns = mock.patch.dict(http._blocked_until, {}, clear=True)
         cooldowns.start()
         self.addCleanup(cooldowns.stop)
+        slots = mock.patch.dict(http._retry_slots, {}, clear=True)
+        slots.start()
+        self.addCleanup(slots.stop)
+
+    def test_retry_after_is_bounded_for_numbers_and_dates(self):
+        self.assertEqual(http._retry_after("99999999999"), http.MAX_RETRY_AFTER)
+        with mock.patch.object(http.time, "time", return_value=0):
+            self.assertEqual(
+                http._retry_after("Fri, 01 Jan 2100 00:00:00 GMT"), http.MAX_RETRY_AFTER
+            )
+
+    def test_background_retries_are_spaced_per_host(self):
+        with mock.patch.object(http.time, "monotonic", return_value=100):
+            self.assertEqual(http.RateLimited(60, host="files.test").retry_delay(), 60)
+            self.assertEqual(http.RateLimited(60, host="files.test").retry_delay(), 62)
+            self.assertEqual(http.RateLimited(60, host="other.test").retry_delay(), 60)
+            self.assertEqual(http.RateLimited(120, host="files.test").retry_delay(), 120)
+
+    def test_background_server_error_does_not_sleep_or_retry(self):
+        response = mock.Mock(status_code=503)
+        with (
+            mock.patch.object(http.requests, "get", return_value=response) as get,
+            mock.patch.object(http.time, "sleep") as sleep,
+        ):
+            self.assertIs(
+                http.get("https://example.test/theme", retry_server_errors=False), response
+            )
+            get.assert_called_once()
+            sleep.assert_not_called()
 
     def limited_response(self, retry="90"):
         response = requests.Response()

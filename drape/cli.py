@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import math
 import sqlite3
 import sys
 from pathlib import Path
@@ -49,7 +50,7 @@ def cmd_search(a):
                 )
             except peek.RateLimited as exc:
                 print(
-                    f"{item.name}: compatibility check rate-limited; retry in {int(exc.retry_after) + 1}s.",
+                    f"{item.name}: compatibility check rate-limited; retry in {math.ceil(exc.retry_after)}s.",
                     file=sys.stderr,
                 )
                 visible.append(item)

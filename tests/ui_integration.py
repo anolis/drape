@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory() as temp:
             assert page.flow.get_visible()
         # HTTP 429 leaves cards visible and pending, then a later success clears the state.
         limited_item = pling.Item("rate", "Rate limited", "author", "", "", "", 0, 0, "", files=[pling.Download(1, "rate.zip", "url", 1, "")])
-        with mock.patch.object(browse._peeks, "submit") as jobs, mock.patch.object(browse.peek, "inspect_downloads", side_effect=[browse.peek.RateLimited(12, checks={1: None}), {1: ({"gtk", "gtk-3.0"}, True)}]), mock.patch.object(GLib, "timeout_add_seconds") as retry:
+        with mock.patch.object(browse._peeks, "submit") as jobs, mock.patch.object(browse.peek, "fresh_item", return_value=limited_item), mock.patch.object(browse.peek, "inspect_downloads", side_effect=[browse.peek.RateLimited(12, checks={1: None}), {1: ({"gtk", "gtk-3.0"}, True)}]), mock.patch.object(GLib, "timeout_add_seconds") as retry:
             page._preflight([limited_item], lambda: page._add([limited_item]), mock.Mock(), page.generation)
             jobs.call_args.args[0]()
             pump(0.25)

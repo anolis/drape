@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest import mock
 
@@ -48,9 +49,52 @@ class BrowseScansTest(unittest.TestCase):
             self.assertTrue(card._rate_limited)
             self.assertEqual(card._checks, {1: None})
             self.assertEqual(timer.call_args.args[0], 90)
+            retry = timer.call_args.args[1]
+            fresh = replace(item, files=[replace(item.files[0], url="fresh-url")])
+            with (
+                mock.patch.object(browse.peek, "fresh_item", return_value=fresh) as refresh,
+                mock.patch.object(
+                    browse.peek, "inspect_downloads", return_value={1: ({"gtk", "gtk-3.0"}, True)}
+                ) as inspect,
+            ):
+                retry()
+                submit.call_args.args[0]()
+                refresh.assert_called_once_with(item)
+                inspect.assert_called_once_with(fresh, "gtk", None)
+                self.assertIs(card.item, fresh)
+                self.assertFalse(card._rate_limited)
             page.generation = 2
+            retry()
+            self.assertEqual(submit.call_count, 2)
+
+    def test_deferred_card_keeps_cached_component_glyphs(self):
+        item = pling.Item(
+            "1",
+            "Theme",
+            "",
+            "",
+            "",
+            "",
+            0,
+            0,
+            "",
+            files=[pling.Download(1, "theme.zip", "url", 1, "")],
+        )
+        card = SimpleNamespace(
+            _scan_alive=True,
+            departing=False,
+            item=item,
+            _show_glyphs=mock.Mock(),
+            _peek=mock.Mock(),
+        )
+        with (
+            mock.patch.object(browse.peek, "cached", return_value=({"gtk", "gtk-4.0"}, True)),
+            mock.patch.object(browse.GLib, "timeout_add_seconds") as timer,
+        ):
+            browse.Card._defer_peek(card, 90, None)
+            card._show_glyphs.assert_called_once_with({"gtk", "gtk-4.0"}, True)
             timer.call_args.args[1]()
-            self.assertEqual(submit.call_count, 1)
+            card._peek.assert_called_once_with(None, True)
 
     def test_stale_scan_never_changes_current_results(self):
         page = SimpleNamespace(
