@@ -10,6 +10,7 @@ from .. import desktop, installer, peek, pling, settings, system
 from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, _safe, run_async
 from .images import _ui_busy_until, load_image
 from .widgets import ApplyControl, Glyphs, WindowBordersHelp
+from .scroll_state import ScrollState
 
 
 _peeks = ThreadPoolExecutor(max_workers=3)  # bounded scans for incoming catalog batches
@@ -300,6 +301,8 @@ class BrowsePage(Gtk.Box):
         inner.pack_start(self.more, False, False, 0)
         self.scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.scroller.add(inner)
+        self.scroll_state = ScrollState(self.scroller, f"browse:{kind}")
+        self.scroller._scroll_state = self.scroll_state
         self.scroller.get_vadjustment().connect("value-changed", lambda *_: self._maybe_more())
         self.scroller.get_vadjustment().connect("changed", lambda *_: self._maybe_more())
         self.connect("map", lambda *_: GLib.idle_add(self._maybe_more))
@@ -396,6 +399,7 @@ class BrowsePage(Gtk.Box):
 
     def load(self):
         query, sort = self._params()
+        self.scroll_state.reset(f"browse:{self.kind}:{query}:{sort}")
         self.loaded = True
         self._initial_fetching = True
         self.generation += 1
@@ -472,6 +476,8 @@ class BrowsePage(Gtk.Box):
                 self._set_status("" if self.cards() else "Nothing found.")
                 self._filtered_status()
             self._initial_fetching = state["next"] < FIRST_CHUNKS
+            if not self._initial_fetching and not self._has_more(self.next_chunk):
+                GLib.idle_add(self.scroll_state.finish)
             self._maybe_more()
 
         def failed(e, i):
@@ -512,7 +518,7 @@ class BrowsePage(Gtk.Box):
         adj = self.scroller.get_vadjustment()
         if adj.get_page_size() <= 0:
             return
-        position = adj.get_value()
+        position = max(adj.get_value(), self.scroll_state.pending or 0)
         if position + adj.get_page_size() < adj.get_upper() - 2 * (CARD_H + 120):
             return
         self.fetching = True
@@ -529,6 +535,8 @@ class BrowsePage(Gtk.Box):
             self.total = result[1]
             known = {c.item.id for c in self.cards()}
             self._add([it for it in result[0] if it.id not in known])
+            if not self._has_more(self.next_chunk):
+                GLib.idle_add(self.scroll_state.finish)
             GLib.idle_add(self._maybe_more)  # still near the bottom (tall window)? keep going
 
         def failed(_e):

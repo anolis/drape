@@ -204,6 +204,9 @@ class InstalledPage(Gtk.Box):
             inner.pack_start(flow, False, False, 0)
             sw = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
             sw.add(inner)
+            from .scroll_state import ScrollState
+
+            sw._scroll_state = ScrollState(sw, f"installed:{k.key}")
             self.tabs.add_titled(sw, k.key, k.label)
             self.grids[k.key] = (k, sw, flow, empty)
 
@@ -324,6 +327,8 @@ class InstalledPage(Gtk.Box):
         except installer.InstallError as exc:
             error_dialog(self.win, "Cannot load installed themes", exc)
             return
+        for _kind, sw, _flow, _empty in self.grids.values():
+            sw._scroll_state.hold()
         self.selected = {
             (key, path)
             for key, path in self.selected

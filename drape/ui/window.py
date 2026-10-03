@@ -390,6 +390,9 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.installed.load()
         elif not child.loaded:
             child.load()
+        from .scroll_state import track_section
+
+        track_section(child, self.stack.get_visible_child_name())
 
     def reload_current(self):
         child = self.stack.get_visible_child()
