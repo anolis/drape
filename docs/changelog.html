@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">51 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/b8dcf66b9ef616c3aa83280188500718c7b635ae">b8dcf66</a>.
+      <p class="note">55 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/089c50cb5593a7532467bc55b4350f8bcf15ffd5">089c50c</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -168,14 +168,20 @@
         <li>Added smooth card transitions. Off-screen cards wait until they re-enter the viewport before disappearing, preserving the rows currently in view.</li>
         <li>Remembered scroll positions across launches for browsing, Installed categories and settings. Added uploader profiles with normal theme cards, ratings, pagination and an expanded view.</li>
         <li>Made large Installed collections load on demand: only the selected category builds cards, and expensive previews and controls wait until a card enters the viewport. Shared compatibility checks across categories and removed repeated full-record reads while building Apply controls. Actions still read fresh records, and bulk selection and saved scroll positions are preserved.</li>
+        <li>Moved archive compatibility scanning out of the app into an independent headless worker with bounded reads, decompression and process memory. Browsing now uses existing local/imported evidence and keeps unknown themes visible. Added portable snapshot generation and explicit HTTPS snapshot imports for future shared hosting.</li>
+        <li>Discarded asynchronous preview callbacks after their GTK widget is destroyed, avoiding updates to cards removed during section changes.</li>
         <li>Added prompts to install missing dependencies, app update notifications and Update and restart. Fresh Arch/CachyOS sessions can refresh missing package databases after the user agrees to a full system upgrade.</li>
         <li>Kept rate-limited checks pending without saving incompatibility evidence. One retry queue per host waits through the cooldown and runs checks sequentially; leaving a page cancels waiting checks. Refused download links are refreshed once rather than on every retry.</li>
         <li>Separated failed requests from genuine empty inspections, bounded Retry-After delays and fixed rate limits hidden inside ZIP errors. Background archive reads fail fast on server errors; cards retain known component information during deferred checks.</li>
         <li>Formatted the Python codebase and clarified ambiguous sections. Updated installation, update and compatibility documentation.</li>
       </ul>
       <details>
-        <summary>View 13 commits</summary>
+        <summary>View 17 commits</summary>
         <ol class="commits">
+          <li data-commit="089c50cb5593a7532467bc55b4350f8bcf15ffd5"><a class="commit" href="https://github.com/anolis/drape/commit/089c50cb5593a7532467bc55b4350f8bcf15ffd5">089c50c</a><span>fix: discard preview callbacks after widget destruction</span></li>
+          <li data-commit="16a1aa8778920d7ee61a350b45f56116b1c0631d"><a class="commit" href="https://github.com/anolis/drape/commit/16a1aa8778920d7ee61a350b45f56116b1c0631d">16a1aa8</a><span>fix: browse from local evidence without in-app archive scanning</span></li>
+          <li data-commit="fdb538712f96cd7111ff863b78dd3377dc62dad9"><a class="commit" href="https://github.com/anolis/drape/commit/fdb538712f96cd7111ff863b78dd3377dc62dad9">fdb5387</a><span>feat: build portable compatibility evidence in a headless worker</span></li>
+          <li data-commit="01c46f7fec200587698a32fa2f2a9e45f055c0c3"><a class="commit" href="https://github.com/anolis/drape/commit/01c46f7fec200587698a32fa2f2a9e45f055c0c3">01c46f7</a><span>docs: record Installed-page loading improvements in changelog</span></li>
           <li data-commit="b8dcf66b9ef616c3aa83280188500718c7b635ae"><a class="commit" href="https://github.com/anolis/drape/commit/b8dcf66b9ef616c3aa83280188500718c7b635ae">b8dcf66</a><span>fix: load installed categories and card content on demand</span></li>
           <li data-commit="6219f35b7a2c3eba2abff7069a62a2fca2ba9404"><a class="commit" href="https://github.com/anolis/drape/commit/6219f35b7a2c3eba2abff7069a62a2fca2ba9404">6219f35</a><span>docs: add website changelog covering the full project history</span></li>
           <li data-commit="e708e23349e1a40f55a75e33097f47d976c65600"><a class="commit" href="https://github.com/anolis/drape/commit/e708e23349e1a40f55a75e33097f47d976c65600">e708e23</a><span>fix: queue rate-limited checks per host and refresh links only when refused</span></li>
