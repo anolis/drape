@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">57 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/d1f394300aad0f0ad5c4fb6a7cebfc5ea03006a1">d1f3943</a>.
+      <p class="note">59 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/732a1affd88dce7f9f46c17e847ec869be4796d7">732a1af</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -163,6 +163,7 @@
       <p class="date"><a href="#day-2026-10-03"><time datetime="2026-10-03">October 3, 2026</time></a></p>
       <h2 id="title-2026-10-03">Theme packs, compatibility and reliable browsing</h2>
       <ul class="changes">
+        <li>Made cursor application consistent for non-GTK apps such as Kitty by publishing Xcursor defaults, X11 resources and cursor launch settings, while preserving unrelated profile, Qt and font settings. Applying a cursor now explains when an app restart is needed.</li>
         <li>Added Qt application themes through Kvantum on any desktop. Qt appearance settings detect Qt 5/6 plugins, offer repository installation and can enable or remove the session style override. Theme packs include Qt companions; first setup explains the required logout/login.</li>
         <li>Added a Theme packs category for downloadable bundles that contain usable components for the current desktop. Multi-component installs offer to apply everything, apply the current section or apply later.</li>
         <li>Expanded compatibility filtering across desktops, window managers and Cinnamon versions. Background archive checks build a local SQLite index with import/export support while cards load immediately.</li>
@@ -177,8 +178,10 @@
         <li>Formatted the Python codebase and clarified ambiguous sections. Updated installation, update and compatibility documentation.</li>
       </ul>
       <details>
-        <summary>View 19 commits</summary>
+        <summary>View 21 commits</summary>
         <ol class="commits">
+          <li data-commit="732a1affd88dce7f9f46c17e847ec869be4796d7"><a class="commit" href="https://github.com/anolis/drape/commit/732a1affd88dce7f9f46c17e847ec869be4796d7">732a1af</a><span>fix: publish cursor themes for non-GTK applications</span></li>
+          <li data-commit="d57112974142ffeb14f2b48baafaa567a99e9ec4"><a class="commit" href="https://github.com/anolis/drape/commit/d57112974142ffeb14f2b48baafaa567a99e9ec4">d571129</a><span>docs: publish Qt support and setup instructions</span></li>
           <li data-commit="d1f394300aad0f0ad5c4fb6a7cebfc5ea03006a1"><a class="commit" href="https://github.com/anolis/drape/commit/d1f394300aad0f0ad5c4fb6a7cebfc5ea03006a1">d1f3943</a><span>feat: theme Qt widget applications with Kvantum</span></li>
           <li data-commit="bcdcf5a993eb5fe5bf308e4359904496e2b057b9"><a class="commit" href="https://github.com/anolis/drape/commit/bcdcf5a993eb5fe5bf308e4359904496e2b057b9">bcdcf5a</a><span>docs: record compatibility worker and safer section switching</span></li>
           <li data-commit="089c50cb5593a7532467bc55b4350f8bcf15ffd5"><a class="commit" href="https://github.com/anolis/drape/commit/089c50cb5593a7532467bc55b4350f8bcf15ffd5">089c50c</a><span>fix: discard preview callbacks after widget destruction</span></li>
