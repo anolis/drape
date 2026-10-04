@@ -154,11 +154,26 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">59 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/732a1affd88dce7f9f46c17e847ec869be4796d7">732a1af</a>.
+      <p class="note">61 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/ab5de22aa6a93f6797bd06c9496194641418f272">ab5de22</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
+    <section class="entry" id="day-2026-10-04" aria-labelledby="title-2026-10-04">
+      <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
+      <h2 id="title-2026-10-04">Reliable Qt activation and OpenSnitch appearance</h2>
+      <ul class="changes">
+        <li>Fixed Qt and cursor setup for SDDM sessions using zsh or a separate bash login profile. Appearance exports now cover the active shell and X session startup files, preserving other login setup.</li>
+        <li>Made the Qt appearance page show saved setup status and the selected theme, refreshing immediately after enabling or restoring defaults.</li>
+        <li>Added an explicit OpenSnitch integration that clears its custom appearance override and relaunches its GUI with Kvantum after confirmation. It checks the GUI&#x27;s Qt major, keeps its launch arguments and leaves the firewall service running.</li>
+      </ul>
+      <details>
+        <summary>View 1 commit</summary>
+        <ol class="commits">
+          <li data-commit="ab5de22aa6a93f6797bd06c9496194641418f272"><a class="commit" href="https://github.com/anolis/drape/commit/ab5de22aa6a93f6797bd06c9496194641418f272">ab5de22</a><span>fix: activate Qt appearance in shell-specific sessions and OpenSnitch</span></li>
+        </ol>
+      </details>
+    </section>
     <section class="entry" id="day-2026-10-03" aria-labelledby="title-2026-10-03">
       <p class="date"><a href="#day-2026-10-03"><time datetime="2026-10-03">October 3, 2026</time></a></p>
       <h2 id="title-2026-10-03">Theme packs, compatibility and reliable browsing</h2>
@@ -178,8 +193,9 @@
         <li>Formatted the Python codebase and clarified ambiguous sections. Updated installation, update and compatibility documentation.</li>
       </ul>
       <details>
-        <summary>View 21 commits</summary>
+        <summary>View 22 commits</summary>
         <ol class="commits">
+          <li data-commit="a4686c5b61d00a172f14dba28dd1574720940637"><a class="commit" href="https://github.com/anolis/drape/commit/a4686c5b61d00a172f14dba28dd1574720940637">a4686c5</a><span>docs: record cursor consistency fix</span></li>
           <li data-commit="732a1affd88dce7f9f46c17e847ec869be4796d7"><a class="commit" href="https://github.com/anolis/drape/commit/732a1affd88dce7f9f46c17e847ec869be4796d7">732a1af</a><span>fix: publish cursor themes for non-GTK applications</span></li>
           <li data-commit="d57112974142ffeb14f2b48baafaa567a99e9ec4"><a class="commit" href="https://github.com/anolis/drape/commit/d57112974142ffeb14f2b48baafaa567a99e9ec4">d571129</a><span>docs: publish Qt support and setup instructions</span></li>
           <li data-commit="d1f394300aad0f0ad5c4fb6a7cebfc5ea03006a1"><a class="commit" href="https://github.com/anolis/drape/commit/d1f394300aad0f0ad5c4fb6a7cebfc5ea03006a1">d1f3943</a><span>feat: theme Qt widget applications with Kvantum</span></li>
