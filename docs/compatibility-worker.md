@@ -12,6 +12,14 @@ leaving the active window cancels its check. Cancelled and failed checks save no
 HTTP 429 pauses the queue for the reported cooldown. Disable automatic checks through
 **☰ → Inspect visible themes when scrolling stops**; existing index evidence still works.
 
+Downloaded archives are inspected locally during installation, before unsupported
+components are filtered out. Their evidence goes straight into the same index, even
+when the archive turns out to be incompatible. No additional download is needed.
+At startup a bounded offline worker also backfills existing installations immediately,
+without waiting for scrolling or visible cards. Installed files supply partial evidence,
+because earlier installs may have discarded other archive components. This local-only
+evidence is not exported as a complete archive inspection or community contribution.
+
 Complete inspections persist across launches until the checksum/modification date or
 inspection rules change. Incomplete listings are cached for a day before another attempt.
 The index is stored at `~/.local/share/drape/compatibility.sqlite3` (or under
