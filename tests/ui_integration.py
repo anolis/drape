@@ -184,8 +184,16 @@ with tempfile.TemporaryDirectory() as temp:
         card = dialog.view.flow.cards()[0]
         assert card.kind == "icons" and card.item.name == "Icons"
         assert card.image is not None
+        assert card.type_label.get_text() == "Icons · Application and folder icons"
+        assert "compatibility is shown separately" in card.type_label.get_tooltip_text()
+        qt_upload = pling.Item("3", "Qt theme", "author", "", "", "", 0, 0, "", category="123")
+        unknown_upload = pling.Item("4", "Other", "author", "", "", "", 0, 0, "", category="99999")
+        dialog.view.got_uploads(([qt_upload, unknown_upload], 3))
+        type_labels = [card.type_label.get_text() for card in dialog.view.flow.cards()]
+        assert "Qt applications (Kvantum) · Qt app widgets" in type_labels
+        assert "Other upload · Theme type not provided" in type_labels
         dialog.view.all_button.clicked()
-        assert dialog.view.busy and dialog.view.page == 1
+        assert dialog.view.busy and dialog.view.page == 2
         dialog.destroy()
         callbacks.pop(0)[1](([], 2))
     # Expansion reparents a live card view into the main window, X restores the page.

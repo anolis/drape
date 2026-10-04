@@ -3,14 +3,13 @@
 import threading
 import time
 
-from .card_transitions import CardFlow, FadingCard
-from .gtk import GLib, Gtk, Pango
 from .. import compatibility, desktop, installer, peek, pling, settings, system
+from .card_transitions import CardFlow, FadingCard
 from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, run_async
+from .gtk import GLib, Gtk, Pango
 from .images import _ui_busy_until, load_image
-from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 from .scroll_state import ScrollState
-
+from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 
 CHUNK = 10  # results per request: small batches paint sooner on slow connections
 
@@ -18,7 +17,7 @@ FIRST_CHUNKS = 3  # batches requested up front when a tab opens
 
 
 class Card(FadingCard):
-    def __init__(self, window, kind, item, checks=None):
+    def __init__(self, window, kind, item, checks=None, type_description=None):
         super().__init__()
         self.win, self.kind, self.item = window, kind, item
         self.compatible = False
@@ -75,6 +74,15 @@ class Card(FadingCard):
         )
         title.set_markup(f"<b>{GLib.markup_escape_text(item.name)}</b>")
         box.pack_start(title, False, False, 0)
+
+        if type_description:
+            self.type_label = Gtk.Label(
+                label=type_description, xalign=0, wrap=True, max_width_chars=32
+            )
+            self.type_label.set_tooltip_text(
+                "Catalog theme type. A download may contain additional components; desktop compatibility is shown separately."
+            )
+            box.pack_start(self.type_label, False, False, 0)
 
         meta = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=32)
         meta.set_markup(

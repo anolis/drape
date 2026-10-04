@@ -4,10 +4,39 @@ from urllib.parse import quote
 from weakref import WeakSet
 
 from .. import pling
+from .card_transitions import CardFlow
 from .common import run_async
 from .gtk import Gtk
 from .images import load_image
-from .card_transitions import CardFlow
+
+# Profiles mix catalogs, so describe each upload independently of the section
+# the user came from. These are catalog types, not verified archive contents.
+UPLOAD_TYPES = {
+    "icons": "Icons · Application and folder icons",
+    "cursors": "Cursors · Mouse pointer appearance",
+    "gtk": "Controls (GTK) · Buttons, menus and GTK app widgets",
+    "kvantum": "Qt applications (Kvantum) · Qt app widgets",
+    "wm": "Window borders · Window frames and title bars",
+    "desktop": "Cinnamon desktop · Panels, menus and desktop controls",
+    "lookandfeel": "KDE global theme · A coordinated Plasma appearance",
+    "colors": "Color scheme · KDE application and desktop colors",
+    "wallpapers": "Wallpaper · Desktop background image",
+    "login": "Login screen · Appearance of the sign-in screen",
+    "boot": "Boot splash · Screen shown while the system starts",
+}
+DESKTOP_UPLOAD_TYPES = {
+    "104": "Plasma style · KDE panels, menus and desktop widgets",
+    "138": "Xfce window borders · Window frames and title bars",
+    "114": "KWin borders (Aurorae) · KDE window frames and title bars",
+    "717": "KWin borders (Aurorae) · KDE window frames and title bars",
+}
+
+
+def upload_type_description(item):
+    return DESKTOP_UPLOAD_TYPES.get(item.category) or UPLOAD_TYPES.get(
+        pling.item_kind(item),
+        "Other upload · " + (item.xdg_type or "Theme type not provided"),
+    )
 
 
 class ProfileView(Gtk.Box):
@@ -114,7 +143,14 @@ class ProfileView(Gtk.Box):
         existing = {card.item.id for card in self.flow.cards()}
         for item in items:
             if item.id not in existing:
-                self.flow.add(Card(self.win, pling.item_kind(item), item))
+                self.flow.add(
+                    Card(
+                        self.win,
+                        pling.item_kind(item),
+                        item,
+                        type_description=upload_type_description(item),
+                    )
+                )
                 existing.add(item.id)
                 self.count += 1
         self.flow.show_all()
