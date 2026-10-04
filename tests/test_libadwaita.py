@@ -1,14 +1,31 @@
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from drape import desktop, installer, libadwaita
+from drape import desktop, gtk_resources, installer, libadwaita
 from tests.test_installer import make_zip
 
 
 class LibadwaitaTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import gi; gi.require_version('Gtk', '4.0'); from gi.repository import Gtk",
+            ],
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode:
+            raise unittest.SkipTest("Optional GTK 4 introspection is not installed")
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -35,6 +52,55 @@ class LibadwaitaTest(unittest.TestCase):
             libadwaita.apply("Example")
         self.assertFalse(self.css.exists())
         self.assertFalse(libadwaita.configured())
+
+    @unittest.skipUnless(
+        shutil.which("glib-compile-resources"), "GLib resource compiler is not installed"
+    )
+    def test_bundled_resources_apply_without_registration_in_the_app(self):
+        folder = self.theme(css='@import url("resource:///org/gnome/theme/gtk.css");')
+        (folder / "payload.css").write_text(
+            'window { color: #123456; background-image: url("resource:///org/gnome/theme/assets/test.svg"); }'
+        )
+        (folder / "test.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
+        )
+        manifest = folder / "bundle.xml"
+        manifest.write_text(
+            '<gresources><gresource prefix="/org/gnome/theme"><file alias="gtk.css">payload.css</file><file alias="assets/test.svg">test.svg</file></gresource></gresources>'
+        )
+        subprocess.run(
+            [
+                "glib-compile-resources",
+                str(manifest),
+                "--sourcedir",
+                str(folder),
+                "--target",
+                str(folder / "gtk.gresource"),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        source = gtk_resources.prepare(folder / "gtk.css", self.config)
+        self.assertNotIn("resource://", source.read_text())
+        payload = source.parent / "org/gnome/theme/gtk.css"
+        self.assertNotIn("resource://", payload.read_text())
+        self.assertTrue((source.parent / "org/gnome/theme/assets/test.svg").is_file())
+        self.assertEqual(gtk_resources.prepare(folder / "gtk.css", self.config), source)
+        libadwaita.apply("Example")
+        self.assertIn("gtk4-resources", self.css.read_text())
+        libadwaita.restore()
+        self.assertFalse(self.css.exists())
+        with (
+            mock.patch.object(gtk_resources, "MAX_BYTES", 1),
+            self.assertRaisesRegex(ValueError, "size"),
+        ):
+            gtk_resources.prepare(folder / "gtk.css", self.config)
+
+    def test_unresolved_resource_import_still_rejects_the_theme(self):
+        self.theme(css='@import url("resource:///org/gnome/theme/gtk.css");')
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            libadwaita.apply("Example")
+        self.assertFalse(self.css.exists())
 
     def test_apply_and_restore_preserve_first_original_and_other_settings(self):
         self.theme()

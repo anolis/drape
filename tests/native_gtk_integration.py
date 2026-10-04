@@ -7,10 +7,32 @@ import tempfile
 import time
 from pathlib import Path
 
+from drape import gtk_resources
+
 with tempfile.TemporaryDirectory() as directory:
     root = Path(directory)
-    css = root / "theme.css"
-    css.write_text("window { color: rgb(17, 34, 51); }")
+    theme = root / "theme"
+    theme.mkdir()
+    (theme / "payload.css").write_text("window { color: rgb(17, 34, 51); }")
+    css = theme / "gtk.css"
+    css.write_text('@import url("resource:///org/gnome/theme/gtk.css");')
+    manifest = theme / "bundle.xml"
+    manifest.write_text(
+        '<gresources><gresource prefix="/org/gnome/theme"><file alias="gtk.css">payload.css</file></gresource></gresources>'
+    )
+    subprocess.run(
+        [
+            "glib-compile-resources",
+            str(manifest),
+            "--sourcedir",
+            str(theme),
+            "--target",
+            str(theme / "gtk.gresource"),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    css = gtk_resources.prepare(css, root)
     user = root / "gtk-4.0/gtk.css"
     user.parent.mkdir()
     user.write_text(f'@import url("{css.as_uri()}");\n')

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from gi.repository import Gio
 
+from . import gtk_resources
 from .records import file_lock
 from .session import atomic_text
 
@@ -117,6 +118,7 @@ def apply(name):
     dark = dark_preferred()
     if dark and (folder / "gtk-dark.css").is_file():
         source = folder / "gtk-dark.css"
+    source = gtk_resources.prepare(source, CONFIG_HOME)
     # Gtk 3 and Gtk 4 cannot coexist in one Python process. Validate separately
     # before writing user CSS, including relative stylesheet imports.
     result = subprocess.run(
