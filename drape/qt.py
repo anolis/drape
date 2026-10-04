@@ -3,6 +3,7 @@
 import configparser
 import functools
 import io
+import json
 import os
 import platform
 import re
@@ -10,14 +11,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from . import qt_restore
 from .records import file_lock
-from .session import atomic_text as _atomic_text, login_profiles, profile_block
+from .session import atomic_text as _atomic_text
+from .session import login_profiles, profile_block
 
 HOME = Path.home()
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config")
 DATA_HOME = Path(os.environ.get("XDG_DATA_HOME") or HOME / ".local/share")
 THEMES_DIR = CONFIG_HOME / "Kvantum"
 LIB_DIRS = (Path("/usr/lib"), Path("/usr/lib64"), Path("/usr/local/lib"))
+PROC = Path("/proc")
 RESTART_NOTE = (
     "First setup: log out and back in to enable Qt themes in desktop-launched apps. "
     "When switching themes later, restart the Qt apps."
@@ -104,6 +108,56 @@ def configured():
         return False
 
 
+def session_active():
+    """Check desktop launchers, not Drape's own (possibly updated) environment.
+
+    None means the desktop environment could not be inspected. Updating systemd
+    cannot change the environment inherited by an already-running desktop shell.
+    """
+    launchers = {
+        "cinnamon",
+        "gnome-shell",
+        "plasmashell",
+        "xfce4-session",
+        "mate-session",
+        "lxqt-session",
+    }
+    values = []
+    try:
+        processes = list(PROC.iterdir())
+    except OSError:
+        return None
+    for process in processes:
+        if not process.name.isdecimal():
+            continue
+        try:
+            if process.stat().st_uid != os.getuid():
+                continue
+            argv = (process / "cmdline").read_bytes().split(b"\0")
+            if not argv or Path(os.fsdecode(argv[0])).name not in launchers:
+                continue
+            values.append(
+                b"QT_STYLE_OVERRIDE=kvantum" in (process / "environ").read_bytes().split(b"\0")
+            )
+        except OSError:
+            continue
+    return all(values) if values else None
+
+
+def restore_available():
+    return (CONFIG_HOME / "drape/qt-restore.json").exists()
+
+
+def restore_description():
+    try:
+        state = json.loads((CONFIG_HOME / "drape/qt-restore.json").read_text())
+        if not state["legacy"]:
+            return "Restore the Qt style override and selected theme saved before Drape enabled Kvantum. Unrelated settings, downloaded themes and installed engine packages are kept. Log out and back in afterward."
+    except (OSError, ValueError, KeyError):
+        pass
+    return "Remove Drape's Qt login override. This setup predates restoration backups, so its original style and theme cannot be recovered automatically. Other settings, downloaded themes and installed engine packages are kept. Log out and back in afterward."
+
+
 def enable(theme=None):
     """Persist the engine for both systemd sessions and display-manager login shells.
 
@@ -117,36 +171,75 @@ def enable(theme=None):
     environment = CONFIG_HOME / "environment.d" / "90-drape-qt.conf"
     profiles = login_profiles(HOME)
     config = THEMES_DIR / "kvantum.kvconfig"
+    backup = CONFIG_HOME / "drape/qt-restore.json"
     with file_lock(CONFIG_HOME / "drape" / "session.lock"):
         before = {
             path: path.read_text() if path.exists() else None
             for path in (environment, *profiles, config)
         }
-        try:
-            if theme is not None:
-                parser = _parser(config)
-                if not parser.has_section("General"):
-                    parser.add_section("General")
-                parser.set("General", "theme", theme)
-                text = io.StringIO()
-                parser.write(text, space_around_delimiters=False)
-                _atomic_text(config, text.getvalue())
-            _atomic_text(
-                environment, "# Qt widget style selected by Drape\nQT_STYLE_OVERRIDE=kvantum\n"
+        previous_backup = backup.read_text() if backup.exists() else None
+        legacy = any("# BEGIN DRAPE QT STYLE" in (before[path] or "") for path in profiles)
+        state = (
+            json.loads(previous_backup)
+            if previous_backup
+            else {
+                "legacy": legacy,
+                "environment": None if legacy else os.environ.get("QT_STYLE_OVERRIDE"),
+                "files": {},
+            }
+        )
+        planned = dict(before)
+        if theme is not None:
+            parser = _parser(config)
+            if not parser.has_section("General"):
+                parser.add_section("General")
+            parser.set("General", "theme", theme)
+            text = io.StringIO()
+            parser.write(text, space_around_delimiters=False)
+            planned[config] = text.getvalue()
+        planned[environment] = "# Qt widget style selected by Drape\nQT_STYLE_OVERRIDE=kvantum\n"
+        for profile in profiles:
+            planned[profile] = profile_block(
+                before[profile] or "", "DRAPE QT STYLE", "export QT_STYLE_OVERRIDE=kvantum"
             )
-            for profile in profiles:
-                _atomic_text(
-                    profile,
-                    profile_block(
-                        before[profile] or "", "DRAPE QT STYLE", "export QT_STYLE_OVERRIDE=kvantum"
-                    ),
+        try:
+            # Save the first baseline before touching anything. Later theme switches
+            # update only the last-written values, never the original settings.
+            for path, original in before.items():
+                kind = (
+                    "theme"
+                    if path == config
+                    else "environment"
+                    if path == environment
+                    else "profile"
                 )
+                state["files"].setdefault(
+                    str(path),
+                    {
+                        "before": qt_restore.legacy_original(original, kind)
+                        if legacy
+                        else original,
+                        "written": planned[path],
+                        "kind": kind,
+                    },
+                )
+                state["files"][str(path)]["written"] = planned[path]
+            # Record the intended writes first so a restart can still undo setup
+            # interrupted between file replacements.
+            _atomic_text(backup, json.dumps(state, indent=2))
+            for path, content in planned.items():
+                if content is not None and content != before[path]:
+                    _atomic_text(path, content)
         except BaseException:
             for path, content in before.items():
                 if content is None:
                     path.unlink(missing_ok=True)
                 else:
                     _atomic_text(path, content)
+            if previous_backup is None:
+                backup.unlink(missing_ok=True)
+            else:
+                _atomic_text(backup, previous_backup)
             raise
     os.environ["QT_STYLE_OVERRIDE"] = "kvantum"
     _activation_style("kvantum")
@@ -169,10 +262,43 @@ def _activation_style(style):
 
 
 def disable():
-    """Remove Drape's session override, preserving the selected theme and other setup."""
+    """Restore the first Qt setup baseline; keep downloaded themes installed."""
     profiles = login_profiles(HOME)
     environment = CONFIG_HOME / "environment.d" / "90-drape-qt.conf"
+    backup = CONFIG_HOME / "drape/qt-restore.json"
     with file_lock(CONFIG_HOME / "drape" / "session.lock"):
+        if backup.exists():
+            state = json.loads(backup.read_text())
+            originals = {
+                Path(path): Path(path).read_text() if Path(path).exists() else None
+                for path in state["files"]
+            }
+            # Validate every file before restoring any of them.
+            changes = {
+                path: qt_restore.restore_text(path, text, state["files"][str(path)])
+                for path, text in originals.items()
+            }
+            try:
+                for path, text in changes.items():
+                    if text is None:
+                        path.unlink(missing_ok=True)
+                    elif text != originals[path]:
+                        _atomic_text(path, text)
+                backup.unlink()
+            except BaseException:
+                for path, text in originals.items():
+                    if text is None:
+                        path.unlink(missing_ok=True)
+                    else:
+                        _atomic_text(path, text)
+                raise
+            style = state["environment"]
+            if style is None:
+                os.environ.pop("QT_STYLE_OVERRIDE", None)
+            else:
+                os.environ["QT_STYLE_OVERRIDE"] = style
+            _activation_style(style or "")
+            return
         for profile in profiles:
             if profile.exists():
                 original = profile.read_text()

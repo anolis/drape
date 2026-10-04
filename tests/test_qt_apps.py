@@ -109,4 +109,4 @@ class QtApplicationTest(unittest.TestCase):
             )
             qt.disable()
             self.assertFalse(qt.configured())
-            self.assertNotIn("DRAPE QT STYLE", (self.root / ".xsessionrc").read_text())
+            self.assertFalse((self.root / ".xsessionrc").exists())

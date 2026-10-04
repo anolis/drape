@@ -114,22 +114,145 @@ class QtTest(unittest.TestCase):
         self.assertFalse((self.themes / "kvantum.kvconfig").exists())
         self.assertFalse((self.config / "environment.d/90-drape-qt.conf").exists())
 
-    def test_disable_preserves_user_setup_and_selected_theme(self):
+    def test_disable_restores_user_setup_and_previous_theme(self):
         self.make_theme()
         profile = self.home / ".profile"
         profile.write_text("export OTHER=value\nexport QT_STYLE_OVERRIDE=Fusion\n")
         with (
             mock.patch.object(qt, "engines", return_value={6}),
             mock.patch.object(qt.shutil, "which", return_value=None),
-            mock.patch.dict(os.environ, {}, clear=False),
+            mock.patch.dict(os.environ, {"QT_STYLE_OVERRIDE": "Fusion"}),
         ):
             qt.enable("Example")
             qt.disable()
-            self.assertNotIn("QT_STYLE_OVERRIDE", os.environ)
+            self.assertEqual(os.environ["QT_STYLE_OVERRIDE"], "Fusion")
         self.assertIn("export QT_STYLE_OVERRIDE=Fusion", profile.read_text())
         self.assertNotIn("DRAPE QT STYLE", profile.read_text())
-        self.assertEqual(qt.get(), "Example")
+        self.assertEqual(qt.get(), "")
         self.assertFalse((self.config / "environment.d/90-drape-qt.conf").exists())
+
+    def test_restore_keeps_first_baseline_across_theme_switches(self):
+        self.make_theme()
+        self.make_theme("Other")
+        config = self.themes / "kvantum.kvconfig"
+        original = "[General]\ntheme=Previous\n[Applications]\nSpecial=one,two\n"
+        config.write_text(original)
+        environment = self.config / "environment.d/90-drape-qt.conf"
+        environment.parent.mkdir(parents=True)
+        environment.write_text("QT_STYLE_OVERRIDE=Fusion\nOTHER=yes\n")
+        with (
+            mock.patch.object(qt, "engines", return_value={6}),
+            mock.patch.object(qt, "_activation_style"),
+            mock.patch.dict(os.environ),
+        ):
+            qt.enable("Example")
+            qt.enable("Other")
+            qt.disable()
+        self.assertEqual(config.read_text(), original)
+        self.assertEqual(environment.read_text(), "QT_STYLE_OVERRIDE=Fusion\nOTHER=yes\n")
+        self.assertFalse(qt.restore_available())
+        self.assertFalse((self.home / ".profile").exists())
+
+    def test_restore_preserves_later_unrelated_edits(self):
+        self.make_theme()
+        config = self.themes / "kvantum.kvconfig"
+        config.write_text("[General]\ntheme=Previous\n")
+        profile = self.home / ".profile"
+        profile.write_text("export ORIGINAL=yes\n")
+        with (
+            mock.patch.object(qt, "engines", return_value={6}),
+            mock.patch.object(qt, "_activation_style"),
+            mock.patch.dict(os.environ),
+        ):
+            qt.enable("Example")
+            profile.write_text(profile.read_text() + "export NEW_SETTING=yes\n")
+            config.write_text(config.read_text() + "[Applications]\nSpecial=one,two\n")
+            qt.disable()
+        self.assertIn("export ORIGINAL=yes", profile.read_text())
+        self.assertIn("export NEW_SETTING=yes", profile.read_text())
+        self.assertNotIn("DRAPE QT STYLE", profile.read_text())
+        self.assertEqual(qt.get(), "Previous")
+        self.assertIn("Special=one,two", config.read_text())
+
+    def test_restore_conflict_changes_nothing_and_keeps_backup(self):
+        self.make_theme()
+        with (
+            mock.patch.object(qt, "engines", return_value={6}),
+            mock.patch.object(qt, "_activation_style"),
+            mock.patch.dict(os.environ),
+        ):
+            qt.enable("Example")
+            environment = self.config / "environment.d/90-drape-qt.conf"
+            environment.write_text("QT_STYLE_OVERRIDE=Fusion\n")
+            profile = self.home / ".profile"
+            original = profile.read_text()
+            with self.assertRaisesRegex(ValueError, "changed outside Drape"):
+                qt.disable()
+        self.assertEqual(profile.read_text(), original)
+        self.assertEqual(environment.read_text(), "QT_STYLE_OVERRIDE=Fusion\n")
+        self.assertTrue(qt.restore_available())
+
+    def test_legacy_setup_does_not_masquerade_as_an_original_backup(self):
+        self.make_theme()
+        profile = self.home / ".profile"
+        profile.write_text(
+            "export ORIGINAL=yes\n\n# BEGIN DRAPE QT STYLE\nexport QT_STYLE_OVERRIDE=kvantum\n# END DRAPE QT STYLE\n"
+        )
+        with (
+            mock.patch.object(qt, "engines", return_value={6}),
+            mock.patch.object(qt, "_activation_style"),
+            mock.patch.dict(os.environ),
+        ):
+            qt.enable("Example")
+            self.assertIn("cannot be recovered", qt.restore_description())
+            qt.disable()
+        self.assertNotIn("DRAPE QT STYLE", profile.read_text())
+        self.assertIn("ORIGINAL=yes", profile.read_text())
+
+    def test_restore_write_failure_rolls_back_and_keeps_backup(self):
+        self.make_theme()
+        profile = self.home / ".profile"
+        profile.write_text("original\n")
+        with (
+            mock.patch.object(qt, "engines", return_value={6}),
+            mock.patch.object(qt, "_activation_style"),
+            mock.patch.dict(os.environ),
+        ):
+            qt.enable("Example")
+            applied = profile.read_text()
+            write = qt._atomic_text
+
+            def fail(path, text):
+                if path == profile and text == "original\n":
+                    raise OSError("disk full")
+                write(path, text)
+
+            with (
+                mock.patch.object(qt, "_atomic_text", side_effect=fail),
+                self.assertRaises(OSError),
+            ):
+                qt.disable()
+        self.assertEqual(profile.read_text(), applied)
+        self.assertEqual(qt.get(), "Example")
+        self.assertTrue(qt.restore_available())
+
+    def test_session_status_uses_desktop_environment_not_drape_environment(self):
+        proc = self.home / "proc"
+        proc.mkdir()
+        with (
+            mock.patch.object(qt, "PROC", proc),
+            mock.patch.dict(os.environ, {"QT_STYLE_OVERRIDE": "kvantum"}),
+        ):
+            self.assertIsNone(qt.session_active())
+            cinnamon = proc / "123"
+            cinnamon.mkdir()
+            (cinnamon / "cmdline").write_bytes(b"/usr/bin/cinnamon\0--replace\0")
+            (cinnamon / "environ").write_bytes(b"SHELL=/bin/zsh\0")
+            self.assertFalse(qt.session_active())
+            (cinnamon / "environ").write_bytes(b"QT_STYLE_OVERRIDE=kvantum\0")
+            self.assertTrue(qt.session_active())
+            (cinnamon / "environ").unlink()
+            self.assertIsNone(qt.session_active())
 
     def test_partial_theme_cannot_be_applied(self):
         folder = self.make_theme()

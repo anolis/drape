@@ -4,7 +4,7 @@ import os
 import shlex
 import shutil
 
-from .. import dependencies, qt, qt_apps
+from .. import dependencies, qt
 from .common import error_dialog, run_async
 from .gtk import Gtk
 
@@ -37,6 +37,17 @@ class QtSettingsPage(Gtk.ScrolledWindow):
         )
         found = qt.engines()
         enabled = qt.configured()
+        active = qt.session_active()
+        session_text = (
+            "Current desktop: Kvantum is active for newly launched Qt applications."
+            if active is True
+            else "Current desktop: log out and back in to activate the saved Kvantum setup."
+            if enabled and active is False
+            else "Current desktop: Kvantum is not active."
+            if active is False
+            else "Current desktop: activation could not be verified. Log out and back in after enabling."
+        )
+        self.body.pack_start(Gtk.Label(label=session_text, xalign=0, wrap=True), False, False, 0)
         self.body.pack_start(
             Gtk.Label(
                 label="Setup: "
@@ -88,7 +99,9 @@ class QtSettingsPage(Gtk.ScrolledWindow):
         browse.connect("clicked", lambda *_: self.win.go_to("kvantum"))
         browse_actions = Gtk.Box(spacing=8)
         browse_actions.pack_start(browse, False, False, 0)
-        reset = Gtk.Button(label="Use system default")
+        reset = Gtk.Button(
+            label="Restore previous Qt appearance", sensitive=enabled or qt.restore_available()
+        )
         reset.connect("clicked", self._disable)
         actions.pack_start(reset, False, False, 0)
         refresh = Gtk.Button(label="Refresh")
@@ -96,22 +109,10 @@ class QtSettingsPage(Gtk.ScrolledWindow):
         browse_actions.pack_start(refresh, False, False, 0)
         self.body.pack_start(actions, False, False, 0)
         self.body.pack_start(browse_actions, False, False, 0)
-        if shutil.which("opensnitch-ui"):
-            override = qt_apps.opensnitch_theme()
-            message = "OpenSnitch: " + (
-                f"custom theme {override} overrides the Qt appearance."
-                if override
-                else "using the system theme."
-            )
-            self.body.pack_start(Gtk.Label(label=message, xalign=0, wrap=True), False, False, 0)
-            button = Gtk.Button(label="Use Kvantum in OpenSnitch", sensitive=bool(found))
-            button.set_halign(Gtk.Align.START)
-            button.connect("clicked", self._opensnitch)
-            self.body.pack_start(button, False, False, 0)
         self.body.pack_start(
             Gtk.Label(
                 label=qt.RESTART_NOTE
-                + "\n\nApplications with their own custom stylesheet can override the Qt theme. In OpenSnitch, choose the system/default UI theme in Preferences. Sandboxed applications may need the engine inside their sandbox. Qt Quick applications use a separate styling system.",
+                + "\n\nThis sets the Qt widget engine for the whole login session without changing application menu entries or autostart commands. Applications with their own stylesheet or explicit style command can override it. Sandboxed applications may need the engine inside their sandbox. Qt Quick applications use a separate styling system.",
                 xalign=0,
                 wrap=True,
             ),
@@ -146,52 +147,25 @@ class QtSettingsPage(Gtk.ScrolledWindow):
         self.win.notify(qt.RESTART_NOTE)
         self.load()
 
-    def _opensnitch(self, button):
+    def _disable(self, _button):
         dialog = Gtk.MessageDialog(
             transient_for=self.win,
             modal=True,
             message_type=Gtk.MessageType.QUESTION,
             buttons=Gtk.ButtonsType.YES_NO,
-            text="Apply the Qt theme to OpenSnitch?",
+            text="Restore previous Qt appearance?",
         )
-        dialog.format_secondary_text(
-            "This switches OpenSnitch's appearance to System and restarts its GUI with Kvantum. The firewall service keeps running."
-        )
+        dialog.format_secondary_text(qt.restore_description())
         accepted = dialog.run() == Gtk.ResponseType.YES
         dialog.destroy()
         if not accepted:
             return
-        button.set_sensitive(False)
-        button.set_label("Restarting OpenSnitch…")
-
-        def work():
-            qt_apps.check_opensnitch_engine()
-            if not qt.enable():
-                raise ValueError("Install a Kvantum engine first.")
-            qt_apps.opensnitch_system_theme()
-            return qt_apps.restart_opensnitch()
-
-        def done(_result):
-            if self.alive:
-                self.load()
-                self.win.notify("OpenSnitch was relaunched with Kvantum and its System theme.")
-
-        def failed(exc):
-            if self.alive:
-                self.load()
-                error_dialog(self.win, "Could not apply Qt appearance to OpenSnitch", exc)
-
-        run_async(work, done, failed)
-
-    def _disable(self, _button):
         try:
             qt.disable()
-        except OSError as exc:
-            error_dialog(self.win, "Could not restore the system Qt style", exc)
+        except (OSError, ValueError) as exc:
+            error_dialog(self.win, "Could not restore the previous Qt appearance", exc)
             return
-        self.win.notify(
-            "Drape's Qt style override was removed. Log out and back in to restore your system style."
-        )
+        self.win.notify("Qt setup restored. Log out and back in to use the restored appearance.")
         self.load()
 
     def _install(self, button, command):
