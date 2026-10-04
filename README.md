@@ -49,8 +49,9 @@ click. No hunting for archives, no guessing which folder things go in.
   one logout/login. Existing profile, Qt and Xft settings are preserved.
 - **Themes Qt widget applications.** The **Qt applications** catalog offers Kvantum themes
   across desktops, including companions in theme packs. **Settings → Qt appearance** detects
-  Qt 5/6 engines, offers repository installation, enables the style and restores the system
-  default. Log out and back in after first setup; restart Qt apps after later theme switches.
+  Qt 5/6 engines, offers repository installation, shows session activation and restores the
+  previous Qt appearance from a backup. Log out and back in after first setup; restart Qt
+  apps after later theme switches. Menu and autostart commands are left untouched.
   Apps with custom stylesheets or sandboxed runtimes may need their own settings. See
   [Qt setup](docs/qt.md).
 - **Supports KDE Plasma.** Plasma styles, global themes, color schemes and Aurorae window

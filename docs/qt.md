@@ -11,14 +11,23 @@ authentication. An unavailable package or an apt plan that would remove packages
 rejected. Other distributions have a link to the upstream installation guide.
 
 Choose **Enable Kvantum for Qt applications**, then browse and install a Qt theme.
-The page shows whether setup is complete and the selected theme; enabling refreshes
-that status immediately. **Reapply Kvantum setup** repairs settings saved by older
+The page shows saved setup, the selected theme and whether the running desktop
+launcher has inherited Kvantum. A saved setting does not change an already-running
+desktop's environment; the page explicitly requests a new login in that case.
+**Reapply Kvantum setup** repairs settings saved by older
 versions that only wrote `~/.profile`.
 Install & apply also enables the engine. The first setup requires logging out and
 back in for desktop-launched applications; subsequently, restart Qt applications
 after switching themes. Existing windows do not change their widget engine live.
-**Use system default** removes Drape's override; log out and back in to restore your
-usual Qt style.
+**Restore previous Qt appearance** confirms what will be restored, then restores
+the original Qt override and selected theme. Log out and back in afterward.
+Drape saves the baseline before its first change and retains it across subsequent
+theme switches. Unrelated profile edits and application assignments are preserved;
+conflicting edits to a setting Drape changed are reported rather than overwritten.
+Backups live in `$XDG_CONFIG_HOME/drape/qt-restore.json`. Downloads and installed
+engine packages are retained. Older setups have no original backup: the confirmation
+explains that only Drape's identifiable login override can be removed and the earlier
+appearance cannot be reconstructed automatically.
 
 Kvantum themes need matching `<name>.kvconfig` and `<name>.svg` files. Drape installs
 each variant into `$XDG_CONFIG_HOME/Kvantum/<name>/` and selects it in
@@ -26,22 +35,27 @@ each variant into `$XDG_CONFIG_HOME/Kvantum/<name>/` and selects it in
 names within an archive are renamed together with their file pairs. Theme packs
 include Kvantum in their component chooser when an engine is available.
 
-Drape persists `QT_STYLE_OVERRIDE=kvantum` in its own environment.d file and a marked
+Drape persists `QT_STYLE_OVERRIDE=kvantum` in its own environment.d file and marked
 blocks in `~/.profile`, `~/.xprofile` and `~/.xsessionrc`. It also updates the active
 shell's login file: zsh uses `.zprofile` (respecting `ZDOTDIR`), while bash uses an
 existing `.bash_profile` or `.bash_login`. Drape does not create a new bash_profile
 that would prevent bash reading .profile. This covers display managers such as SDDM
 that choose shell-specific startup files. It also updates the D-Bus activation
 environment when the tool is available.
-Other login setup is preserved; disabling the override keeps downloaded themes.
+Other login setup is preserved. This is session-wide setup for Qt widget apps,
+including menu and autostart launches after a new login.
+
+Drape does not edit application menu entries or autostart commands for Qt setup.
+Any future launcher override must require a separate explicit confirmation naming
+the entry and file, showing the original and replacement command, explaining its
+effect and providing a way to undo the change. Enabling Kvantum is not permission
+to rewrite launchers.
 
 Apps with their own stylesheet can override the selected widget theme. OpenSnitch's
 **Preferences → UI** theme selection can do this; select its default appearance to
-follow the Qt style and restart its GUI. Drape detects its current override and offers
-**Use Kvantum in OpenSnitch**. After confirmation this clears only the appearance
-override and relaunches the GUI with the engine explicitly set, retaining its launch
-arguments. The firewall service keeps running. This action can work before a new
-login; general desktop-launched Qt applications still need the new login environment.
+follow the Qt style and restart its GUI. Qt appearance settings use session-wide setup
+rather than a temporary per-application relaunch. Application-specific appearance
+preferences are managed in those applications.
 Flatpak/Snap apps may need the engine within
 their sandbox. Qt Quick/QML applications use a different styling system. Drape does
 not install arbitrary compiled style plugins from theme archives or execute theme

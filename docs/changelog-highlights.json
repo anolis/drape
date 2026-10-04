@@ -1,10 +1,11 @@
 {
   "2026-10-04": {
-    "title": "Reliable Qt activation and OpenSnitch appearance",
+    "title": "Session-wide Qt appearance with restoration",
     "changes": [
       "Fixed Qt and cursor setup for SDDM sessions using zsh or a separate bash login profile. Appearance exports now cover the active shell and X session startup files, preserving other login setup.",
       "Made the Qt appearance page show saved setup status and the selected theme, refreshing immediately after enabling or restoring defaults.",
-      "Added an explicit OpenSnitch integration that clears its custom appearance override and relaunches its GUI with Kvantum after confirmation. It checks the GUI's Qt major, keeps its launch arguments and leaves the firewall service running."
+      "Replaced the temporary OpenSnitch relaunch control with generic session-wide Qt setup and desktop activation status. Settings distinguish saved configuration from the current launcher's environment and explain when logout/login is required.",
+      "Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo."
     ]
   },
   "2026-10-03": {

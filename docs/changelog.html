@@ -154,22 +154,25 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">61 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/ab5de22aa6a93f6797bd06c9496194641418f272">ab5de22</a>.
+      <p class="note">63 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/6c82cf961118b584ddcd99322c8cc42d0b7f7465">6c82cf9</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
     <section class="entry" id="day-2026-10-04" aria-labelledby="title-2026-10-04">
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
-      <h2 id="title-2026-10-04">Reliable Qt activation and OpenSnitch appearance</h2>
+      <h2 id="title-2026-10-04">Session-wide Qt appearance with restoration</h2>
       <ul class="changes">
         <li>Fixed Qt and cursor setup for SDDM sessions using zsh or a separate bash login profile. Appearance exports now cover the active shell and X session startup files, preserving other login setup.</li>
         <li>Made the Qt appearance page show saved setup status and the selected theme, refreshing immediately after enabling or restoring defaults.</li>
-        <li>Added an explicit OpenSnitch integration that clears its custom appearance override and relaunches its GUI with Kvantum after confirmation. It checks the GUI&#x27;s Qt major, keeps its launch arguments and leaves the firewall service running.</li>
+        <li>Replaced the temporary OpenSnitch relaunch control with generic session-wide Qt setup and desktop activation status. Settings distinguish saved configuration from the current launcher&#x27;s environment and explain when logout/login is required.</li>
+        <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 1 commit</summary>
+        <summary>View 3 commits</summary>
         <ol class="commits">
+          <li data-commit="6c82cf961118b584ddcd99322c8cc42d0b7f7465"><a class="commit" href="https://github.com/anolis/drape/commit/6c82cf961118b584ddcd99322c8cc42d0b7f7465">6c82cf9</a><span>feat: make session-wide Qt appearance reversible</span></li>
+          <li data-commit="457dfd39ad0aa8926753f9c41977f203902f65a8"><a class="commit" href="https://github.com/anolis/drape/commit/457dfd39ad0aa8926753f9c41977f203902f65a8">457dfd3</a><span>docs: explain repaired Qt activation and OpenSnitch integration</span></li>
           <li data-commit="ab5de22aa6a93f6797bd06c9496194641418f272"><a class="commit" href="https://github.com/anolis/drape/commit/ab5de22aa6a93f6797bd06c9496194641418f272">ab5de22</a><span>fix: activate Qt appearance in shell-specific sessions and OpenSnitch</span></li>
         </ol>
       </details>
