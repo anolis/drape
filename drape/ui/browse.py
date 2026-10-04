@@ -133,6 +133,14 @@ class Card(FadingCard):
         result = self._checks.get(best.index) if best else None
         self._show_glyphs(*(result or (set(), False)), checked=True)
 
+    def refresh_evidence(self, checks):
+        """Refresh cached glyphs after a worker commits evidence, preserving deferred removal."""
+        self._checks = checks
+        best = self.item.best_file()
+        self._show_glyphs(
+            *(checks.get(best.index, (set(), False)) if best else (set(), False)), checked=True
+        )
+
     def _show_glyphs(self, parts, complete, checked=False):
         if self.in_destruction() or self.departing:
             return False
@@ -289,6 +297,8 @@ class BrowsePage(Gtk.Box):
         inner.pack_start(self.more, False, False, 0)
         self.scroller = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.scroller.add(inner)
+        if hasattr(window, "idle_inspector"):
+            window.idle_inspector.register_view(self.flow, self.scroller)
         self.scroll_state = ScrollState(self.scroller, f"browse:{kind}")
         self.scroller._scroll_state = self.scroll_state
         self.scroller.get_vadjustment().connect("value-changed", lambda *_: self._maybe_more())

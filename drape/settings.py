@@ -9,6 +9,7 @@ PATH = (
 )
 DEFAULTS = {
     "only_applicable": True,
+    "inspect_visible": True,
     "animations": "auto",
     "window_check": "ask",
     "check_app_updates": True,

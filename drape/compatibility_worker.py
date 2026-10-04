@@ -1,13 +1,14 @@
-"""Ad-hoc, headless archive inspection. Never imported or launched by the GTK app."""
+"""Bounded headless archive inspection for batch jobs and visible-card checks."""
 
 import argparse
 import json
-from pathlib import Path
 import resource
 import sys
 import time
+from dataclasses import asdict
+from pathlib import Path
 
-from . import compatibility, peek, pling
+from . import compatibility, http, peek, pling
 
 
 def scan_item(item, index):
@@ -59,8 +60,41 @@ def scan_item(item, index):
     return failures
 
 
+def inspect_one(payload, index):
+    """IPC checks one file; only successfully inspected evidence reaches SQLite."""
+    data = payload["item"]
+    data["files"] = [pling.Download(**file) for file in data["files"]]
+    item = pling.Item(**data)
+    file = item.files[0]
+    cached = index.inspection(item, file)
+    if cached is not None:
+        return {"status": "cached"}
+    try:
+        try:
+            result = peek.contents(
+                item.id, file.url, file.name, use_cache=False, inspect_css=True, write_cache=False
+            )
+        except peek.LinkExpired:
+            item = peek.fresh_item(item)
+            file = next((f for f in item.files if f.name == file.name), None)
+            if file is None:
+                raise peek.InspectionFailed("Download no longer listed")
+            result = peek.contents(
+                item.id, file.url, file.name, use_cache=False, inspect_css=True, write_cache=False
+            )
+        index.record(item, file, result, "archive", {"scanner": "headless"}, "unknown")
+        # Return refreshed metadata so the card uses the same cache revision.
+        return {"status": "checked", "changed": item.changed, "file": asdict(file)}
+    except peek.RateLimited as exc:
+        return {"status": "rate_limited", "retry_after": exc.retry_after}
+    except (peek.InspectionFailed, MemoryError):
+        return {"status": "failed"}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--inspect-json", action="store_true", help="inspect one file from stdin")
+    parser.add_argument("--request-interval", type=float, default=0)
     parser.add_argument("ids", nargs="*", help="public Pling item IDs to inspect")
     parser.add_argument(
         "--kind", choices=[kind.key for kind in pling.KINDS], help="inspect a catalog category"
@@ -75,10 +109,11 @@ def main(argv=None):
     parser.add_argument("--interval", type=float, default=1, help="seconds between items")
     args = parser.parse_args(argv)
     if (
-        not (args.ids or args.kind)
+        not (args.ids or args.kind or args.inspect_json)
         or not 1 <= args.pages <= 100
         or args.memory_mib < 128
         or args.interval < 0
+        or args.request_interval < 0
     ):
         parser.error(
             "Provide item IDs or --kind; pages must be 1–100, memory at least 128 MiB and interval nonnegative"
@@ -89,6 +124,16 @@ def main(argv=None):
     limit = min(limit, hard) if hard != resource.RLIM_INFINITY else limit
     resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
     index = compatibility.Index(args.database)
+    http.request_interval = args.request_interval
+    if args.inspect_json:
+        try:
+            payload = json.loads(sys.stdin.read(49153))
+            result = inspect_one(payload, index)
+        except (ValueError, KeyError, TypeError, OSError, pling.PlingError):
+            result = {"status": "failed"}
+        encoded = json.dumps(result)
+        print(encoded if len(encoded.encode()) < 4096 else '{"status": "failed"}')
+        return 0
     failures, seen = 0, set()
     try:
 

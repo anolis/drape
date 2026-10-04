@@ -1,3 +1,4 @@
+from dataclasses import asdict
 import json
 from pathlib import Path
 import subprocess
@@ -28,6 +29,42 @@ class WorkerTest(unittest.TestCase):
                 pling.Download(1, "theme.zip", "https://files.test/theme?token=private", 1, "abc")
             ],
         )
+
+    def test_single_file_ipc_reuses_persistent_evidence(self):
+        payload = {"item": asdict(self.item)}
+        with mock.patch.object(peek, "contents", return_value=({"gtk"}, True)) as inspect:
+            self.assertEqual(worker.inspect_one(payload, self.index)["status"], "checked")
+            self.assertEqual(
+                worker.inspect_one({"item": asdict(self.item)}, self.index)["status"], "cached"
+            )
+            inspect.assert_called_once()
+
+    def test_single_file_protocol_runs_in_bounded_subprocess_and_reuses_cache(self):
+        self.index.record(self.item, self.item.files[0], ({"gtk"}, True), "archive", {}, "unknown")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "drape.compatibility_worker",
+                "--inspect-json",
+                "--memory-mib",
+                "384",
+                "--database",
+                str(self.index.path),
+            ],
+            input=json.dumps({"item": asdict(self.item)}),
+            text=True,
+            capture_output=True,
+            timeout=10,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"status": "cached"})
+
+    def test_single_file_ipc_429_is_pending_and_not_saved(self):
+        with mock.patch.object(peek, "contents", side_effect=peek.RateLimited(90)):
+            result = worker.inspect_one({"item": asdict(self.item)}, self.index)
+        self.assertEqual(result, {"status": "rate_limited", "retry_after": 90})
+        self.assertEqual(self.index.export()["observations"], [])
 
     def test_worker_help_runs_without_gtk_or_gi(self):
         result = subprocess.run(

@@ -173,6 +173,35 @@ with tempfile.TemporaryDirectory() as temp:
     win.show_all()
     pump(0.3)
     adjustment = scroller.get_vadjustment()
+    # The live viewport signal cancels the isolated worker before the next timer tick.
+    from drape.ui.idle_scan import ViewportInspector
+    from drape import compatibility
+    import io
+    now = [0]
+    inspector = ViewportInspector(win)
+    inspector.clock = lambda: now[0]
+    inspector.index = compatibility.Index(Path(temp) / "viewport.sqlite3")
+    process = mock.Mock(stdout=io.BytesIO(b'{"status":"checked"}'))
+    process.poll.return_value = None
+    inspector.spawn = mock.Mock(return_value=process)
+    for index, card in enumerate(cards):
+        card.item = pling.Item(str(index), "Theme", "", "", "", "today", 0, 0, "",
+                              files=[pling.Download(1, "theme.zip", "https://test/theme", 1, "abc")])
+        card._scan_alive, card._checks = True, {}
+    inspector.register_view(flow, scroller)
+    with mock.patch.object(Gtk.Window, "is_active", return_value=True):
+        now[0] = 2
+        inspector.tick()
+        inspector.spawn.assert_called_once()
+        assert inspector.active[1] is cards[0]
+        adjustment.set_value(1000)
+        process.terminate.assert_called_once()
+        assert inspector.active is None
+    inspector.set_enabled(False)
+    process.poll.return_value = -15
+    inspector.tick()
+    adjustment.set_value(0)
+    pump(0.1)
     initial_height = adjustment.get_upper()
     last = cards[-1]
     assert last.get_mapped() and not flow.in_view(last)

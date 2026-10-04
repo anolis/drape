@@ -76,6 +76,8 @@ class ProfileView(Gtk.Box):
             column_spacing=6,
         )
         self.scroller.add(self.flow)
+        if hasattr(self.win, "idle_inspector"):
+            self.win.idle_inspector.register_view(self.flow, self.scroller)
         self.pack_start(self.scroller, True, True, 0)
         footer = Gtk.Box(spacing=12)
         self.status = Gtk.Label(xalign=0, wrap=True)

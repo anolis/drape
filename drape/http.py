@@ -14,6 +14,9 @@ MAX_RETRY_AFTER = 86400  # an absurd Retry-After must not block a host forever o
 
 _rate_lock = threading.Lock()
 _blocked_until = {}
+# Only isolated inspection workers enable pacing; normal downloads stay unchanged.
+request_interval = 0
+_last_request = None
 
 
 class RateLimited(requests.RequestException):
@@ -52,6 +55,11 @@ def get(url, *, retry_server_errors=True, **kwargs):
         raise RateLimited(remaining, host=host)
     attempts = 3 if retry_server_errors else 1
     for attempt in range(attempts):
+        global _last_request
+        if request_interval and _last_request is not None:
+            time.sleep(max(0, request_interval - (time.monotonic() - _last_request)))
+        if request_interval:
+            _last_request = time.monotonic()
         response = requests.get(url, **kwargs)
         if response.status_code == 429:
             delay = _retry_after(response.headers.get("Retry-After"))

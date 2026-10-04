@@ -41,13 +41,15 @@ class CompatibilityIndexTest(unittest.TestCase):
         self.assertEqual(self.index.read_many([self.item]), {self.item.id: {}})
         self.assertFalse(self.index.path.exists())
 
-    def test_read_only_snapshot_matches_revision_and_expiry(self):
+    def test_complete_snapshot_persists_until_revision_changes(self):
         self.record()
         self.assertEqual(self.index.read_many([self.item]), {self.item.id: {1: self.result}})
         changed = replace(self.item, files=[replace(self.file, md5="def")])
         self.assertEqual(self.index.read_many([changed]), {self.item.id: {}})
         with mock.patch.object(compatibility.time, "time", return_value=10**12):
-            self.assertEqual(self.index.read_many([self.item]), {self.item.id: {}})
+            self.assertEqual(self.index.read_many([self.item]), {self.item.id: {1: self.result}})
+            reopened = compatibility.Index(self.index.path)
+            self.assertEqual(reopened.inspection(self.item, self.file), self.result)
 
     def test_public_snapshot_fetch_validates_before_importing(self):
         import json
@@ -84,7 +86,7 @@ class CompatibilityIndexTest(unittest.TestCase):
         with mock.patch.object(compatibility.time, "time", return_value=1000):
             self.record(result=(set(), False))
             self.assertEqual(self.index.inspection(self.item, self.file), (set(), False))
-        with mock.patch.object(compatibility.time, "time", return_value=1601):
+        with mock.patch.object(compatibility.time, "time", return_value=87401):
             self.assertIsNone(self.index.inspection(self.item, self.file))
 
     def test_legacy_empty_rows_are_ignored_without_discarding_positive_evidence(self):

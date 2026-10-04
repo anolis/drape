@@ -14,6 +14,17 @@ class HttpRetryTest(unittest.TestCase):
         cooldowns.start()
         self.addCleanup(cooldowns.stop)
 
+    def test_worker_paces_each_request_without_affecting_default_transport(self):
+        with (
+            mock.patch.object(http, "request_interval", 3),
+            mock.patch.object(http, "_last_request", 100),
+            mock.patch.object(http.time, "monotonic", return_value=101),
+            mock.patch.object(http.time, "sleep") as sleep,
+            mock.patch.object(http.requests, "get", return_value=mock.Mock(status_code=200)),
+        ):
+            http.get("https://example.test/theme", retry_server_errors=False)
+            sleep.assert_called_once_with(2)
+
     def test_retry_after_is_bounded_for_numbers_and_dates(self):
         self.assertEqual(http._retry_after("99999999999"), http.MAX_RETRY_AFTER)
         with mock.patch.object(http.time, "time", return_value=0):

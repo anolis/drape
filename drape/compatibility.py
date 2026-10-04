@@ -78,7 +78,7 @@ class Index:
                             parsed = set(json.loads(parts))
                             if not parsed and not complete and rules < 2:
                                 continue
-                            if now - checked < (7 * 86400 if complete else 600):
+                            if complete or now - checked < 86400:
                                 results[item.id][file.index] = (parsed, bool(complete))
                                 break
         except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
@@ -105,9 +105,8 @@ class Index:
             if not parsed and not complete and rules < 2:
                 continue  # Legacy transport failures were stored as empty evidence.
             # Partial inspection gets another opportunity soon; durable evidence
-            # is reused for a week, and changed checksums always require a fresh record.
-            lifetime = 7 * 86400 if complete else 600
-            if time.time() - checked < lifetime:
+            # survives relaunches indefinitely; revisions and rules invalidate it.
+            if complete or time.time() - checked < 86400:
                 return parsed, bool(complete)
         return None
 

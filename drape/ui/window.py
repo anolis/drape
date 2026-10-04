@@ -11,6 +11,7 @@ from .details import DetailsDialog
 from .gtk import Gdk, GLib, Gtk
 from .images import ANIMATIONS, _fetch_thumb, _foreground
 from .installed import InstalledPage
+from .idle_scan import ViewportInspector
 from .system_actions import SystemActions
 from .theme_actions import ThemeActions
 from .updates import AppUpdates
@@ -28,6 +29,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             width, height = min(width, area.width - 40), min(height, area.height - 40)
         self.set_default_size(width, height)
         self.set_app_icon()
+        self.idle_inspector = ViewportInspector(self)
         self.busy = {}  # item id -> installation progress controller
 
         hb = Gtk.HeaderBar(
@@ -60,6 +62,17 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         )
         only.connect("toggled", self._toggle_applicable)
         menu.append(only)
+        inspect = Gtk.CheckMenuItem(
+            label="Inspect visible themes when scrolling stops",
+            active=settings.get("inspect_visible"),
+        )
+
+        def toggle_inspection(item):
+            settings.set("inspect_visible", item.get_active())
+            self.idle_inspector.set_enabled(item.get_active())
+
+        inspect.connect("toggled", toggle_inspection)
+        menu.append(inspect)
         self.window_check_item = Gtk.CheckMenuItem(
             label="Check open windows on the Window borders tab automatically",
             active=settings.get("window_check") == "always",
