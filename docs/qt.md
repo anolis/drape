@@ -90,6 +90,12 @@ apps after applying or restoring. GTK 4 file presence and valid syntax do not gu
 that a stylesheet covers every libadwaita widget or version. Sandboxed apps may need
 their own configuration access.
 
+Themes packaged with `gtk.gresource` are supported: Drape prepares their CSS and
+assets under `$XDG_CONFIG_HOME/drape/gtk4-resources/` and replaces resource URLs
+with local file URLs. This avoids depending on resource registration inside each
+app. Extraction is bounded, and the prepared stylesheet is validated before the
+user CSS changes. Missing resources or invalid GTK 4 syntax still reject the style.
+
 Kitty uses its own rendering and appearance settings; on GNOME Wayland its
 titlebar color is controlled by `wayland_titlebar_color`. Its styling is separate
 from GTK and Qt themes. Drape does not rewrite launchers or force a different
