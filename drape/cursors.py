@@ -10,7 +10,7 @@ import subprocess
 from pathlib import Path
 
 from .records import file_lock
-from .session import atomic_text
+from .session import atomic_text, login_profiles, profile_block
 
 HOME = Path.home()
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config")
@@ -30,12 +30,12 @@ def apply(name, size):
     index = HOME / ".icons/default/index.theme"
     resources = HOME / ".Xresources"
     environment = CONFIG_HOME / "environment.d/90-drape-cursor.conf"
-    profile = HOME / ".profile"
+    profiles = login_profiles(HOME)
     resource_lines = f"Xcursor.theme: {name}\nXcursor.size: {size}\n"
     with file_lock(CONFIG_HOME / "drape/session.lock"):
         before = {
             path: path.read_text() if path.exists() else None
-            for path in (index, resources, environment, profile)
+            for path in (index, resources, environment, *profiles)
         }
         try:
             # Preserve metadata and unrelated sections from an existing default theme.
@@ -58,17 +58,15 @@ def apply(name, size):
                 environment,
                 f'# Cursor theme selected by Drape\nXCURSOR_THEME="{quoted}"\nXCURSOR_SIZE={size}\n',
             )
-            existing = re.sub(
-                r"(?m)^# BEGIN DRAPE CURSOR\n.*?^# END DRAPE CURSOR\n?",
-                "",
-                before[profile] or "",
-                flags=re.DOTALL,
-            )
-            atomic_text(
-                profile,
-                existing.rstrip("\n")
-                + f"\n\n# BEGIN DRAPE CURSOR\nexport XCURSOR_THEME={shlex.quote(name)}\nexport XCURSOR_SIZE={size}\n# END DRAPE CURSOR\n",
-            )
+            for profile in profiles:
+                atomic_text(
+                    profile,
+                    profile_block(
+                        before[profile] or "",
+                        "DRAPE CURSOR",
+                        f"export XCURSOR_THEME={shlex.quote(name)}\nexport XCURSOR_SIZE={size}",
+                    ),
+                )
         except BaseException:
             for path, content in before.items():
                 if content is None:

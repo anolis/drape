@@ -11,6 +11,9 @@ from tests.test_installer import make_zip
 
 class QtTest(unittest.TestCase):
     def setUp(self):
+        environment = mock.patch.dict(os.environ, {"ZDOTDIR": ""})
+        environment.start()
+        self.addCleanup(environment.stop)
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.home = Path(temporary.name)

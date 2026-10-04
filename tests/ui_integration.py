@@ -46,6 +46,12 @@ with tempfile.TemporaryDirectory() as temp:
         qt_page.load()
         labels = [widget.get_label() for row in qt_page.body.get_children() if isinstance(row, Gtk.Box) for widget in row.get_children() if isinstance(widget, Gtk.Button)]
         assert "Browse Qt themes" in labels and "Use system default" in labels
+        with mock.patch.object(qt, "configured", return_value=True), mock.patch.object(qt, "get", return_value="Example"):
+            qt_page.load()
+            labels = [widget.get_label() for row in qt_page.body.get_children() if isinstance(row, Gtk.Box) for widget in row.get_children() if isinstance(widget, Gtk.Button)]
+            assert "Reapply Kvantum setup" in labels
+            text = [widget.get_text() for widget in qt_page.body.get_children() if isinstance(widget, Gtk.Label)]
+            assert "Selected Qt theme: Example" in text
         with mock.patch.object(qt, "enable", return_value=True) as enable:
             qt_page._enable(None)
             enable.assert_called_once()

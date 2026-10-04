@@ -11,7 +11,7 @@ import subprocess
 from pathlib import Path
 
 from .records import file_lock
-from .session import atomic_text as _atomic_text
+from .session import atomic_text as _atomic_text, login_profiles, profile_block
 
 HOME = Path.home()
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config")
@@ -91,6 +91,19 @@ def get():
         return ""
 
 
+def configured():
+    """Report persisted setup, not the environment of this already-running process."""
+    try:
+        environment = CONFIG_HOME / "environment.d/90-drape-qt.conf"
+        return "QT_STYLE_OVERRIDE=kvantum" in environment.read_text() and all(
+            "# BEGIN DRAPE QT STYLE\nexport QT_STYLE_OVERRIDE=kvantum\n# END DRAPE QT STYLE"
+            in path.read_text()
+            for path in login_profiles(HOME)
+        )
+    except OSError:
+        return False
+
+
 def enable(theme=None):
     """Persist the engine for both systemd sessions and display-manager login shells.
 
@@ -102,12 +115,12 @@ def enable(theme=None):
     if theme is not None and locate(theme) is None:
         raise ValueError("This Kvantum theme is missing its configuration or artwork.")
     environment = CONFIG_HOME / "environment.d" / "90-drape-qt.conf"
-    profile = HOME / ".profile"
+    profiles = login_profiles(HOME)
     config = THEMES_DIR / "kvantum.kvconfig"
     with file_lock(CONFIG_HOME / "drape" / "session.lock"):
         before = {
             path: path.read_text() if path.exists() else None
-            for path in (environment, profile, config)
+            for path in (environment, *profiles, config)
         }
         try:
             if theme is not None:
@@ -121,18 +134,13 @@ def enable(theme=None):
             _atomic_text(
                 environment, "# Qt widget style selected by Drape\nQT_STYLE_OVERRIDE=kvantum\n"
             )
-            start, end = "# BEGIN DRAPE QT STYLE", "# END DRAPE QT STYLE"
-            existing = before[profile] or ""
-            existing = re.sub(
-                r"(?m)^# BEGIN DRAPE QT STYLE\n.*?^# END DRAPE QT STYLE\n?",
-                "",
-                existing,
-                flags=re.DOTALL,
-            )
-            _atomic_text(
-                profile,
-                existing.rstrip("\n") + f"\n\n{start}\nexport QT_STYLE_OVERRIDE=kvantum\n{end}\n",
-            )
+            for profile in profiles:
+                _atomic_text(
+                    profile,
+                    profile_block(
+                        before[profile] or "", "DRAPE QT STYLE", "export QT_STYLE_OVERRIDE=kvantum"
+                    ),
+                )
         except BaseException:
             for path, content in before.items():
                 if content is None:
@@ -162,19 +170,15 @@ def _activation_style(style):
 
 def disable():
     """Remove Drape's session override, preserving the selected theme and other setup."""
-    profile = HOME / ".profile"
+    profiles = login_profiles(HOME)
     environment = CONFIG_HOME / "environment.d" / "90-drape-qt.conf"
     with file_lock(CONFIG_HOME / "drape" / "session.lock"):
-        if profile.exists():
-            original = profile.read_text()
-            text = re.sub(
-                r"(?m)^# BEGIN DRAPE QT STYLE\n.*?^# END DRAPE QT STYLE\n?",
-                "",
-                original,
-                flags=re.DOTALL,
-            )
-            if text != original:
-                _atomic_text(profile, text)
+        for profile in profiles:
+            if profile.exists():
+                original = profile.read_text()
+                text = profile_block(original, "DRAPE QT STYLE")
+                if text != original:
+                    _atomic_text(profile, text)
         if (
             environment.exists()
             and environment.read_text()

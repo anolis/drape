@@ -11,6 +11,9 @@ authentication. An unavailable package or an apt plan that would remove packages
 rejected. Other distributions have a link to the upstream installation guide.
 
 Choose **Enable Kvantum for Qt applications**, then browse and install a Qt theme.
+The page shows whether setup is complete and the selected theme; enabling refreshes
+that status immediately. **Reapply Kvantum setup** repairs settings saved by older
+versions that only wrote `~/.profile`.
 Install & apply also enables the engine. The first setup requires logging out and
 back in for desktop-launched applications; subsequently, restart Qt applications
 after switching themes. Existing windows do not change their widget engine live.
@@ -24,13 +27,22 @@ names within an archive are renamed together with their file pairs. Theme packs
 include Kvantum in their component chooser when an engine is available.
 
 Drape persists `QT_STYLE_OVERRIDE=kvantum` in its own environment.d file and a marked
-block in `~/.profile`, covering systemd user services and display-manager login
-shells. It also updates the D-Bus activation environment when the tool is available.
+blocks in `~/.profile`, `~/.xprofile` and `~/.xsessionrc`. It also updates the active
+shell's login file: zsh uses `.zprofile` (respecting `ZDOTDIR`), while bash uses an
+existing `.bash_profile` or `.bash_login`. Drape does not create a new bash_profile
+that would prevent bash reading .profile. This covers display managers such as SDDM
+that choose shell-specific startup files. It also updates the D-Bus activation
+environment when the tool is available.
 Other login setup is preserved; disabling the override keeps downloaded themes.
 
 Apps with their own stylesheet can override the selected widget theme. OpenSnitch's
 **Preferences → UI** theme selection can do this; select its default appearance to
-follow the Qt style and restart its GUI. Flatpak/Snap apps may need the engine within
+follow the Qt style and restart its GUI. Drape detects its current override and offers
+**Use Kvantum in OpenSnitch**. After confirmation this clears only the appearance
+override and relaunches the GUI with the engine explicitly set, retaining its launch
+arguments. The firewall service keeps running. This action can work before a new
+login; general desktop-launched Qt applications still need the new login environment.
+Flatpak/Snap apps may need the engine within
 their sandbox. Qt Quick/QML applications use a different styling system. Drape does
 not install arbitrary compiled style plugins from theme archives or execute theme
 installation scripts.
