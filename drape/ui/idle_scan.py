@@ -1,6 +1,6 @@
 """Connect viewport activity and window lifecycle to the isolated inspector."""
 
-from .. import settings
+from .. import installer, settings
 from ..idle_inspection import IdleInspector
 from .gtk import GLib
 
@@ -8,6 +8,7 @@ from .gtk import GLib
 class ViewportInspector(IdleInspector):
     def __init__(self, window):
         super().__init__(enabled=settings.get("inspect_visible"))
+        self.local_manifest = installer.MANIFEST
         self.source = GLib.timeout_add(150, self._poll)
         window.connect("destroy", self._destroy)
 

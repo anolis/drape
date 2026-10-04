@@ -6,6 +6,7 @@ import math
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import tarfile
 import tempfile
@@ -478,12 +479,35 @@ def install_file(
     status=None,
     required_kind=None,
     author="",
+    catalog_download=None,
 ):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
     with tempfile.TemporaryDirectory(prefix="drape-") as work:
         root = unpack_all(Path(path), Path(work), status)
         _report_status(status, "Inspecting theme files…", 0.60)
+        if file or catalog_download is not None:
+            # Inspect the whole download before desktop filtering discards components.
+            # This already runs in the installation thread, with no extra archive reads.
+            from . import compatibility, local_inspection, pling
+
+            try:
+                evidence = local_inspection.inspect_paths([root])
+                cached_download = catalog_download or pling.Download(1, file, source, 0, "")
+                catalog_item = pling.Item(
+                    key, title, author, "", "", changed, 0, 0, source, files=[cached_download]
+                )
+                compatibility.Index().record(
+                    catalog_item,
+                    cached_download,
+                    evidence,
+                    "archive",
+                    {"scanner": "downloaded"},
+                    "unknown",
+                )
+            except (OSError, ValueError, sqlite3.Error) as exc:
+                # Optional cache failure must never turn a successful download into a failed install.
+                print(f"drape: could not cache downloaded theme evidence: {exc}")
         comps = classify(root, title, include_wallpapers=required_kind == "packs")
         if not comps:
             raise InstallError(
@@ -664,6 +688,7 @@ def install_file(
         "file": file,
         "preview": preview,
         "author": author,
+        "download_md5": catalog_download.md5 if catalog_download is not None else "",
         "installed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "paths": installed,
         "components": provides,
@@ -719,6 +744,7 @@ def install_item(
                     file=f.name,
                     preview=item.previews[0] if item.previews else "",
                     author=item.author,
+                    catalog_download=f,
                     replace_items=replace_items,
                     only_applicable=True if required_kind == "packs" else only_applicable,
                     status=status,

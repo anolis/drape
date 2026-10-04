@@ -26,6 +26,8 @@ class IdleInspector:
         self.index = index or compatibility.Index()
         self.flows = weakref.WeakKeyDictionary()
         self.active = None
+        self.local_manifest = None
+        self.local_process = None
         self.retired = []
         self.next_check = 0
         self.retry = {}
@@ -78,6 +80,12 @@ class IdleInspector:
         self.retired.append((process, self.clock()))
 
     def close(self):
+        if self.local_process:
+            process, _ = self.local_process
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            self.local_process = None
         self.cancel()
         # Shutdown is allowed to reap a killed child; ordinary scrolling never waits.
         for process, _ in self.retired:
@@ -102,6 +110,44 @@ class IdleInspector:
     def tick(self):
         now = self.clock()
         self._reap(now)
+        # Local files take priority and do not depend on viewport idleness or network settings.
+        if self.local_manifest is not None:
+            manifest, self.local_manifest = self.local_manifest, None
+            try:
+                process = self.spawn(
+                    [
+                        sys.executable,
+                        "-m",
+                        "drape.compatibility_worker",
+                        "--installed-local",
+                        str(manifest),
+                        "--memory-mib",
+                        "384",
+                        "--database",
+                        str(self.index.path),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=self._environment(),
+                )
+                self.local_process = process, now
+            except OSError:
+                pass
+        if self.local_process:
+            process, started = self.local_process
+            if process.poll() is not None:
+                self.local_process = None
+                for flow in list(self.flows):
+                    for card in flow.cards():
+                        if card._scan_alive and not card.departing:
+                            card.refresh_evidence(
+                                self.index.read_many([card.item]).get(card.item.id, {})
+                            )
+            elif now - started > JOB_TIMEOUT:
+                process.kill()
+                return
+            else:
+                return
         if self.active:
             flow, card, file, key, process, started = self.active
             if not self.enabled or not self._visible(flow, card):
@@ -166,6 +212,13 @@ class IdleInspector:
                 if card.item.id == item_id and card._scan_alive and not card.departing:
                     card.refresh_evidence(self.index.read_many([card.item]).get(item_id, {}))
 
+    @staticmethod
+    def _environment():
+        env = os.environ.copy()
+        root = str(Path(__file__).resolve().parent.parent)
+        env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
+        return env
+
     def _start(self, flow, card, file, key, now):
         data = asdict(card.item)
         data.update(summary="", previews=[], files=[asdict(file)])
@@ -174,9 +227,6 @@ class IdleInspector:
         if len(payload) > 49152:
             self.retry[key] = now + 300
             return
-        env = os.environ.copy()
-        root = str(Path(__file__).resolve().parent.parent)
-        env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
         try:
             with tempfile.TemporaryFile() as source:
                 source.write(payload)
@@ -197,7 +247,7 @@ class IdleInspector:
                     stdin=source,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
-                    env=env,
+                    env=self._environment(),
                 )
         except OSError:
             self.retry[key] = now + 300

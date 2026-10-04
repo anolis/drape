@@ -9,7 +9,7 @@ from unittest import mock
 
 from PIL import Image
 
-from drape import installer, wincursors
+from drape import compatibility, installer, pling, wincursors
 
 
 def make_tar(path, files, links=()):
@@ -90,6 +90,9 @@ class InstallerTest(unittest.TestCase):
             p = mock.patch.object(installer, k, v)
             p.start()
             self.addCleanup(p.stop)
+        cache = mock.patch.object(compatibility, "PATH", root / "compatibility.sqlite3")
+        cache.start()
+        self.addCleanup(cache.stop)
         self.p = paths
         pref = mock.patch("drape.settings.get", return_value=False)
         pref.start()
@@ -219,6 +222,43 @@ class InstallerTest(unittest.TestCase):
             self.assertEqual(e["file"], "mate.zip")
             with self.assertRaises(installer.IncompatibleError):
                 installer.install_item(it, file_index=1, only_applicable=True)
+
+    @mock.patch("drape.desktop.current_desktop", return_value="mate")
+    @mock.patch("drape.desktop.running_wm", return_value="Marco")
+    @mock.patch("drape.desktop._schema_exists", return_value=True)
+    def test_download_caches_all_components_before_install_filtering(self, *_mocks):
+        archive = self.src / "mixed.zip"
+        make_zip(archive, {"T/gtk-3.0/gtk.css": b"", "T/cinnamon/cinnamon.css": b".dialog {}"})
+        item = pling.Item(
+            "local",
+            "Mixed",
+            "",
+            "",
+            "",
+            "today",
+            0,
+            0,
+            "",
+            files=[pling.Download(1, "mixed.zip", str(archive), 1, "abc")],
+        )
+        with mock.patch.object(installer, "download", return_value=archive):
+            entry = installer.install_item(item, only_applicable=True)
+        parts, complete = compatibility.Index().inspection(item, item.files[0])
+        self.assertTrue(complete)
+        self.assertTrue({"gtk", "gtk-3.0", "desktop", "cinnamon-modern"} <= parts)
+        self.assertEqual(entry["download_md5"], "abc")
+
+    def test_cache_write_failure_does_not_fail_installation(self):
+        archive = self.src / "icons.zip"
+        make_zip(archive, {"T/index.theme": ICON_INDEX, "T/48x48/apps/icon.svg": b"svg"})
+        download = pling.Download(1, "icons.zip", "url", 1, "abc")
+        import sqlite3
+
+        with mock.patch.object(
+            compatibility.Index, "record", side_effect=sqlite3.OperationalError("locked")
+        ):
+            entry = installer.install_file(archive, "1", "Icons", catalog_download=download)
+        self.assertTrue(entry["components"])
 
     def test_icon_theme_with_gtk_extras_is_still_icons(self):
         a = self.src / "i.tar.gz"

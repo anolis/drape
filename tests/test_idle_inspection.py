@@ -46,6 +46,19 @@ class IdleInspectionTest(unittest.TestCase):
         self.spawn.assert_called_once()
         self.assertIsNotNone(self.scanner.active)
 
+    def test_local_backfill_starts_without_idle_or_visible_cards(self):
+        self.scanner.local_manifest = Path(self.temp.name) / "installed.json"
+        self.scanner.set_enabled(False)
+        self.flow.get_mapped.return_value = False
+        self.scanner.tick()
+        self.spawn.assert_called_once()
+        self.assertIn("--installed-local", self.spawn.call_args.args[0])
+        self.assertIsNone(self.scanner.active)
+        self.scanner.tick()
+        self.spawn.assert_called_once()
+        self.scanner.close()
+        self.process.kill.assert_called_once()
+
     def test_waits_for_idle_and_only_starts_one_process(self):
         self.now = 1
         self.scanner.tick()

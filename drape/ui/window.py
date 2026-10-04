@@ -389,6 +389,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
     # Installed-item actions and details
 
     def refresh_item(self, item_id=None):
+        if item_id is not None:
+            self.idle_inspector._refresh(item_id)
         for p in self.pages.values():
             p.refresh_cards(item_id)
         for profile in getattr(self, "_profiles", ()):

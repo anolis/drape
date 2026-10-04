@@ -55,7 +55,46 @@ class Index:
             PRIMARY KEY (item, filename, revision, origin))""")
         connection.execute("""CREATE TABLE IF NOT EXISTS observations (
             sequence INTEGER PRIMARY KEY AUTOINCREMENT, identity TEXT UNIQUE, record TEXT)""")
+        connection.execute("""CREATE TABLE IF NOT EXISTS installed_evidence (
+            item TEXT PRIMARY KEY, filename TEXT, changed TEXT, md5 TEXT,
+            parts TEXT, rules INTEGER)""")
         return connection
+
+    def record_installed(self, item_id, entry, parts):
+        """Installed subsets are local-only evidence and never prove archive completeness."""
+        with closing(self.connect()) as db, db:
+            db.execute(
+                "INSERT OR REPLACE INTO installed_evidence VALUES (?,?,?,?,?,?)",
+                (
+                    item_id,
+                    entry.get("file", ""),
+                    entry.get("changed", ""),
+                    entry.get("download_md5", ""),
+                    json.dumps(sorted(parts)),
+                    RULES_VERSION,
+                ),
+            )
+
+    @staticmethod
+    def _installed(db, item, file):
+        try:
+            row = db.execute(
+                "SELECT filename,changed,md5,parts,rules FROM installed_evidence WHERE item=?",
+                (item.id,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return None  # Databases made before local installed evidence was supported.
+        if row is None:
+            return None
+        filename, changed, checksum, parts, rules = row
+        if filename != file.name or changed != item.changed or rules != RULES_VERSION:
+            return None
+        if checksum and checksum.lower() != file.md5.lower():
+            return None
+        if not checksum and not changed:
+            return None  # No identity to match an old installation to a catalog revision.
+        parsed = set(json.loads(parts))
+        return (parsed, False) if parsed else None
 
     def read_many(self, items):
         """Read one snapshot without creating a DB, writing records or opening archives."""
@@ -81,6 +120,10 @@ class Index:
                             if complete or now - checked < 86400:
                                 results[item.id][file.index] = (parsed, bool(complete))
                                 break
+                        if file.index not in results[item.id]:
+                            local = self._installed(db, item, file)
+                            if local is not None:
+                                results[item.id][file.index] = local
         except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
             print(f"drape: compatibility index unavailable: {exc}", file=sys.stderr)
             return {item.id: {} for item in items}
@@ -100,6 +143,7 @@ class Index:
                 ORDER BY CASE origin WHEN 'local' THEN 0 ELSE 1 END""",
                 (item.id, file.name, self.revision(item, file), RULES_VERSION),
             ).fetchall()
+            local = self._installed(db, item, file)
         for parts, complete, checked, rules in rows:
             parsed = set(json.loads(parts))
             if not parsed and not complete and rules < 2:
@@ -108,7 +152,7 @@ class Index:
             # survives relaunches indefinitely; revisions and rules invalidate it.
             if complete or time.time() - checked < 86400:
                 return parsed, bool(complete)
-        return None
+        return local
 
     def record(self, item, file, result, kind, context, status, basis="archive"):
         parts, complete = result

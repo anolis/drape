@@ -179,6 +179,7 @@ with tempfile.TemporaryDirectory() as temp:
     import io
     now = [0]
     inspector = ViewportInspector(win)
+    inspector.local_manifest = None
     inspector.clock = lambda: now[0]
     inspector.index = compatibility.Index(Path(temp) / "viewport.sqlite3")
     process = mock.Mock(stdout=io.BytesIO(b'{"status":"checked"}'))

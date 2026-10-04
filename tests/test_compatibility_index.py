@@ -32,6 +32,19 @@ class CompatibilityIndexTest(unittest.TestCase):
             **kwargs,
         )
 
+    def test_installed_subset_is_partial_revision_specific_and_local_only(self):
+        entry = {"file": self.file.name, "changed": self.item.changed, "download_md5": "abc"}
+        self.index.record_installed(self.item.id, entry, {"gtk", "gtk-3.0"})
+        expected = ({"gtk", "gtk-3.0"}, False)
+        self.assertEqual(self.index.inspection(self.item, self.file), expected)
+        self.assertEqual(self.index.read_many([self.item]), {self.item.id: {1: expected}})
+        self.assertEqual(self.index.export()["observations"], [])
+        changed = replace(self.item, files=[replace(self.file, md5="different")])
+        self.assertEqual(self.index.read_many([changed]), {self.item.id: {}})
+        self.assertIsNone(self.index.inspection(changed, changed.files[0]))
+        self.record()
+        self.assertEqual(self.index.inspection(self.item, self.file), self.result)
+
     def test_reuses_exact_revision_and_invalidates_changed_checksum(self):
         self.record()
         self.assertEqual(self.index.inspection(self.item, self.file), self.result)

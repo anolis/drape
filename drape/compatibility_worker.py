@@ -91,8 +91,25 @@ def inspect_one(payload, index):
         return {"status": "failed"}
 
 
+def scan_installed(manifest, index):
+    """Backfill existing installations without catalog or file-host requests."""
+    from . import local_inspection
+    from .records import ManifestStore
+
+    count = 0
+    for item_id, entry in ManifestStore(manifest).load().items():
+        paths = [
+            component["path"] for component in entry.get("components", []) if component.get("path")
+        ]
+        parts, _ = local_inspection.inspect_paths(paths)
+        index.record_installed(item_id, entry, parts)
+        count += 1
+    return count
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--installed-local", type=Path, help="backfill installed theme evidence")
     parser.add_argument("--inspect-json", action="store_true", help="inspect one file from stdin")
     parser.add_argument("--request-interval", type=float, default=0)
     parser.add_argument("ids", nargs="*", help="public Pling item IDs to inspect")
@@ -109,7 +126,7 @@ def main(argv=None):
     parser.add_argument("--interval", type=float, default=1, help="seconds between items")
     args = parser.parse_args(argv)
     if (
-        not (args.ids or args.kind or args.inspect_json)
+        not (args.ids or args.kind or args.inspect_json or args.installed_local)
         or not 1 <= args.pages <= 100
         or args.memory_mib < 128
         or args.interval < 0
@@ -124,6 +141,14 @@ def main(argv=None):
     limit = min(limit, hard) if hard != resource.RLIM_INFINITY else limit
     resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
     index = compatibility.Index(args.database)
+    if args.installed_local:
+        try:
+            count = scan_installed(args.installed_local, index)
+            print(json.dumps({"status": "checked", "count": count}))
+            return 0
+        except (ValueError, OSError) as exc:
+            print(f"worker: local inspection failed: {exc}", file=sys.stderr)
+            return 1
     http.request_interval = args.request_interval
     if args.inspect_json:
         try:
