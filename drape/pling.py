@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import requests
+
 from . import http
 
 API = "https://api.pling.com/ocs/v1"
@@ -31,8 +32,8 @@ KINDS = [
     Kind("packs", "Theme packs", "135,123,133,125,138,121,722,104,112,114,717"),
     Kind("icons", "Icons", "132"),
     Kind("cursors", "Cursors", "107"),
-    Kind("gtk", "Controls", "135"),
-    Kind("kvantum", "Qt applications", "123"),
+    Kind("gtk", "GTK applications", "135"),
+    Kind("kvantum", "Kvantum (Qt)", "123"),
     Kind("wm", "Window borders", "125"),
     Kind("desktop", "Desktop", "133"),
     Kind("lookandfeel", "Global themes", "121,722"),

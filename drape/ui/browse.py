@@ -8,6 +8,7 @@ from .card_transitions import CardFlow, FadingCard
 from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, run_async
 from .gtk import GLib, Gtk, Pango
 from .images import _ui_busy_until, load_image
+from .navigation import DESCRIPTIONS
 from .scroll_state import ScrollState
 from .widgets import ApplyControl, Glyphs, WindowBordersHelp
 
@@ -362,6 +363,8 @@ class BrowsePage(Gtk.Box):
         self.next_chunk, self.total, self.fetching = 0, 0, False
         self.more.hide()
         categories, banner = self._scope()
+        description = GLib.markup_escape_text(DESCRIPTIONS.get(self.kind, ""))
+        banner = "\n\n".join(text for text in (description, banner) if text)
         self.banner.set_markup(banner)
         self.banner.set_visible(bool(banner))
         self.categories = categories

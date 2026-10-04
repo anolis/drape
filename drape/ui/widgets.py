@@ -2,16 +2,16 @@
 
 from pathlib import Path
 
-from .gtk import GLib, GdkPixbuf, Gtk
 from .. import desktop, installer, previews, settings
 from .common import PART_NAMES, _safe, in_use, matches, run_async
+from .gtk import GdkPixbuf, GLib, Gtk
 from .images import _renders
-
 
 # Window borders only reach apps that let the window manager draw their title bar
 WM_NOTE = (
-    "Window borders only show on apps with a classic title bar, like Files (Nemo). Apps that draw "
-    "their own title bar, like drape and most GNOME apps, follow your Controls theme instead."
+    "Window decorations affect frames and title bars drawn by the window manager. Apps that draw "
+    "their own title bar use their toolkit or their own appearance settings instead. GTK, "
+    "libadwaita and Kvantum styles have separate scopes."
 )
 
 

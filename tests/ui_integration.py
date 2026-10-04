@@ -17,6 +17,7 @@ from drape.ui import browse, installed, packs, profile, theme_actions
 from drape.ui.gtk import Gtk, GLib
 from drape.ui.scroll_state import ScrollState
 from drape.ui.qt_settings import QtSettingsPage
+from drape.ui.navigation import GROUPS, build_sidebar
 
 
 def pump(duration=0.1):
@@ -63,12 +64,50 @@ with tempfile.TemporaryDirectory() as temp:
             enable.assert_called_once()
             assert "log out and back in" in win.notify.call_args.args[0]
     qt_page.destroy()
+    # Grouping preserves page IDs and selection, and filtered engines leave no
+    # empty headers. Kvantum setup remains available to install a missing engine.
+    win.stack = Gtk.Stack()
+    for group, names in GROUPS:
+        for name in names:
+            win.stack.add_titled(Gtk.Box(), name, name)
+    win.stack.show_all()
+    win.stack.set_visible_child_name("installed")
+    hidden = {"desktop", "lookandfeel", "colors", "xfcepanel", "wm", "kvantum"}
+    win.page_visible = lambda name: name not in hidden
+    sidebar = build_sidebar(win)
+    win.add(sidebar)
+    win.show_all()
+    pump()
+    rows = win._sidebar_list.get_children()
+    visible = [row for row in rows if row.get_child_visible()]
+    headers = [row.get_header().get_text() for row in visible if row.get_header()]
+    assert all(row.get_header().get_visible() for row in visible if row.get_header())
+    assert "GTK APPLICATIONS" in headers and "QT / KVANTUM APPLICATIONS" in headers
+    assert "DESKTOP SHELL" not in headers
+    assert win._sidebar_list.get_selected_row().page == "installed"
+    gtk_row = next(row for row in rows if row.page == "gtk")
+    assert gtk_row.get_child().get_text() == "GTK themes"
+    assert "libadwaita" in gtk_row.get_tooltip_text()
+    qt_setup = next(row for row in visible if row.page == "qtsettings")
+    win._sidebar_list.select_row(qt_setup)
+    assert win.stack.get_visible_child_name() == "qtsettings"
+    hidden.clear()
+    win._sidebar_list.invalidate_filter()
+    pump()
+    visible = [row for row in rows if row.get_child_visible()]
+    assert "DESKTOP SHELL" in [row.get_header().get_text() for row in visible if row.get_header()]
+    sidebar.destroy()
+    win.stack.destroy()
+    win.stack = mock.Mock()
     with (
         mock.patch.object(installer, "load_manifest", return_value={}),
         mock.patch.object(desktop, "supported", return_value=True),
     ):
         page = browse.BrowsePage(win, "gtk")
         win.pages["gtk"] = page
+        with mock.patch.object(pling, "cached_search", return_value=None), mock.patch.object(browse, "run_async"):
+            page.load()
+            assert "libadwaita" in page.banner.get_text() and page.banner.get_visible()
         win.stack.get_visible_child.return_value = page
         win.add(page)
         win.show_all()

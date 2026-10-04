@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-from .gtk import GLib, Gtk
 from .. import desktop, installer, pling
 from ..installer import system_copies
 from .common import (
@@ -14,6 +13,7 @@ from .common import (
     run_async,
     system_theme_active,
 )
+from .gtk import GLib, Gtk
 from .install_progress import InstallProgress
 
 
@@ -141,7 +141,7 @@ class ThemeActions:
 
     def choose_installed_components(self, key, entry, kind):
         """A download's extra components require an explicit scope choice, not implicit application."""
-        from .packs import choices, apply_pack
+        from .packs import apply_pack, choices
 
         groups = choices(entry)
         if not kind or len(groups) < 2:
@@ -272,7 +272,7 @@ class ThemeActions:
             if any(p in applied for p in ("wm", "xfwm", "aurorae")):
                 self.notify(
                     f"Now using {component['name']} for window borders. They show on apps with a "
-                    "classic title bar, like Files; apps with their own title bar follow your Controls theme.",
+                    "classic title bar; apps that draw their own title bar use their toolkit or appearance settings instead.",
                     action=("Show me", self.show_border_sample),
                 )
             else:

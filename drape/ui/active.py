@@ -2,16 +2,16 @@
 
 from pathlib import Path
 
+from .. import desktop, installer, previews, system
+from .. import helper as root_helper
 from .card_transitions import FadingCard
-from .gtk import GLib, GdkPixbuf, Gtk, Pango
-from .. import desktop, helper as root_helper, installer, previews, system
 from .common import CARD_H, CARD_W, _safe
+from .gtk import GdkPixbuf, GLib, Gtk, Pango
 from .images import _renders, load_image
 
-
 ACTIVE_PARTS = [
-    ("gtk", "Controls"),
-    ("kvantum", "Qt applications"),
+    ("gtk", "GTK applications"),
+    ("kvantum", "Qt applications (Kvantum)"),
     ("wm", "Window borders"),
     ("desktop", "Desktop"),
     ("icons", "Icons"),

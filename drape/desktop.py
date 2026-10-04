@@ -11,7 +11,8 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 from gi.repository import Gio
-from . import kde, xfce, settings, qt, cursors
+
+from . import cursors, kde, qt, settings, xfce
 from .kde import ApplyError
 from .theme_css import NEW_DIALOG_RE, OLD_DIALOG_RE, cinnamon_css_imports, cinnamon_css_outdated
 
@@ -474,7 +475,7 @@ def category_label(kind, default):
     if kind == "desktop" and current_desktop() == "kde":
         return "Plasma style"
     if kind == "gtk":
-        return "GTK applications" if current_desktop() == "kde" else "Controls"
+        return "GTK applications"
     return default
 
 

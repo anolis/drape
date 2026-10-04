@@ -1,13 +1,13 @@
 """Shared theme metadata, matching and small UI helpers."""
 
-from pathlib import Path
 import sys
 import threading
+from pathlib import Path
 
-from .gtk import GLib, Gtk
-from .. import desktop, helper as root_helper, system
+from .. import desktop, system
+from .. import helper as root_helper
 from ..installer import system_file_name
-
+from .gtk import GLib, Gtk
 
 APP_ID = "io.github.anolis.Drape"
 
@@ -18,8 +18,8 @@ PART_NAMES = {
     "packs": "Theme pack",
     "icons": "Icons",
     "cursors": "Cursors",
-    "gtk": "Controls",
-    "kvantum": "Qt applications",
+    "gtk": "GTK applications",
+    "kvantum": "Qt applications (Kvantum)",
     "wm": "Window borders",
     "desktop": "Desktop",
     "wallpapers": "Wallpaper",
