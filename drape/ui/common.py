@@ -19,6 +19,7 @@ PART_NAMES = {
     "icons": "Icons",
     "cursors": "Cursors",
     "gtk": "GTK applications",
+    "libadwaita": "GNOME / libadwaita (GTK 4)",
     "kvantum": "Qt applications (Kvantum)",
     "wm": "Window borders",
     "desktop": "Desktop",
@@ -36,6 +37,7 @@ TAB_PART = {
     "icons": "icons",
     "cursors": "cursors",
     "gtk": "gtk",
+    "libadwaita": "libadwaita",
     "kvantum": "kvantum",
     "wm": "wm",
     "desktop": "desktop",
@@ -95,6 +97,8 @@ def system_theme_active(kind, name):
 
 
 def matches(kind, component):
+    if kind == "libadwaita":
+        return "libadwaita" in desktop.compatible_parts(component)
     if kind == "packs":
         return bool(set(desktop.compatible_parts(component)) & desktop.PACK_PARTS)
     if kind in ("wm", "desktop"):

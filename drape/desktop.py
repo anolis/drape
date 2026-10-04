@@ -12,7 +12,7 @@ from urllib.parse import unquote, urlsplit
 
 from gi.repository import Gio
 
-from . import cursors, kde, qt, settings, xfce
+from . import cursors, kde, libadwaita, qt, settings, xfce
 from .kde import ApplyError
 from .theme_css import NEW_DIALOG_RE, OLD_DIALOG_RE, cinnamon_css_imports, cinnamon_css_outdated
 
@@ -157,6 +157,8 @@ def _key(part):
 
 
 def supported(part):
+    if part == "libadwaita":
+        return current_desktop() == "gnome" and libadwaita.available()
     if part == "kvantum":
         return qt.supported()
     if part == "packs":
@@ -200,6 +202,8 @@ def _xfconf(key, value=None):
 
 
 def get(part):
+    if part == "libadwaita":
+        return libadwaita.get()
     if part == "kvantum":
         return qt.get()
     if part == "wallpapers" and current_desktop() == "xfce":
@@ -220,6 +224,13 @@ def get(part):
 
 
 def set_(part, value):
+    if part == "libadwaita":
+        if not supported(part):
+            return False
+        try:
+            return libadwaita.apply(value)
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            raise ApplyError(str(exc)) from exc
     if part == "kvantum":
         try:
             return qt.enable(value)
@@ -286,6 +297,8 @@ def apply_component(component, only=None):
     applied = []
     running_wm(refresh=True)
     for part in compatible_parts(component):
+        if part == "libadwaita" and only is None:
+            continue  # User CSS is applied only through an explicit native-GNOME choice.
         if only is not None and part not in {theme_part(p) for p in only}:
             continue
         value = Path(component["path"]).as_uri() if part == "wallpapers" else component["name"]
@@ -300,6 +313,12 @@ def compatible_parts(component):
     """Supported parts of a fully unpacked component; mixed packs keep usable parts."""
     result = []
     path = Path(component["path"])
+    if (
+        "gtk" in component["provides"]
+        and supported("libadwaita")
+        and (path / "gtk-4.0/gtk.css").is_file()
+    ):
+        result.append("libadwaita")
     for part in component["provides"]:
         if (
             part == "desktop"
@@ -339,7 +358,7 @@ def scope(kind, only=True):
     )
     if kind == "packs":
         categories = []
-        for category in ("gtk", "kvantum", "desktop", "wm", "lookandfeel", "colors"):
+        for category in ("gtk", "libadwaita", "kvantum", "desktop", "wm", "lookandfeel", "colors"):
             if supported(category):
                 scoped, _ = scope(category, True)
                 if scoped != "":
@@ -362,6 +381,11 @@ def scope(kind, only=True):
             "123",
             f"Kvantum widget themes for {versions}. Restart Qt apps after applying; log out and back in after first enabling the engine.",
         )
+    if kind == "libadwaita":
+        return (
+            "135",
+            "GTK 4 styles for native GNOME apps. GTK 4 files are required; archive contents do not guarantee a theme was designed for your libadwaita version.",
+        )
     if kind == "wm":
         return {
             "xfwm": "138",
@@ -380,6 +404,8 @@ def scope(kind, only=True):
 
 def archive_status(parts, complete, kind):
     """Contextual format checks, retaining an explicit state for unverified downloads."""
+    if "gtk-4.0" in parts:
+        parts = {*parts, "libadwaita"}
     if kind == "packs":
         usable = {p for p in parts if p in PACK_PARTS and supported(p)}
         if "wm" in usable and border_part() != "wm":
@@ -407,6 +433,10 @@ def archive_status(parts, complete, kind):
             return "compatible"
         return "incompatible" if complete else "unknown"
     target = theme_part(kind)
+    if target == "libadwaita":
+        if not supported(target):
+            return "incompatible"
+        return "compatible" if "gtk-4.0" in parts else "incompatible" if complete else "unknown"
     if not target or not supported(target):
         return "incompatible"
     if target not in parts:
@@ -671,6 +701,7 @@ def open_windows():
 
 PACK_PARTS = {
     "gtk",
+    "libadwaita",
     "kvantum",
     "desktop",
     "wm",
@@ -683,7 +714,7 @@ PACK_PARTS = {
     "cursors",
     "wallpapers",
 }
-PACK_ANCHORS = {"gtk", "kvantum", "desktop", "wm", "xfwm", "aurorae", "plasma"}
+PACK_ANCHORS = {"gtk", "libadwaita", "kvantum", "desktop", "wm", "xfwm", "aurorae", "plasma"}
 
 
 def _is_pack(parts):

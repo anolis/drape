@@ -158,6 +158,8 @@ class Card(FadingCard):
             page = self.win.pages.get(self.kind)
             if page:
                 GLib.idle_add(page._filtered_status)
+        if "gtk-4.0" in parts:
+            parts = {*parts, "libadwaita"}
         parts = {"wm" if p in ("xfwm", "aurorae") else p for p in parts}
         expected = (
             "plasma"
@@ -199,7 +201,7 @@ class Card(FadingCard):
                 "clicked",
                 lambda _b: self.win.install(
                     self.item,
-                    required_kind="packs" if self.kind == "packs" else None,
+                    required_kind=self.kind if self.kind in ("packs", "libadwaita") else None,
                     context_kind=self.kind or "all",
                 ),
             )
@@ -207,7 +209,14 @@ class Card(FadingCard):
             if self.kind:
                 b2 = Gtk.Button(label="Install & apply")
                 b2.get_style_context().add_class("suggested-action")
-                b2.connect("clicked", lambda _b: self.win.install(self.item, apply_kind=self.kind))
+                b2.connect(
+                    "clicked",
+                    lambda _b: self.win.install(
+                        self.item,
+                        apply_kind=self.kind,
+                        required_kind="libadwaita" if self.kind == "libadwaita" else None,
+                    ),
+                )
                 self.actions.pack_start(b2, False, False, 0)
         else:
             l = Gtk.Label(label="External download only")

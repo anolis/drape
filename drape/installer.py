@@ -499,6 +499,16 @@ def install_file(
             )
         from . import desktop, settings
 
+        if required_kind == "libadwaita" and not any(
+            "libadwaita"
+            in desktop.compatible_parts(
+                {"provides": c.provides, "path": str(c.path), "name": c.name}
+            )
+            for c in comps
+        ):
+            raise IncompatibleError(
+                "This download has no usable GTK 4 stylesheet for native GNOME apps. Nothing was installed."
+            )
         if required_kind == "packs":
             only_applicable = True
         if only_applicable is None:

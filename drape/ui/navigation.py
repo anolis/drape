@@ -8,6 +8,7 @@ from .gtk import GLib, Gtk
 GROUPS = (
     ("COLLECTIONS", ("packs", "installed")),
     ("GTK APPLICATIONS", ("gtk",)),
+    ("GNOME / LIBADWAITA", ("libadwaita", "libadwaitasettings")),
     ("QT / KVANTUM APPLICATIONS", ("kvantum", "qtsettings")),
     ("DESKTOP SHELL", ("desktop", "lookandfeel", "colors", "xfcepanel")),
     ("WINDOW DECORATIONS", ("wm", "windowmanager")),
@@ -16,7 +17,8 @@ GROUPS = (
 )
 
 DESCRIPTIONS = {
-    "gtk": "GTK application widgets such as buttons, menus and app-drawn title bars. Themes must support the app's GTK version. Modern GNOME Files and Settings use libadwaita's separate appearance and do not generally follow GTK 3 themes. This does not style Qt apps or custom-rendered apps such as Kitty.",
+    "libadwaita": "Native GNOME apps such as Files and Settings. Applies the theme's GTK 4 stylesheet through user CSS, with a backup and Restore action in Native GNOME setup. GTK 4 files are required, but may not be designed for your libadwaita version. Restart the apps after applying.",
+    "gtk": "GTK application widgets such as buttons, menus and app-drawn title bars. Themes must support the app's GTK version. For native GNOME Files and Settings, use GNOME / libadwaita with a GTK 4 stylesheet. This does not style Qt apps or custom-rendered apps such as Kitty.",
     "kvantum": "Qt widget applications using the Kvantum engine, such as OpenSnitch with its System appearance selected. This does not style GTK/libadwaita apps, Kitty, or window-manager decorations. Apps with their own styles and sandboxed runtimes may need separate setup.",
     "desktop": "Desktop panels, menus and shell widgets. Application widgets and window decorations use separate engines.",
     "wm": "Window frames and title bars drawn by the supported window manager. Apps that draw their own decorations use their own toolkit or settings instead.",
@@ -38,6 +40,8 @@ def page_label(name, default):
         )
     return {
         "gtk": "GTK themes",
+        "libadwaita": "GTK 4 themes",
+        "libadwaitasettings": "Native GNOME setup",
         "kvantum": "Kvantum themes",
         "qtsettings": "Kvantum setup",
     }.get(name, default)

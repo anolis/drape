@@ -12,12 +12,13 @@ import tempfile
 import time
 from pathlib import Path
 from unittest import mock
-from drape import desktop, installer, pling, settings, qt
+from drape import desktop, installer, pling, settings, qt, libadwaita
 from drape.ui import browse, installed, packs, profile, theme_actions
 from drape.ui.gtk import Gtk, GLib
 from drape.ui.scroll_state import ScrollState
 from drape.ui.qt_settings import QtSettingsPage
 from drape.ui.navigation import GROUPS, build_sidebar
+from drape.ui.libadwaita_settings import LibadwaitaSettingsPage
 
 
 def pump(duration=0.1):
@@ -64,6 +65,18 @@ with tempfile.TemporaryDirectory() as temp:
             enable.assert_called_once()
             assert "log out and back in" in win.notify.call_args.args[0]
     qt_page.destroy()
+    native_page = LibadwaitaSettingsPage(win)
+    with mock.patch.object(desktop, "get", return_value="Example"), mock.patch.object(desktop, "supported", return_value=True), mock.patch.object(libadwaita, "theme_dir", return_value=Path(temp)), mock.patch.object(libadwaita, "get", return_value=""), mock.patch.object(libadwaita, "configured", return_value=False):
+        native_page.load()
+        labels = [widget.get_label() for widget in native_page.body.get_children() if isinstance(widget, Gtk.Button)]
+        assert "Browse GTK 4 themes" in labels
+        assert "Restore previous native GNOME appearance" in labels
+        with mock.patch("drape.ui.libadwaita_settings.Gtk.MessageDialog") as dialog, mock.patch.object(libadwaita, "apply") as apply:
+            dialog.return_value.run.return_value = Gtk.ResponseType.NO
+            native_page._apply(None, "Example")
+            apply.assert_not_called()
+            assert "gtk.css" in dialog.return_value.format_secondary_text.call_args.args[0]
+    native_page.destroy()
     # Grouping preserves page IDs and selection, and filtered engines leave no
     # empty headers. Kvantum setup remains available to install a missing engine.
     win.stack = Gtk.Stack()
@@ -72,7 +85,7 @@ with tempfile.TemporaryDirectory() as temp:
             win.stack.add_titled(Gtk.Box(), name, name)
     win.stack.show_all()
     win.stack.set_visible_child_name("installed")
-    hidden = {"desktop", "lookandfeel", "colors", "xfcepanel", "wm", "kvantum"}
+    hidden = {"desktop", "lookandfeel", "colors", "xfcepanel", "wm", "kvantum", "libadwaita", "libadwaitasettings"}
     win.page_visible = lambda name: name not in hidden
     sidebar = build_sidebar(win)
     win.add(sidebar)
@@ -84,6 +97,7 @@ with tempfile.TemporaryDirectory() as temp:
     assert all(row.get_header().get_visible() for row in visible if row.get_header())
     assert "GTK APPLICATIONS" in headers and "QT / KVANTUM APPLICATIONS" in headers
     assert "DESKTOP SHELL" not in headers
+    assert "GNOME / LIBADWAITA" not in headers
     assert win._sidebar_list.get_selected_row().page == "installed"
     gtk_row = next(row for row in rows if row.page == "gtk")
     assert gtk_row.get_child().get_text() == "GTK themes"
@@ -96,6 +110,7 @@ with tempfile.TemporaryDirectory() as temp:
     pump()
     visible = [row for row in rows if row.get_child_visible()]
     assert "DESKTOP SHELL" in [row.get_header().get_text() for row in visible if row.get_header()]
+    assert "GNOME / LIBADWAITA" in [row.get_header().get_text() for row in visible if row.get_header()]
     sidebar.destroy()
     win.stack.destroy()
     win.stack = mock.Mock()

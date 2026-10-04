@@ -130,6 +130,10 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
 
         self.qtpage = QtSettingsPage(self)
         self.stack.add_titled(self.qtpage, "qtsettings", "Qt appearance")
+        from .libadwaita_settings import LibadwaitaSettingsPage
+
+        self.libadwaitapage = LibadwaitaSettingsPage(self)
+        self.stack.add_titled(self.libadwaitapage, "libadwaitasettings", "Native GNOME setup")
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
         side = self._sidebar()
@@ -178,6 +182,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.set_icon_name("preferences-desktop-theme")
 
     def page_visible(self, name):
+        if name == "libadwaitasettings":
+            return desktop.supported("libadwaita") or desktop.libadwaita.configured()
         if name == "xfcepanel":
             return desktop.current_desktop() == "xfce"
         return name not in self.pages or desktop.category_visible(
@@ -332,6 +338,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.wmpage,
             self.xfcepage,
             self.qtpage,
+            self.libadwaitapage,
         )
         self.search.set_sensitive(searchable)
         self.sort_combo.set_sensitive(searchable)
@@ -343,6 +350,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.xfcepage.load()
         elif child is self.qtpage:
             self.qtpage.load()
+        elif child is self.libadwaitapage:
+            self.libadwaitapage.load()
         elif child is self.installed:
             self.installed.load()
         elif not child.loaded:

@@ -13,6 +13,7 @@ ORDER = [
     "plasma",
     "colors",
     "gtk",
+    "libadwaita",
     "desktop",
     "wm",
     "xfwm",
@@ -38,6 +39,10 @@ def choices(entry):
 def component_notes(entry, groups):
     """Metatheme references suggest companion themes; they do not install those files."""
     notes = [f"{len(groups)} compatible components for this desktop."]
+    if "libadwaita" in groups:
+        notes.append(
+            "GNOME / libadwaita replaces your user GTK 4 stylesheet (gtk.css) with an import of the selected theme, using GNOME's light/dark preference. The original file is backed up; restore it from Native GNOME setup. Restart native GNOME apps afterward."
+        )
     included = {part for component in entry["components"] for part in component["provides"]}
     references = set()
     for component in entry["components"]:
@@ -121,6 +126,8 @@ def apply_pack(window, key, only_kind=None):
             applied.extend(done)
     if applied:
         note = " " + desktop.qt.RESTART_NOTE if "kvantum" in applied else ""
+        if "libadwaita" in applied:
+            note += " " + desktop.libadwaita.RESTART_NOTE
         if "cursors" in applied:
             note += " " + desktop.cursors.RESTART_NOTE
         window.notify(

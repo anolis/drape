@@ -33,6 +33,7 @@ KINDS = [
     Kind("icons", "Icons", "132"),
     Kind("cursors", "Cursors", "107"),
     Kind("gtk", "GTK applications", "135"),
+    Kind("libadwaita", "GNOME / libadwaita", "135"),
     Kind("kvantum", "Kvantum (Qt)", "123"),
     Kind("wm", "Window borders", "125"),
     Kind("desktop", "Desktop", "133"),

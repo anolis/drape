@@ -11,6 +11,7 @@ from .images import _renders, load_image
 
 ACTIVE_PARTS = [
     ("gtk", "GTK applications"),
+    ("libadwaita", "GNOME / libadwaita"),
     ("kvantum", "Qt applications (Kvantum)"),
     ("wm", "Window borders"),
     ("desktop", "Desktop"),
@@ -35,7 +36,7 @@ def locate_theme(part, name):
         return desktop.qt.locate(name)
     if desktop.current_desktop() == "kde" and desktop.theme_part(part) in desktop.kde.DIRECTORIES:
         return desktop.kde.locate(desktop.theme_part(part), name)
-    if part in ("gtk", "wm", "desktop"):
+    if part in ("gtk", "libadwaita", "wm", "desktop"):
         return desktop.find_theme_dir(name)
     for base in (installer.ICONS_DIR, installer.CURSORS_DIR, Path("/usr/share/icons")):
         if (base / name).is_dir():

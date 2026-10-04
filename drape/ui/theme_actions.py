@@ -263,6 +263,11 @@ class ThemeActions:
                 Gtk.MessageType.WARNING,
             )
             return
+        if "libadwaita" in (only or []):
+            from .libadwaita_settings import confirm_application
+
+            if not confirm_application(self, component["name"]):
+                return
         try:
             applied = desktop.apply_component(component, only)
         except desktop.ApplyError as e:
@@ -277,6 +282,8 @@ class ThemeActions:
                 )
             else:
                 note = " " + desktop.qt.RESTART_NOTE if "kvantum" in applied else ""
+                if "libadwaita" in applied:
+                    note += " " + desktop.libadwaita.RESTART_NOTE
                 if "cursors" in applied:
                     note += " " + desktop.cursors.RESTART_NOTE
                 self.notify(f"Now using {component['name']} ({', '.join(applied)})." + note)

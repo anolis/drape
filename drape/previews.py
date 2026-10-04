@@ -365,7 +365,7 @@ def theme_preview_path(theme_dir, kind):
         return theme_dir / "cinnamon" / "thumbnail.png"
     if kind == "wm" and (theme_dir / "metacity-1" / "thumbnail.png").is_file():
         return theme_dir / "metacity-1" / "thumbnail.png"
-    if kind == "xfwm":
+    if kind in ("xfwm", "libadwaita"):
         return None
     if (theme_dir / "gtk-3.0").is_dir():
         out = _cache_path(theme_dir, "gtk", "gtk-3.0/gtk.css")
@@ -383,6 +383,8 @@ def theme_preview_path(theme_dir, kind):
 def preview(component, kind):
     """Return a Pixbuf for icons/cursors (fast, main thread) or None for themes that need
     theme_preview_path() on a worker thread."""
+    if kind == "libadwaita":
+        return None  # A GTK 3 sample is not a preview of native GTK 4/libadwaita widgets.
     theme_dir = Path(component["path"])
     if kind == "icons" or ("icons" in component["provides"] and kind != "cursors"):
         return icon_preview(theme_dir)

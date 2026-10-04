@@ -129,6 +129,7 @@ class Glyphs(Gtk.Box):
         "lookandfeel",
         "colors",
         "gtk",
+        "libadwaita",
         "kvantum",
         "wm",
         "aurorae",
@@ -158,6 +159,7 @@ class Glyphs(Gtk.Box):
                 "lookandfeel": "desktop",
                 "colors": "gtk",
                 "kvantum": "gtk",
+                "libadwaita": "gtk",
                 "aurorae": "wm",
             }.get(p, p)
             img = Gtk.Image.new_from_icon_name(f"drape-part-{glyph}-symbolic", Gtk.IconSize.MENU)
