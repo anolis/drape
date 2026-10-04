@@ -69,6 +69,7 @@ shared assets, and startup/login screens. Every theme catalog explains its scope
 | Theme type | What it changes |
 | --- | --- |
 | GTK applications | GTK app widgets, with support for the app's GTK version required |
+| GNOME / libadwaita | Native GNOME apps through an explicitly applied GTK 4 user stylesheet |
 | Kvantum (Qt) | Qt widget apps such as OpenSnitch using their System appearance |
 | Desktop shell | Panels, menus and shell widgets for the supported desktop |
 | Window decorations | Frames and title bars drawn by a supported window manager |
@@ -76,7 +77,20 @@ shared assets, and startup/login screens. Every theme catalog explains its scope
 
 Modern GNOME Files and Settings use libadwaita, which provides its own appearance.
 They do not generally follow downloaded GTK 3 themes, and Kvantum does not affect
-them. Kitty uses its own rendering and appearance settings; on GNOME Wayland its
+them. Use **GNOME / libadwaita → GTK 4 themes** for GTK 4 styles, or **Native GNOME setup**
+to apply the current GTK theme's GTK 4 files. Applying replaces
+`$XDG_CONFIG_HOME/gtk-4.0/gtk.css` with an import of the theme's stylesheet after
+confirmation and parser validation. The original file, permissions or symlink are
+saved in `$XDG_CONFIG_HOME/drape/libadwaita-restore.json` before the first change.
+Later theme switches retain that baseline. **Restore previous native GNOME appearance**
+restores it; conflicting edits are reported instead of overwritten. Other GTK settings
+and theme files are preserved. GNOME's dark preference selects `gtk-dark.css` when
+available, otherwise `gtk.css`; reapply after changing the preference. Restart native
+apps after applying or restoring. GTK 4 file presence and valid syntax do not guarantee
+that a stylesheet covers every libadwaita widget or version. Sandboxed apps may need
+their own configuration access.
+
+Kitty uses its own rendering and appearance settings; on GNOME Wayland its
 titlebar color is controlled by `wayland_titlebar_color`. Its styling is separate
 from GTK and Qt themes. Drape does not rewrite launchers or force a different
 display backend to change these decorations.
@@ -86,4 +100,5 @@ References: [Kvantum setup and theme paths](https://github.com/tsujan/Kvantum/bl
 [Arch Kvantum packages](https://archlinux.org/packages/extra/x86_64/kvantum/), and
 [OpenSnitch's custom UI themes](https://github.com/evilsocket/opensnitch/wiki/Events-window-themes),
 [Libadwaita appearance](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/styles-and-appearance.html),
+[GTK 4 user stylesheets](https://docs.gtk.org/gtk4/class.CssProvider.html),
 [Kitty titlebar settings](https://sw.kovidgoyal.net/kitty/conf/#opt-kitty.wayland_titlebar_color).

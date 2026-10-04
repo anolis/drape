@@ -2,6 +2,7 @@
   "2026-10-04": {
     "title": "Clear theme engines and reversible Qt appearance",
     "changes": [
+      "Added a dedicated GNOME/libadwaita section for GTK 4 styles, plus native GNOME setup and restoration. Apply validates CSS in an isolated GTK 4 process, confirms the user stylesheet replacement and preserves the original file or symlink across theme switches. Native GTK 4-only themes can install and appear in Installed; GTK 3-only downloads are rejected from this section. Dark-mode imports follow GNOME's preference at apply time. Native apps need a restart, and GTK 4 files alone do not guarantee coverage of every libadwaita widget.",
       "Grouped navigation by theme engine and scope: GTK applications, Qt/Kvantum applications, desktop shells, window decorations, shared assets and startup/login screens. Added catalog explanations, including GNOME Files/Settings libadwaita limitations, and replaced ambiguous Controls labels with GTK applications. Filtering and saved page IDs are preserved.",
       "Added visible theme type explanations to uploader profile cards, including GTK controls, Kvantum Qt widgets, desktop styles and window borders. Catalog labels are kept separate from compatibility evidence, with a clear fallback for unrecognized uploads.",
       "Fixed Qt and cursor setup for SDDM sessions using zsh or a separate bash login profile. Appearance exports now cover the active shell and X session startup files, preserving other login setup.",

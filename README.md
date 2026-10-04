@@ -58,6 +58,12 @@ click. No hunting for archives, no guessing which folder things go in.
   desktop shells, window decorations and shared assets separately. Each catalog explains
   what it changes. Modern GNOME Files and Settings use libadwaita's separate appearance;
   selecting a GTK 3 theme or a Kvantum theme does not restyle those apps.
+- **Styles native GNOME apps separately.** **GNOME / libadwaita → GTK 4 themes** offers
+  themes with GTK 4 styling, and **Native GNOME setup** can apply the current theme's
+  GTK 4 stylesheet. Applying confirms the user CSS change, validates it with GTK 4
+  and backs up the original file or symlink. Restore returns the original appearance.
+  GTK 4 files are required; visual compatibility with every libadwaita widget is not
+  guaranteed. Restart native GNOME apps after applying.
 - **Supports KDE Plasma.** Plasma styles, global themes, color schemes and Aurorae window
   decorations install into their native user data folders. Icons, cursors and wallpapers use
   Plasma's apply tools too. Catalog selection follows Plasma 5/6, with KWin detected on X11
