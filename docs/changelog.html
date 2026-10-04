@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">71 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/b258ef33dde76bc26210389daa37ab89fcc3e967">b258ef3</a>.
+      <p class="note">73 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/ac00e6f4672807431971a2e1c1f96188d17e7a2d">ac00e6f</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -163,6 +163,7 @@
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
       <h2 id="title-2026-10-04">Clear theme engines and reversible Qt appearance</h2>
       <ul class="changes">
+        <li>Added idle checks for visible theme cards in browsing and uploader profiles. One bounded worker runs outside GTK, paces requests and cancels when its card leaves view or the section closes. Rate limits pause the queue without saving incompatibility. Complete evidence persists across launches until the download revision or inspection rules change; partial listings are cached for a day. Automatic checks have a menu toggle.</li>
         <li>Fixed GTK 4 themes that import styles and assets from gtk.gresource. Drape now prepares bounded, content-addressed local resource files and rewrites CSS resource URLs before validation and application, so native GNOME apps do not need to register the theme bundle. Missing bundles and invalid GTK 4 syntax still fail safely.</li>
         <li>Added a dedicated GNOME/libadwaita section for GTK 4 styles, plus native GNOME setup and restoration. Apply validates CSS in an isolated GTK 4 process, confirms the user stylesheet replacement and preserves the original file or symlink across theme switches. Native GTK 4-only themes can install and appear in Installed; GTK 3-only downloads are rejected from this section. Dark-mode imports follow GNOME&#x27;s preference at apply time. Native apps need a restart, and GTK 4 files alone do not guarantee coverage of every libadwaita widget.</li>
         <li>Grouped navigation by theme engine and scope: GTK applications, Qt/Kvantum applications, desktop shells, window decorations, shared assets and startup/login screens. Added catalog explanations, including GNOME Files/Settings libadwaita limitations, and replaced ambiguous Controls labels with GTK applications. Filtering and saved page IDs are preserved.</li>
@@ -173,8 +174,10 @@
         <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 11 commits</summary>
+        <summary>View 13 commits</summary>
         <ol class="commits">
+          <li data-commit="ac00e6f4672807431971a2e1c1f96188d17e7a2d"><a class="commit" href="https://github.com/anolis/drape/commit/ac00e6f4672807431971a2e1c1f96188d17e7a2d">ac00e6f</a><span>feat: inspect idle visible cards with cancellable cached workers</span></li>
+          <li data-commit="a2d6c5ab3d29e44139d91d86c63e32477502d900"><a class="commit" href="https://github.com/anolis/drape/commit/a2d6c5ab3d29e44139d91d86c63e32477502d900">a2d6c5a</a><span>docs: explain GTK resource-packed theme support</span></li>
           <li data-commit="b258ef33dde76bc26210389daa37ab89fcc3e967"><a class="commit" href="https://github.com/anolis/drape/commit/b258ef33dde76bc26210389daa37ab89fcc3e967">b258ef3</a><span>fix: resolve bundled GTK resources for native GNOME styles</span></li>
           <li data-commit="d59a8c504a55ebd976475466f62a38167d7c3c08"><a class="commit" href="https://github.com/anolis/drape/commit/d59a8c504a55ebd976475466f62a38167d7c3c08">d59a8c5</a><span>docs: explain native GNOME GTK 4 themes and restoration</span></li>
           <li data-commit="fb6810e2c47412de601fef66704f6c7e97302396"><a class="commit" href="https://github.com/anolis/drape/commit/fb6810e2c47412de601fef66704f6c7e97302396">fb6810e</a><span>feat: add reversible native GNOME and libadwaita styling</span></li>

@@ -72,8 +72,10 @@ click. No hunting for archives, no guessing which folder things go in.
   [desktop compatibility](docs/compatibility.md) for category mappings and limitations.
 - **Matches the running desktop and window manager.** With **Hide incompatible themes for this desktop** enabled (the default), window borders are scoped to Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae,
   and Cinnamon desktop themes are excluded from other sessions. Known incompatible downloads
-  are filtered after archive inspection; incomplete or unrecognized listings stay hidden
-  while filtering is enabled. Turn the filter off to browse unverified downloads. GTK controls require a GTK 3 component.
+  are filtered after archive inspection; unverified downloads remain visible. After scrolling
+  stops, a single bounded worker slowly checks visible cards; leaving the viewport cancels
+  the check. Complete evidence is cached across launches until the download or rules change.
+  Automatic checks can be disabled in the menu. GTK controls require a GTK 3 component.
   Mixed archives install usable components, and Apply checks compatibility again. The default
   download selection tries another variant if the first is incompatible; an explicitly chosen
   download is never silently substituted. The sidebar and Installed category tabs always hide unsupported sections and update when the window manager changes.

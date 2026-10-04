@@ -1,9 +1,22 @@
 # Independent compatibility worker
 
-Browsing reads the local compatibility index. It never opens theme archives or starts
-compatibility scan/retry jobs. Unknown themes stay visible with “Compatibility unverified”;
-only known incompatible results are hidden. Installed-file checks and install/apply
-validation still follow the desktop and window manager in use.
+Cards load immediately from catalog data and the local compatibility index. Unknown
+cards remain visible with “Compatibility unverified”; known mismatches are filtered.
+After the active view stops scrolling for two seconds, Drape checks missing evidence
+for visible cards using this separate worker. Archive work never runs in the GTK process.
+
+Only one file is checked at a time, with a three-second pause between requests and a
+five-second gap between jobs. Each process has a 384 MiB address-space limit and a
+90-second deadline. Leaving the viewport, switching sections, closing a profile or
+leaving the active window cancels its check. Cancelled and failed checks save no verdict.
+HTTP 429 pauses the queue for the reported cooldown. Disable automatic checks through
+**☰ → Inspect visible themes when scrolling stops**; existing index evidence still works.
+
+Complete inspections persist across launches until the checksum/modification date or
+inspection rules change. Incomplete listings are cached for a day before another attempt.
+The index is stored at `~/.local/share/drape/compatibility.sqlite3` (or under
+`$XDG_DATA_HOME`). Evidence is evaluated against the current desktop, so changing
+sessions does not require downloading the same archives again.
 
 Run archive inspection explicitly in a separate process:
 
@@ -20,8 +33,9 @@ is bounded. HTTP 429 and failed inspections save no verdict; rerun later to retr
 Exit status is 0 for success, 2 for deferred/failed file checks, and 1 for job errors.
 
 By default it updates the local `compatibility.sqlite3` and writes `compatibility.json`
-in the working directory. Close and reopen a catalog section to read updated evidence.
-Each record is keyed by item, filename and checksum/modification date. Already fresh
+in the working directory. Visible cards refresh their evidence during idle checks; with automatic checks disabled,
+close and reopen a catalog section to read updated evidence.
+Each record is keyed by item, filename and checksum/modification date. Complete and recently incomplete
 results are reused, and unchanged observations do not advance the diff cursor.
 It records archive formats and stylesheet markers, with status `unknown` and headless
 scanner context. The app evaluates that evidence against its own desktop and versions;
