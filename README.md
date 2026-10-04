@@ -47,13 +47,17 @@ click. No hunting for archives, no guessing which folder things go in.
   Xcursor defaults, X11 resources and the login environment. Apps such as Kitty can retain
   cursor images until restarted; apps reading launch-time environment settings may need
   one logout/login. Existing profile, Qt and Xft settings are preserved.
-- **Themes Qt widget applications.** The **Qt applications** catalog offers Kvantum themes
-  across desktops, including companions in theme packs. **Settings → Qt appearance** detects
+- **Themes Qt widget applications.** The **Kvantum themes** catalog offers Qt widget themes
+  across desktops, including companions in theme packs. **Qt / Kvantum applications → Kvantum setup** detects
   Qt 5/6 engines, offers repository installation, shows session activation and restores the
   previous Qt appearance from a backup. Log out and back in after first setup; restart Qt
   apps after later theme switches. Menu and autostart commands are left untouched.
   Apps with custom stylesheets or sandboxed runtimes may need their own settings. See
   [Qt setup](docs/qt.md).
+- **Makes theme scope clear.** Navigation groups GTK applications, Qt/Kvantum applications,
+  desktop shells, window decorations and shared assets separately. Each catalog explains
+  what it changes. Modern GNOME Files and Settings use libadwaita's separate appearance;
+  selecting a GTK 3 theme or a Kvantum theme does not restyle those apps.
 - **Supports KDE Plasma.** Plasma styles, global themes, color schemes and Aurorae window
   decorations install into their native user data folders. Icons, cursors and wallpapers use
   Plasma's apply tools too. Catalog selection follows Plasma 5/6, with KWin detected on X11
@@ -145,7 +149,7 @@ when GNOME updates.
 
 ## Install
 
-Needs Python 3.12+, PyGObject with GTK 3, Pillow and Requests, plus polkit for boot splash and login screen changes. Xfce uses `xfconf-query`; KDE uses its native Plasma apply tools. Qt widget themes require a Kvantum plugin for the app's Qt major version; **Settings → Qt appearance** detects Qt 5/6 engines and offers installation from configured Arch or Debian/Ubuntu repositories.
+Needs Python 3.12+, PyGObject with GTK 3, Pillow and Requests, plus polkit for boot splash and login screen changes. Xfce uses `xfconf-query`; KDE uses its native Plasma apply tools. Qt widget themes require a Kvantum plugin for the app's Qt major version; **Qt / Kvantum applications → Kvantum setup** detects Qt 5/6 engines and offers installation from configured Arch or Debian/Ubuntu repositories.
 
 If dependencies are missing, Drape offers to install them on Arch-based distributions (including CachyOS) and Debian/Ubuntu-based distributions. Terminal launches use a y/n prompt and `sudo`; menu launches use a dialog and `pkexec`. If GTK's Python bindings are missing, the dialog uses KDialog or Zenity when available. Installation only runs after you accept, and Drape resumes after a successful installation.
 

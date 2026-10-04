@@ -1,10 +1,10 @@
 # Qt application themes
 
-Drape's **Qt applications** section browses the Pling Kvantum catalog (category 123).
+Drape's **Kvantum themes** section browses the Pling Kvantum catalog (category 123).
 It is available on any desktop when a Kvantum style plugin is installed. GTK themes
 do not style Qt widgets; many authors publish matching GTK and Kvantum themes.
 
-Open **Settings → Qt appearance** to see which engines are present. Qt 5 and Qt 6
+Open **Qt / Kvantum applications → Kvantum setup** to see which engines are present. Qt 5 and Qt 6
 need separate plugins. The page offers installation from configured repositories
 on Arch-based and Debian/Ubuntu-based systems, with a confirmation and administrator
 authentication. An unavailable package or an apt plan that would remove packages is
@@ -61,7 +61,29 @@ their sandbox. Qt Quick/QML applications use a different styling system. Drape d
 not install arbitrary compiled style plugins from theme archives or execute theme
 installation scripts.
 
+## Which apps does each engine affect?
+
+The sidebar separates application engines from desktop shells, window decorations,
+shared assets, and startup/login screens. Every theme catalog explains its scope.
+
+| Theme type | What it changes |
+| --- | --- |
+| GTK applications | GTK app widgets, with support for the app's GTK version required |
+| Kvantum (Qt) | Qt widget apps such as OpenSnitch using their System appearance |
+| Desktop shell | Panels, menus and shell widgets for the supported desktop |
+| Window decorations | Frames and title bars drawn by a supported window manager |
+| Shared assets | Icons, cursors and wallpapers, independently of widget themes |
+
+Modern GNOME Files and Settings use libadwaita, which provides its own appearance.
+They do not generally follow downloaded GTK 3 themes, and Kvantum does not affect
+them. Kitty uses its own rendering and appearance settings; on GNOME Wayland its
+titlebar color is controlled by `wayland_titlebar_color`. Its styling is separate
+from GTK and Qt themes. Drape does not rewrite launchers or force a different
+display backend to change these decorations.
+
 References: [Kvantum setup and theme paths](https://github.com/tsujan/Kvantum/blob/master/Kvantum/INSTALL.md),
 [Kvantum selection configuration](https://github.com/tsujan/Kvantum/blob/master/Kvantum/kvantummanager/KvCommand.cpp),
 [Arch Kvantum packages](https://archlinux.org/packages/extra/x86_64/kvantum/), and
-[OpenSnitch's custom UI themes](https://github.com/evilsocket/opensnitch/wiki/Events-window-themes).
+[OpenSnitch's custom UI themes](https://github.com/evilsocket/opensnitch/wiki/Events-window-themes),
+[Libadwaita appearance](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest/styles-and-appearance.html),
+[Kitty titlebar settings](https://sw.kovidgoyal.net/kitty/conf/#opt-kitty.wayland_titlebar_color).

@@ -154,15 +154,16 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">65 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/05182ac05d2d053b3ba7e18ccfff3590e3fae628">05182ac</a>.
+      <p class="note">67 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/74db8c88bd39446b19a30fbf2d07cd5ecdd05941">74db8c8</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
     <section class="entry" id="day-2026-10-04" aria-labelledby="title-2026-10-04">
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
-      <h2 id="title-2026-10-04">Session-wide Qt appearance with restoration</h2>
+      <h2 id="title-2026-10-04">Clear theme engines and reversible Qt appearance</h2>
       <ul class="changes">
+        <li>Grouped navigation by theme engine and scope: GTK applications, Qt/Kvantum applications, desktop shells, window decorations, shared assets and startup/login screens. Added catalog explanations, including GNOME Files/Settings libadwaita limitations, and replaced ambiguous Controls labels with GTK applications. Filtering and saved page IDs are preserved.</li>
         <li>Added visible theme type explanations to uploader profile cards, including GTK controls, Kvantum Qt widgets, desktop styles and window borders. Catalog labels are kept separate from compatibility evidence, with a clear fallback for unrecognized uploads.</li>
         <li>Fixed Qt and cursor setup for SDDM sessions using zsh or a separate bash login profile. Appearance exports now cover the active shell and X session startup files, preserving other login setup.</li>
         <li>Made the Qt appearance page show saved setup status and the selected theme, refreshing immediately after enabling or restoring defaults.</li>
@@ -170,8 +171,10 @@
         <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 5 commits</summary>
+        <summary>View 7 commits</summary>
         <ol class="commits">
+          <li data-commit="74db8c88bd39446b19a30fbf2d07cd5ecdd05941"><a class="commit" href="https://github.com/anolis/drape/commit/74db8c88bd39446b19a30fbf2d07cd5ecdd05941">74db8c8</a><span>feat: organize theme navigation by engine and scope</span></li>
+          <li data-commit="193dc2a55492470ff7b9c23ebb0f4f1840fdb460"><a class="commit" href="https://github.com/anolis/drape/commit/193dc2a55492470ff7b9c23ebb0f4f1840fdb460">193dc2a</a><span>docs: record profile theme type explanations</span></li>
           <li data-commit="05182ac05d2d053b3ba7e18ccfff3590e3fae628"><a class="commit" href="https://github.com/anolis/drape/commit/05182ac05d2d053b3ba7e18ccfff3590e3fae628">05182ac</a><span>feat: explain theme types in uploader profile listings</span></li>
           <li data-commit="09d798dba514e8deb87e1b245f36fcc3cc23c056"><a class="commit" href="https://github.com/anolis/drape/commit/09d798dba514e8deb87e1b245f36fcc3cc23c056">09d798d</a><span>docs: explain session-wide Qt setup and restoration</span></li>
           <li data-commit="6c82cf961118b584ddcd99322c8cc42d0b7f7465"><a class="commit" href="https://github.com/anolis/drape/commit/6c82cf961118b584ddcd99322c8cc42d0b7f7465">6c82cf9</a><span>feat: make session-wide Qt appearance reversible</span></li>

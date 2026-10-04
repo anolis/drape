@@ -1,7 +1,8 @@
 {
   "2026-10-04": {
-    "title": "Session-wide Qt appearance with restoration",
+    "title": "Clear theme engines and reversible Qt appearance",
     "changes": [
+      "Grouped navigation by theme engine and scope: GTK applications, Qt/Kvantum applications, desktop shells, window decorations, shared assets and startup/login screens. Added catalog explanations, including GNOME Files/Settings libadwaita limitations, and replaced ambiguous Controls labels with GTK applications. Filtering and saved page IDs are preserved.",
       "Added visible theme type explanations to uploader profile cards, including GTK controls, Kvantum Qt widgets, desktop styles and window borders. Catalog labels are kept separate from compatibility evidence, with a clear fallback for unrecognized uploads.",
       "Fixed Qt and cursor setup for SDDM sessions using zsh or a separate bash login profile. Appearance exports now cover the active shell and X session startup files, preserving other login setup.",
       "Made the Qt appearance page show saved setup status and the selected theme, refreshing immediately after enabling or restoring defaults.",
