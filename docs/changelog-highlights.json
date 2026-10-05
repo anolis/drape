@@ -2,6 +2,7 @@
   "2026-10-04": {
     "title": "Clear theme engines and reversible Qt appearance",
     "changes": [
+      "Fixed cached preview completion running inside a GTK draw callback, where removing an overlay spinner could invalidate GTK’s drawing child list. Preview delivery and scanner indicator updates now wait for the main-loop idle phase; queued results still skip destroyed widgets. Added cached-preview scrolling and callback-lifecycle regressions while retaining immediate off-screen worker cancellation.",
       "Added visible compatibility scanner status in the main window and uploader profiles, per-card activity spinners and a count-based progress bar for saved-theme indexing. Rate-limit countdowns, scrolling waits, cancellations and failures are explicit; local progress reaches 100% only after the worker exits successfully.",
       "Clarified native GNOME theme refresh instructions: current GNOME/X11 draws non-GTK app title bars, including Kitty’s, through a shared GTK 4/libadwaita frame renderer. Logout/login refreshes that renderer; restarting Kitty only refreshes Kitty.",
       "Inspect downloaded archives locally during installation and cache all discovered components before desktop filtering. An immediate bounded offline startup worker backfills existing installations, retaining partial evidence without claiming the original archive lacked discarded components. Cache failures cannot break installation, and local installed subsets are kept out of community exports.",
