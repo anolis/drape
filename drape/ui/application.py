@@ -3,7 +3,7 @@
 from pathlib import Path
 import sys
 
-from .gtk import Gdk, Gio, Gtk
+from .gtk import Gdk, Gio, GLib, Gtk
 from .. import installer
 from .common import APP_ID, error_dialog
 from .widgets import GLYPH_CSS
@@ -13,9 +13,13 @@ from .window import Window
 class App(Gtk.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_OPEN)
+        from .tray import WallpaperTray
+
+        self.wallpaper_tray = WallpaperTray(self)
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
+        GLib.idle_add(self.wallpaper_tray.reconnect)
         Gtk.IconTheme.get_default().append_search_path(
             str(Path(__file__).resolve().parents[2] / "data" / "icons")
         )
@@ -47,6 +51,17 @@ class App(Gtk.Application):
             uri = f.get_uri()
             if uri.startswith(("ocs:", "ocss:")):
                 win.install_link(uri)
+
+    def do_shutdown(self):
+        if self.wallpaper_tray.icon is not None and not self.wallpaper_tray.quitting:
+            from .. import video_wallpapers
+
+            try:
+                video_wallpapers.request("quit")
+            except video_wallpapers.VideoError as exc:
+                print(f"drape: {exc}", file=sys.stderr)
+        self.wallpaper_tray.cleanup()
+        Gtk.Application.do_shutdown(self)
 
 
 def main():

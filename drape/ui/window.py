@@ -150,6 +150,12 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
 
         self.libadwaitapage = LibadwaitaSettingsPage(self)
         self.stack.add_titled(self.libadwaitapage, "libadwaitasettings", "Native GNOME setup")
+        from .video_wallpapers import VideoWallpapersPage
+
+        self.videopage = VideoWallpapersPage(self)
+        self.stack.add_titled(self.videopage, "videos", "Video wallpapers")
+        if app is not None:
+            self.connect("delete-event", app.wallpaper_tray.hide_window)
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())
 
         side = self._sidebar()
@@ -199,6 +205,10 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.set_icon_name("preferences-desktop-theme")
 
     def page_visible(self, name):
+        if name == "videos":
+            from .. import video_wallpapers
+
+            return video_wallpapers.supported()
         if name == "libadwaitasettings":
             return desktop.supported("libadwaita") or desktop.libadwaita.configured()
         if name == "xfcepanel":
@@ -357,6 +367,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.xfcepage,
             self.qtpage,
             self.libadwaitapage,
+            self.videopage,
         )
         self.search.set_sensitive(searchable)
         self.sort_combo.set_sensitive(searchable)
@@ -370,6 +381,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.qtpage.load()
         elif child is self.libadwaitapage:
             self.libadwaitapage.load()
+        elif child is self.videopage:
+            self.videopage.load()
         elif child is self.installed:
             self.installed.load()
         elif child is self.configurations:

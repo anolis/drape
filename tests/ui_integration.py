@@ -19,6 +19,8 @@ from drape.ui.scroll_state import ScrollState
 from drape.ui.qt_settings import QtSettingsPage
 from drape.ui.navigation import GROUPS, build_sidebar
 from drape.ui.libadwaita_settings import LibadwaitaSettingsPage
+from drape.ui.video_wallpapers import VideoWallpapersPage
+from drape import video_wallpapers as videos
 
 
 def pump(duration=0.1):
@@ -43,6 +45,34 @@ with tempfile.TemporaryDirectory() as temp:
     win.stack = mock.Mock()
     win.go_to = mock.Mock()
     win._sidebar_list = mock.Mock()
+    # Video UI persists file references and activates the tray only after a
+    # successful playback request. No desktop player runs in this GTK check.
+    videos.PATH = Path(temp) / "videos.json"
+    fixture = Path(temp) / "wallpaper.mp4"
+    fixture.touch()
+    videos.remember(str(fixture), "fit")
+    video_page = VideoWallpapersPage(win)
+    app = mock.Mock()
+    win.get_application = lambda: app
+    with mock.patch.object(videos, "request", return_value={"state": "stopped", "path": ""}):
+        video_page.load()
+        pump()
+        assert video_page.selector.get_active_id() == str(fixture)
+        assert video_page.fit.get_active_id() == "fit"
+        assert not video_page.pause_button.get_sensitive()
+        with mock.patch.object(videos, "play", return_value={"state": "starting", "path": str(fixture)}) as play:
+            video_page._play()
+            pump()
+            play.assert_called_once_with(str(fixture), "fit")
+            app.wallpaper_tray.enable.assert_called_once()
+        video_page.update_status({"state": "paused", "path": str(fixture)})
+        assert video_page.pause_button.get_label() == "Resume"
+        assert video_page.stop_button.get_sensitive()
+        with mock.patch.object(videos, "forget") as forget:
+            video_page._remove()
+            pump()
+            forget.assert_called_once_with(str(fixture))
+    video_page.destroy()
     qt_page = QtSettingsPage(win)
     with mock.patch.object(qt, "engines", return_value={6}):
         qt_page.load()

@@ -224,6 +224,14 @@ def get(part):
 
 
 def set_(part, value):
+    if part == "wallpapers":
+        from . import video_wallpapers
+
+        if video_wallpapers.supported():
+            try:
+                video_wallpapers.stop()
+            except video_wallpapers.VideoError as exc:
+                raise ApplyError(str(exc)) from exc
     if part == "libadwaita":
         if not supported(part):
             return False
