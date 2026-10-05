@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">80 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/a78efc1357fbae29ef5f42f5bc39f1b5c5747433">a78efc1</a>.
+      <p class="note">83 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/88db8adecf14fe23ab71f013ee0c66dddac0929d">88db8ad</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -163,6 +163,9 @@
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
       <h2 id="title-2026-10-04">Clear theme engines and reversible Qt appearance</h2>
       <ul class="changes">
+        <li>Prevent one visible theme with many distro/color downloads from monopolizing compatibility checks. Automatic checks stop when useful cached contents are available, yield between cards, cap unrecognized-file attempts and increase pacing to ten seconds between requests and fifteen seconds between jobs. Rate-limit delays remain honored; exhaustive variant checks stay available in the explicit worker.</li>
+        <li>Reuse unchanged installed-theme evidence across launches after a small metadata fingerprint check, instead of rereading theme trees every time. Changed download metadata, engine structure, Cinnamon style metadata or inspection rules trigger a local rescan; the startup summary distinguishes reused and inspected themes.</li>
+        <li>Show known contents from cached alternative downloads on cards, even when the preferred download is still uninspected. Component absence is only claimed after every variant has complete evidence. Cards distinguish pending or unrecognized contents, and scanner status explicitly reports inactive-window pauses rather than implying every visible theme is cached.</li>
         <li>Fixed cached preview completion running inside a GTK draw callback, where removing an overlay spinner could invalidate GTK’s drawing child list. Preview delivery and scanner indicator updates now wait for the main-loop idle phase; queued results still skip destroyed widgets. Added cached-preview scrolling and callback-lifecycle regressions while retaining immediate off-screen worker cancellation.</li>
         <li>Added visible compatibility scanner status in the main window and uploader profiles, per-card activity spinners and a count-based progress bar for saved-theme indexing. Rate-limit countdowns, scrolling waits, cancellations and failures are explicit; local progress reaches 100% only after the worker exits successfully.</li>
         <li>Clarified native GNOME theme refresh instructions: current GNOME/X11 draws non-GTK app title bars, including Kitty’s, through a shared GTK 4/libadwaita frame renderer. Logout/login refreshes that renderer; restarting Kitty only refreshes Kitty.</li>
@@ -178,8 +181,11 @@
         <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 20 commits</summary>
+        <summary>View 23 commits</summary>
         <ol class="commits">
+          <li data-commit="88db8adecf14fe23ab71f013ee0c66dddac0929d"><a class="commit" href="https://github.com/anolis/drape/commit/88db8adecf14fe23ab71f013ee0c66dddac0929d">88db8ad</a><span>fix: share visible checks fairly and show cached variant contents</span></li>
+          <li data-commit="f30c875b5a4b82087d779dbcd4e31dfa5772dc25"><a class="commit" href="https://github.com/anolis/drape/commit/f30c875b5a4b82087d779dbcd4e31dfa5772dc25">f30c875</a><span>fix: reuse unchanged installed-theme inspection evidence</span></li>
+          <li data-commit="291042314edfbd3c16a70798b14e855b0de7512d"><a class="commit" href="https://github.com/anolis/drape/commit/291042314edfbd3c16a70798b14e855b0de7512d">2910423</a><span>docs: record GTK scrolling crash fix</span></li>
           <li data-commit="a78efc1357fbae29ef5f42f5bc39f1b5c5747433"><a class="commit" href="https://github.com/anolis/drape/commit/a78efc1357fbae29ef5f42f5bc39f1b5c5747433">a78efc1</a><span>fix: defer cached preview and scanner updates outside GTK drawing</span></li>
           <li data-commit="c2c1f54f6fe4269e7a6fb0497d5aec8fa9ec2e0a"><a class="commit" href="https://github.com/anolis/drape/commit/c2c1f54f6fe4269e7a6fb0497d5aec8fa9ec2e0a">c2c1f54</a><span>docs: describe scanner status and GNOME frame styling</span></li>
           <li data-commit="0c1d4afc3fc89e2dcd935dac887f73500124efa8"><a class="commit" href="https://github.com/anolis/drape/commit/0c1d4afc3fc89e2dcd935dac887f73500124efa8">0c1d4af</a><span>fix: explain GNOME X11 title-bar theme refresh</span></li>

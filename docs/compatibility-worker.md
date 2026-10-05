@@ -5,10 +5,15 @@ cards remain visible with “Compatibility unverified”; known mismatches are f
 After the active view stops scrolling for two seconds, Drape checks missing evidence
 for visible cards using this separate worker. Archive work never runs in the GTK process.
 
-Only one file is checked at a time, with a three-second pause between requests and a
-five-second gap between jobs. Each process has a 384 MiB address-space limit and a
+Only one file is checked at a time, with a ten-second pause between requests and a
+fifteen-second gap between jobs. Each process has a 384 MiB address-space limit and a
 90-second deadline. Leaving the viewport, switching sections, closing a profile or
 leaving the active window cancels its check. Cancelled and failed checks save no verdict.
+Once a card has useful cached contents, automatic checks move on instead of inspecting
+every distro/color variant under that card. Unrecognized downloads get at most three
+attempts per card per session, yielding to other visible cards. Cancelled checks and
+rate-limit responses do not consume that budget. Use the explicit worker for exhaustive
+variant inspection. Uninspected variants stay unknown and cannot prove incompatibility.
 HTTP 429 pauses the queue for the reported cooldown. Disable automatic checks through
 **☰ → Inspect visible themes when scrolling stops**; existing index evidence still works.
 
@@ -26,6 +31,12 @@ At startup a bounded offline worker also backfills existing installations immedi
 without waiting for scrolling or visible cards. Installed files supply partial evidence,
 because earlier installs may have discarded other archive components. This local-only
 evidence is not exported as a complete archive inspection or community contribution.
+Later launches reuse installed evidence after a small metadata fingerprint check of
+component roots, engine files and Cinnamon styles. Matching downloads, fingerprints
+and inspection rules skip the tree inspection and cache write. Changes, missing cache
+rows or older schemas trigger a local rescan; old rows need one fingerprint backfill.
+The completion summary distinguishes reused evidence from newly inspected themes.
+
 
 Complete inspections persist across launches until the checksum/modification date or
 inspection rules change. Incomplete listings are cached for a day before another attempt.
