@@ -79,6 +79,8 @@ class ProfileView(Gtk.Box):
         if hasattr(self.win, "idle_inspector"):
             self.win.idle_inspector.register_view(self.flow, self.scroller)
         self.pack_start(self.scroller, True, True, 0)
+        if hasattr(self.win, "idle_inspector"):
+            self.pack_start(self.win.idle_inspector.create_status_bar(), False, False, 0)
         footer = Gtk.Box(spacing=12)
         self.status = Gtk.Label(xalign=0, wrap=True)
         footer.pack_start(self.status, True, True, 0)

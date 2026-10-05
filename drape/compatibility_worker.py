@@ -91,24 +91,32 @@ def inspect_one(payload, index):
         return {"status": "failed"}
 
 
-def scan_installed(manifest, index):
+def scan_installed(manifest, index, progress=None):
     """Backfill existing installations without catalog or file-host requests."""
     from . import local_inspection
     from .records import ManifestStore
 
+    entries = ManifestStore(manifest).load()
     count = 0
-    for item_id, entry in ManifestStore(manifest).load().items():
+    if progress:
+        progress(0, len(entries), "")
+    for item_id, entry in entries.items():
+        if progress:
+            progress(count, len(entries), entry.get("title", item_id))
         paths = [
             component["path"] for component in entry.get("components", []) if component.get("path")
         ]
         parts, _ = local_inspection.inspect_paths(paths)
         index.record_installed(item_id, entry, parts)
         count += 1
+        if progress:
+            progress(count, len(entries), "")
     return count
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--progress-file", type=Path, help="local inspection progress snapshot")
     parser.add_argument("--installed-local", type=Path, help="backfill installed theme evidence")
     parser.add_argument("--inspect-json", action="store_true", help="inspect one file from stdin")
     parser.add_argument("--request-interval", type=float, default=0)
@@ -143,7 +151,17 @@ def main(argv=None):
     index = compatibility.Index(args.database)
     if args.installed_local:
         try:
-            count = scan_installed(args.installed_local, index)
+
+            def progress(done, total, title):
+                if args.progress_file:
+                    # A small atomic snapshot cannot block the worker on a full UI pipe.
+                    temporary = args.progress_file.with_suffix(".tmp")
+                    temporary.write_text(
+                        json.dumps({"done": done, "total": total, "title": str(title)[:200]})
+                    )
+                    temporary.replace(args.progress_file)
+
+            count = scan_installed(args.installed_local, index, progress)
             print(json.dumps({"status": "checked", "count": count}))
             return 0
         except (ValueError, OSError) as exc:

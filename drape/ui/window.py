@@ -171,6 +171,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.pack_start(self.infobar, False, False, 0)
         root.pack_start(paned, True, True, 0)
+        root.pack_start(self.idle_inspector.create_status_bar(), False, False, 0)
         self.add(root)
         self.show_all()
         self.on_page()

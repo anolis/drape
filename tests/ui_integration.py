@@ -155,6 +155,12 @@ with tempfile.TemporaryDirectory() as temp:
             card = next(card for card in page.cards() if card.item.id == "unknown")
             assert card.get_child_visible() and card.compatibility_pending
             assert card.compatibility_note.get_text() == "Compatibility unverified"
+            card.set_scan_busy(True)
+            assert card.scan_spinner.get_visible() and card.scan_spinner.get_property("active")
+            assert card.compatibility_note.get_text() == "Inspecting download…"
+            card.set_scan_busy(False)
+            assert not card.scan_spinner.get_visible()
+            assert card.compatibility_note.get_text() == "Compatibility unverified"
         win.remove(page)
         page.destroy()
     # Off-screen removals keep row allocations, including cards above the viewport.
@@ -179,6 +185,14 @@ with tempfile.TemporaryDirectory() as temp:
     import io
     now = [0]
     inspector = ViewportInspector(win)
+    status_bar = inspector.create_status_bar()
+    status_bar.update(dict(text="Checking saved themes — 1 of 3 cached", spinning=True, fraction=1/3))
+    assert status_bar.spinner.get_visible() and status_bar.spinner.get_property("active")
+    assert status_bar.progress.get_visible() and abs(status_bar.progress.get_fraction() - 1/3) < 0.001
+    status_bar.update(dict(text="Server rate limit — next check in 60s", spinning=False, fraction=None))
+    assert not status_bar.spinner.get_visible() and not status_bar.progress.get_visible()
+    assert "60s" in status_bar.label.get_text()
+    status_bar.destroy()
     inspector.local_manifest = None
     inspector.clock = lambda: now[0]
     inspector.index = compatibility.Index(Path(temp) / "viewport.sqlite3")

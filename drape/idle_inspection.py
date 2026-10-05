@@ -1,6 +1,7 @@
 """One cancellable, resource-bounded inspection process for the current viewport."""
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -28,9 +29,53 @@ class IdleInspector:
         self.active = None
         self.local_manifest = None
         self.local_process = None
+        self.local_progress = None
+        self.local_counts = (0, 0)
+        self.local_timed_out = False
+        self.cooldown = 0
+        self.notice_until = 0
+        self.on_status = None
+        self.status = {
+            "state": "idle",
+            "text": "Compatibility scanner ready",
+            "spinning": False,
+            "fraction": None,
+        }
         self.retired = []
         self.next_check = 0
         self.retry = {}
+
+    def _status(self, state, text, spinning=False, fraction=None):
+        status = dict(state=state, text=text, spinning=spinning, fraction=fraction)
+        if status != self.status:
+            self.status = status
+            if self.on_status:
+                self.on_status(status)
+
+    def _read_local_progress(self):
+        title = ""
+        if self.local_progress:
+            try:
+                path = Path(self.local_progress.name) / "progress.json"
+                with path.open() as stream:
+                    data = json.loads(stream.read(4096))
+                done, total = data["done"], data["total"]
+                if isinstance(done, int) and isinstance(total, int) and 0 <= done <= total:
+                    self.local_counts = done, total
+                    title = data.get("title", "")
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        return title
+
+    def _clean_local_progress(self):
+        if self.local_progress:
+            self.local_progress.cleanup()
+            self.local_progress = None
+
+    @staticmethod
+    def _card_busy(card, busy):
+        if hasattr(card, "set_scan_busy"):
+            card.set_scan_busy(busy)
 
     def register(self, flow):
         self.flows[flow] = self.clock()
@@ -50,6 +95,11 @@ class IdleInspector:
         self.enabled = enabled
         if not enabled:
             self.cancel()
+            if not self.local_process:
+                self._status(
+                    "disabled",
+                    "Online compatibility checks disabled — cached evidence is still used",
+                )
 
     @staticmethod
     def _visible(flow, card):
@@ -68,8 +118,11 @@ class IdleInspector:
     def cancel(self):
         if self.active is None:
             return
-        _, _, _, key, process, _ = self.active
+        _, card, _, key, process, _ = self.active
         self.active = None
+        self._card_busy(card, False)
+        self.notice_until = self.clock() + 2
+        self._status("cancelled", "Check cancelled — theme left the active view")
         self.retry[key] = self.clock() + JOB_GAP
         self.next_check = max(self.next_check, self.clock() + JOB_GAP)
         if process.poll() is None:
@@ -86,6 +139,7 @@ class IdleInspector:
                 process.kill()
             process.wait()
             self.local_process = None
+        self._clean_local_progress()
         self.cancel()
         # Shutdown is allowed to reap a killed child; ordinary scrolling never waits.
         for process, _ in self.retired:
@@ -113,6 +167,8 @@ class IdleInspector:
         # Local files take priority and do not depend on viewport idleness or network settings.
         if self.local_manifest is not None:
             manifest, self.local_manifest = self.local_manifest, None
+            self.local_progress = tempfile.TemporaryDirectory(prefix="drape-scan-")
+            self._status("local", "Preparing saved-theme compatibility checks…", True, 0)
             try:
                 process = self.spawn(
                     [
@@ -125,6 +181,8 @@ class IdleInspector:
                         "384",
                         "--database",
                         str(self.index.path),
+                        "--progress-file",
+                        str(Path(self.local_progress.name) / "progress.json"),
                     ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -132,11 +190,33 @@ class IdleInspector:
                 )
                 self.local_process = process, now
             except OSError:
-                pass
+                self._clean_local_progress()
+                self.notice_until = now + 8
+                self._status(
+                    "failed",
+                    "Could not start saved-theme checks — existing cache is still available",
+                )
         if self.local_process:
             process, started = self.local_process
+            title = self._read_local_progress()
+            done, total = self.local_counts
+            fraction = done / total if total else 0
             if process.poll() is not None:
                 self.local_process = None
+                self._clean_local_progress()
+                self.notice_until = now + 8
+                if process.returncode == 0 and not self.local_timed_out:
+                    self._status(
+                        "complete", f"Saved-theme checks complete — {done} themes cached", False, 1
+                    )
+                else:
+                    self._status(
+                        "failed",
+                        f"Saved-theme checks stopped — {done} of {total} cached; remaining checks pending",
+                        False,
+                        fraction,
+                    )
+
                 for flow in list(self.flows):
                     for card in flow.cards():
                         if card._scan_alive and not card.departing:
@@ -144,9 +224,20 @@ class IdleInspector:
                                 self.index.read_many([card.item]).get(card.item.id, {})
                             )
             elif now - started > JOB_TIMEOUT:
+                self.local_timed_out = True
                 process.kill()
+                self._status(
+                    "failed",
+                    f"Saved-theme checks timed out — {done} of {total} cached",
+                    False,
+                    fraction,
+                )
                 return
             else:
+                text = f"Checking saved themes — {done} of {total} cached"
+                if title:
+                    text += f" · {title}"
+                self._status("local", text, True, min(fraction, 0.99))
                 return
         if self.active:
             flow, card, file, key, process, started = self.active
@@ -155,8 +246,11 @@ class IdleInspector:
             elif now - started > JOB_TIMEOUT:
                 self.cancel()
                 self.retry[key] = now + 300
+                self._status("failed", "Compatibility check timed out — will retry later")
+                self.notice_until = now + 5
             elif process.poll() is not None:
                 self.active = None
+                self._card_busy(card, False)
                 self.next_check = now + JOB_GAP
                 try:
                     result = json.loads(process.stdout.read(8192))
@@ -177,22 +271,53 @@ class IdleInspector:
                                         for f in other.item.files
                                     ]
                     self._refresh(card.item.id)
+                    self._status("cached", f"Compatibility cached — {card.item.name}")
+                    self.notice_until = now + 2
                 elif status == "rate_limited":
                     delay = min(http.MAX_RETRY_AFTER, max(1, result.get("retry_after", 60)))
                     self.next_check = now + delay
+                    self.cooldown = now + delay
+                    self._status(
+                        "rate_limited", f"Server rate limit — next check in {math.ceil(delay)}s"
+                    )
                     card.compatibility_note.set_text("Check delayed: server rate limit")
                     card.compatibility_note.show()
                 else:
                     self.retry[key] = now + 300
+                    self._status("failed", f"Could not inspect {card.item.name} — will retry later")
+                    self.notice_until = now + 5
+        if self.cooldown > now:
+            self._status(
+                "rate_limited",
+                f"Server rate limit — next check in {math.ceil(self.cooldown - now)}s",
+            )
+        elif not self.enabled and not self.local_process and now >= self.notice_until:
+            self._status(
+                "disabled", "Online compatibility checks disabled — cached evidence is still used"
+            )
         if self.active or self.retired or not self.enabled or now < self.next_check:
             return
+        if now >= self.notice_until:
+            self._status("idle", "Compatibility scanner idle — cached evidence is available")
         # Reading SQLite is cheap. No download is needed for cached cards, even after relaunch.
         for flow, moved in list(self.flows.items()):
-            if now - moved < IDLE_SECONDS or not flow.get_mapped():
+            if not flow.get_mapped():
+                continue
+            if now - moved < IDLE_SECONDS:
+                if now >= self.notice_until:
+                    self._status("waiting", "Compatibility checks resume when scrolling stops")
                 continue
             cards = [card for card in flow.cards() if self._visible(flow, card)]
             self.next_check = now + JOB_GAP
             checks = self.index.read_many([card.item for card in cards])
+            total = sum(len(card.item.files) for card in cards)
+            cached = sum(len(checks.get(card.item.id, {})) for card in cards)
+            if cards and now >= self.notice_until:
+                self._status(
+                    "cached" if cached == total else "waiting",
+                    f"Visible downloads — {cached} of {total} cached"
+                    + (" · remaining checks will retry later" if cached < total else ""),
+                )
             for card in cards:
                 evidence = checks.get(card.item.id, {})
                 if card._checks != evidence:
@@ -251,5 +376,9 @@ class IdleInspector:
                 )
         except OSError:
             self.retry[key] = now + 300
+            self.notice_until = now + 5
+            self._status("failed", "Could not start compatibility check — will retry later")
             return
         self.active = flow, card, file, key, process, now
+        self._card_busy(card, True)
+        self._status("scanning", f"Checking compatibility — {card.item.name} · {file.name}", True)

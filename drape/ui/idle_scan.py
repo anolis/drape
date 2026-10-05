@@ -1,16 +1,32 @@
 """Connect viewport activity and window lifecycle to the isolated inspector."""
 
+from weakref import WeakSet
+
 from .. import installer, settings
 from ..idle_inspection import IdleInspector
 from .gtk import GLib
+from .scanner_status import ScannerStatus
 
 
 class ViewportInspector(IdleInspector):
     def __init__(self, window):
         super().__init__(enabled=settings.get("inspect_visible"))
+        self.status_views = WeakSet()
+        self.on_status = self._update_status
         self.local_manifest = installer.MANIFEST
         self.source = GLib.timeout_add(150, self._poll)
         window.connect("destroy", self._destroy)
+
+    def create_status_bar(self):
+        view = ScannerStatus()
+        self.status_views.add(view)
+        view.connect("destroy", lambda *_: self.status_views.discard(view))
+        view.update(self.status)
+        return view
+
+    def _update_status(self, status):
+        for view in list(self.status_views):
+            view.update(status)
 
     def _poll(self):
         self.tick()

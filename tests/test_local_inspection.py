@@ -44,7 +44,12 @@ class LocalInspectionTest(unittest.TestCase):
         ManifestStore(manifest).save({"1": entry})
         index = compatibility.Index(self.root / "compatibility.sqlite3")
         with mock.patch("drape.http.get", side_effect=AssertionError("must stay offline")):
-            self.assertEqual(compatibility_worker.scan_installed(manifest, index), 1)
+            progress = mock.Mock()
+            self.assertEqual(compatibility_worker.scan_installed(manifest, index, progress), 1)
+            self.assertEqual(
+                progress.call_args_list,
+                [mock.call(0, 1, ""), mock.call(0, 1, "Theme"), mock.call(1, 1, "")],
+            )
         file = pling.Download(
             1, "theme.zip", "https://files.test/theme", 1, "old-install-has-no-md5"
         )

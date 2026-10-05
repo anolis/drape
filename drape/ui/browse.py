@@ -106,7 +106,11 @@ class Card(FadingCard):
         self.compatibility_note.set_tooltip_text(
             "The archive has not provided enough information to verify compatibility with this desktop."
         )
-        box.pack_start(self.compatibility_note, False, False, 0)
+        compatibility_row = Gtk.Box(spacing=6)
+        self.scan_spinner = Gtk.Spinner(no_show_all=True)
+        compatibility_row.pack_start(self.scan_spinner, False, False, 0)
+        compatibility_row.pack_start(self.compatibility_note, True, True, 0)
+        box.pack_start(compatibility_row, False, False, 0)
         self.compatibility_note.show()
 
         # Filtering must run even when a preview fails or the card is off screen.
@@ -132,6 +136,19 @@ class Card(FadingCard):
         best = self.item.best_file()
         result = self._checks.get(best.index) if best else None
         self._show_glyphs(*(result or (set(), False)), checked=True)
+
+    def set_scan_busy(self, busy):
+        if self.in_destruction() or not self._scan_alive:
+            return
+        if busy:
+            self.scan_spinner.show()
+            self.scan_spinner.start()
+            self.compatibility_note.set_text("Inspecting download…")
+            self.compatibility_note.show()
+        else:
+            self.scan_spinner.stop()
+            self.scan_spinner.hide()
+            self.refresh_evidence(self._checks or {})
 
     def refresh_evidence(self, checks):
         """Refresh cached glyphs after a worker commits evidence, preserving deferred removal."""

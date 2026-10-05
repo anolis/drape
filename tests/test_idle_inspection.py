@@ -46,6 +46,55 @@ class IdleInspectionTest(unittest.TestCase):
         self.spawn.assert_called_once()
         self.assertIsNotNone(self.scanner.active)
 
+    def test_local_progress_only_reaches_complete_after_successful_exit(self):
+        self.scanner.local_manifest = Path(self.temp.name) / "installed.json"
+        self.scanner.tick()
+        progress = Path(self.scanner.local_progress.name) / "progress.json"
+        progress.write_text('{"done":1,"total":2,"title":"Second theme"}')
+        self.scanner.tick()
+        self.assertEqual(self.scanner.status["state"], "local")
+        self.assertEqual(self.scanner.status["fraction"], 0.5)
+        self.assertTrue(self.scanner.status["spinning"])
+        self.assertIn("Second theme", self.scanner.status["text"])
+        progress.write_text('{"done":2,"total":2,"title":""}')
+        self.scanner.tick()
+        self.assertLess(self.scanner.status["fraction"], 1)
+        self.process.poll.return_value = 0
+        self.process.returncode = 0
+        self.scanner.tick()
+        self.assertEqual(self.scanner.status["state"], "complete")
+        self.assertEqual(self.scanner.status["fraction"], 1)
+        self.assertFalse(self.scanner.status["spinning"])
+        self.assertFalse(progress.parent.exists())
+
+    def test_failed_local_scan_preserves_partial_progress(self):
+        self.scanner.local_manifest = Path(self.temp.name) / "installed.json"
+        self.scanner.tick()
+        progress = Path(self.scanner.local_progress.name) / "progress.json"
+        progress.write_text('{"done":1,"total":3,"title":""}')
+        self.process.poll.return_value = 1
+        self.process.returncode = 1
+        self.scanner.tick()
+        self.assertEqual(self.scanner.status["state"], "failed")
+        self.assertIn("remaining checks pending", self.scanner.status["text"])
+        self.assertAlmostEqual(self.scanner.status["fraction"], 1 / 3)
+
+    def test_scanning_cancellation_and_rate_limit_have_visible_status(self):
+        self.start()
+        self.assertEqual(self.scanner.status["state"], "scanning")
+        self.assertTrue(self.scanner.status["spinning"])
+        self.card.set_scan_busy.assert_called_with(True)
+        self.process.stdout = io.BytesIO(b'{"status":"rate_limited","retry_after":60}')
+        self.process.poll.return_value = 0
+        self.now = 3
+        self.scanner.tick()
+        self.assertEqual(self.scanner.status["state"], "rate_limited")
+        self.assertFalse(self.scanner.status["spinning"])
+        self.now = 13
+        self.scanner.tick()
+        self.assertIn("50s", self.scanner.status["text"])
+        self.card.set_scan_busy.assert_called_with(False)
+
     def test_local_backfill_starts_without_idle_or_visible_cards(self):
         self.scanner.local_manifest = Path(self.temp.name) / "installed.json"
         self.scanner.set_enabled(False)
