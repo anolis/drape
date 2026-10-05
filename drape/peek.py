@@ -22,8 +22,8 @@ from pathlib import Path
 
 import requests
 
-from .pling import USER_AGENT
 from . import http
+from .pling import USER_AGENT
 
 CACHE = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "drape" / "peek-v4.json"
 TAR_BUDGETS = (
@@ -174,11 +174,31 @@ def classify_names(names):
 # ---------------------------------------------------------------- reading archive listings over HTTP
 
 
+class _ArchiveSource:
+    """Keep a resolved storage URL for this inspection only, never on disk."""
+
+    def __init__(self, url):
+        self.url = url
+
+    def get(self, **kwargs):
+        response = http.get(self.url, **kwargs)
+        resolved = getattr(response, "url", None)
+        if response.status_code in (200, 206) and isinstance(resolved, str) and resolved:
+            # A download gateway can rate-limit each hit even though the storage
+            # host allows range reads. Resolve once, then read that same file.
+            self.url = resolved
+        return response
+
+
+def _archive_source(url):
+    return url if isinstance(url, _ArchiveSource) else _ArchiveSource(url)
+
+
 class _RangeFile(io.RawIOBase):
     """A seekable file over HTTP range requests, fetching and caching fixed blocks."""
 
     def __init__(self, url, size):
-        self.url, self.size, self.pos = url, size, 0
+        self.source, self.size, self.pos = _archive_source(url), size, 0
         self.blocks = {}
         self.fetched = 0
 
@@ -199,8 +219,7 @@ class _RangeFile(io.RawIOBase):
         if i not in self.blocks:
             start = i * BLOCK
             end = min(start + BLOCK, self.size) - 1
-            r = http.get(
-                self.url,
+            r = self.source.get(
                 headers={"User-Agent": USER_AGENT, "Range": f"bytes={start}-{end}"},
                 timeout=(15, 60),
                 retry_server_errors=False,
@@ -234,8 +253,7 @@ class _RangeFile(io.RawIOBase):
 
 
 def _size(url):
-    r = http.get(
-        url,
+    r = _archive_source(url).get(
         headers={"User-Agent": USER_AGENT, "Range": "bytes=0-0"},
         timeout=(15, 30),
         retry_server_errors=False,
@@ -280,7 +298,7 @@ def _css_root(name):
 
 def _cinnamon_markers(names, styles, complete):
     """Tag inspected CSS; partial imported styles remain unknown, not old."""
-    from .theme_css import cinnamon_css_outdated, cinnamon_css_imports, OLD_DIALOG_RE
+    from .theme_css import OLD_DIALOG_RE, cinnamon_css_imports, cinnamon_css_outdated
 
     roots = {_css_root(name) for name in names if name.lower().endswith("cinnamon/cinnamon.css")}
     if not roots:
@@ -346,14 +364,15 @@ def _cinnamon_markers(names, styles, complete):
 
 def list_archive(url, filename, budget=TAR_BUDGETS[0]):
     """(paths inside, complete?) for a remote download, reading as little as possible."""
+    source = _archive_source(url)
     name = filename.lower()
     if IMAGE_RE.search(name):
         return [filename], True
     if name.endswith(".zip"):
-        size = _size(url)
+        size = _size(source)
         if not size:
             return [], False
-        with zipfile.ZipFile(io.BufferedReader(_RangeFile(url, size), buffer_size=BLOCK)) as z:
+        with zipfile.ZipFile(io.BufferedReader(_RangeFile(source, size), buffer_size=BLOCK)) as z:
             names, styles, remaining = z.namelist(), {}, CSS_LIMIT * 2
             for info in z.infolist():
                 if _css_root(info.filename) and info.file_size <= min(CSS_LIMIT, remaining):
@@ -364,8 +383,7 @@ def list_archive(url, filename, budget=TAR_BUDGETS[0]):
                     remaining -= info.file_size
             return names + _cinnamon_markers(names, styles, True), True
     if re.search(r"\.(tar(\.(gz|xz|bz2|zst))?|tgz|txz|tbz2?)$", name):
-        r = http.get(
-            url,
+        r = source.get(
             headers={"User-Agent": USER_AGENT, "Range": f"bytes=0-{budget - 1}"},
             timeout=(15, 60),
             retry_server_errors=False,
@@ -445,9 +463,10 @@ def contents(item_id, url, filename, use_cache=True, inspect_css=None, write_cac
     hit = cached(item_id, filename) if use_cache else None
     if hit is not None:
         return hit
+    source = _ArchiveSource(url)
     try:
         for budget in TAR_BUDGETS:
-            names, complete = list_archive(url, filename, budget)
+            names, complete = list_archive(source, filename, budget)
             parts = classify_names(names)
             if any(
                 re.search(r"\.(zip|tar|tgz|txz|tbz2?|7z|tar\.(gz|xz|bz2|zst))$", n, re.I)
@@ -528,9 +547,10 @@ def inspect_downloads(item, kind, installed=None):
 
     Returns (item, results): item is refreshed if its download links had expired, and results
     maps each file index to (parts, complete), or None when that file could not be checked."""
-    from . import compatibility, desktop
     import sqlite3
     import sys
+
+    from . import compatibility, desktop
 
     best = item.best_file()
     if best is None:

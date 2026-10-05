@@ -1,16 +1,83 @@
-import unittest
+import io
 import json
 import tempfile
+import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
 
-from drape import peek
 import requests
+
+from drape import peek
 from drape.peek import classify_names
 
 
 class ClassifyTest(unittest.TestCase):
+    def test_zip_reads_reuse_storage_url_instead_of_rate_limited_gateway(self):
+        gateway = "https://files.test/download?token=private"
+        storage = "https://storage.test/archive?signature=private"
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w") as archive:
+            archive.writestr("Theme/cinnamon/cinnamon.css", ".dialog {background: black;}")
+            archive.writestr("Theme/assets/filler.bin", b"x" * 4096)
+        payload = data.getvalue()
+        calls = []
+
+        def get(url, **kwargs):
+            calls.append(url)
+            self.assertEqual(url, gateway if len(calls) == 1 else storage)
+            start, end = map(int, kwargs["headers"]["Range"].removeprefix("bytes=").split("-"))
+            response = requests.Response()
+            response.url = storage
+            response.status_code = 206
+            response.headers["Content-Range"] = f"bytes {start}-{end}/{len(payload)}"
+            response._content = payload[start : end + 1]
+            response._content_consumed = True
+            return response
+
+        with (
+            mock.patch.object(peek.http, "get", side_effect=get),
+            mock.patch.object(peek, "BLOCK", 256),
+        ):
+            parts, complete = peek.contents(
+                "1", gateway, "theme.zip", use_cache=False, write_cache=False, inspect_css=True
+            )
+        self.assertTrue(complete)
+        self.assertIn("cinnamon-modern", parts)
+        self.assertGreaterEqual(len(calls), 3)
+        self.assertEqual(calls.count(gateway), 1)
+
+    def test_larger_tar_prefix_reuses_storage_url(self):
+        gateway, storage = "https://files.test/download", "https://storage.test/archive"
+        source = peek._ArchiveSource(gateway)
+        responses = []
+        for _ in range(2):
+            response = requests.Response()
+            response.url, response.status_code = storage, 206
+            response._content, response._content_consumed = b"x" * 1000, True
+            responses.append(response)
+        with mock.patch.object(peek.http, "get", side_effect=responses) as get:
+            peek.list_archive(source, "theme.tar", 64)
+            peek.list_archive(source, "theme.tar", 256)
+        self.assertEqual([call.args[0] for call in get.call_args_list], [gateway, storage])
+
+    def test_resolved_url_is_not_reused_across_inspections_or_written_to_cache(self):
+        gateway, storage = "https://files.test/download", "https://storage.test/private"
+        response = mock.Mock(url=storage, status_code=206)
+        with mock.patch.object(peek.http, "get", return_value=response) as get:
+            first, second = peek._ArchiveSource(gateway), peek._ArchiveSource(gateway)
+            first.get()
+            first.get()
+            second.get()
+        self.assertEqual([call.args[0] for call in get.call_args_list], [gateway, storage, gateway])
+        # The persistent evidence format has only parts/inspection dates, never URLs.
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            mock.patch.object(peek, "CACHE", Path(temp) / "peek.json"),
+        ):
+            peek.contents("1", gateway, "picture.png")
+            self.assertNotIn("https://", peek.CACHE.read_text())
+
     def test_empty_partial_inspection_is_reused_until_expiry(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -132,11 +199,17 @@ class ClassifyTest(unittest.TestCase):
     def test_expired_link_refreshes_item_once_and_retries(self):
         from drape import pling
 
-        old = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "old", 1, "")])
-        new = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "new", 1, "")])
+        old = pling.Item(
+            "1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "old", 1, "")]
+        )
+        new = pling.Item(
+            "1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "new", 1, "")]
+        )
         result = ({"gtk"}, True)
         with (
-            mock.patch.object(peek, "contents", side_effect=[peek.LinkExpired("403"), result]) as contents,
+            mock.patch.object(
+                peek, "contents", side_effect=[peek.LinkExpired("403"), result]
+            ) as contents,
             mock.patch.object(peek, "fresh_item", return_value=new) as refresh,
         ):
             self.assertEqual(peek.contents_refreshing(old, old.files[0]), (new, result))
@@ -146,7 +219,9 @@ class ClassifyTest(unittest.TestCase):
     def test_link_still_refused_after_refresh_is_a_failure(self):
         from drape import pling
 
-        item = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "u", 1, "")])
+        item = pling.Item(
+            "1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "u", 1, "")]
+        )
         with (
             mock.patch.object(peek, "contents", side_effect=peek.LinkExpired("403")),
             mock.patch.object(peek, "fresh_item", return_value=item) as refresh,
@@ -158,10 +233,16 @@ class ClassifyTest(unittest.TestCase):
     def test_rate_limit_after_refresh_carries_the_fresh_item(self):
         from drape import pling
 
-        old = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "old", 1, "")])
-        new = pling.Item("1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "new", 1, "")])
+        old = pling.Item(
+            "1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "old", 1, "")]
+        )
+        new = pling.Item(
+            "1", "T", "", "", "", "", 0, 0, "", files=[pling.Download(1, "t.zip", "new", 1, "")]
+        )
         with (
-            mock.patch.object(peek, "contents", side_effect=[peek.LinkExpired("403"), peek.RateLimited(30)]),
+            mock.patch.object(
+                peek, "contents", side_effect=[peek.LinkExpired("403"), peek.RateLimited(30)]
+            ),
             mock.patch.object(peek, "fresh_item", return_value=new),
         ):
             with self.assertRaises(peek.RateLimited) as caught:
