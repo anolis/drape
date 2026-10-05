@@ -38,6 +38,16 @@ click. No hunting for archives, no guessing which folder things go in.
   current-to-saved changes before applying selected parts. Missing files and components
   unsupported by the current desktop are listed and cannot be selected. These are local
   selections, so keep the underlying theme files installed. See [configurations](docs/configurations.md).
+- **Plays local video wallpapers on Cinnamon/X11.** **Shared assets → Video wallpapers**
+  remembers local videos, loops them silently on every monitor, and offers Fill/Fit,
+  Pause/Resume and Stop. Desktop icons remain above the video and accept clicks.
+  Enabling playback adds a tray icon; closing the main window hides it. The tray offers
+  Show Drape, Pause/Resume, Stop wallpaper and Quit Drape. Stop or Quit reveals the static
+  wallpaper; choosing a still wallpaper in Drape also stops playback. Requires `mpv`.
+  Playback pauses while the screen is locked and starts manually after login. Videos
+  are referenced in place, so moving a file makes it unavailable; removing a list entry
+  does not delete the video. GNOME, other desktops and Cinnamon/Wayland are not supported
+  by this first version. See [video wallpapers](docs/video-wallpapers.md).
 - **Deletes installed items in batches.** Check wallpaper or theme-pack cards in Installed,
   or use Select all in category, then Delete selected. Selection carries across categories;
   one confirmation lists the affected images/packs and flags anything currently in use.
