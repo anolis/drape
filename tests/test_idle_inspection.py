@@ -192,12 +192,24 @@ class IdleInspectionTest(unittest.TestCase):
         self.process.terminate.assert_called_once()
         self.assertNotIn(self.flow, self.scanner.flows)
 
-    def test_disabled_and_background_views_never_start(self):
+    def test_disabled_checks_never_start(self):
         self.scanner.set_enabled(False)
         self.now = 10
         self.scanner.tick()
-        self.scanner.set_enabled(True)
+        self.spawn.assert_not_called()
+
+    def test_unfocused_view_starts_and_continues_scanning(self):
         self.flow.get_toplevel.return_value.is_active.return_value = False
+        self.start()
+        self.now = 3
+        self.scanner.activity(self.flow)
+        self.scanner.tick()
+        self.process.terminate.assert_not_called()
+        self.assertIs(self.scanner.active[1], self.card)
+
+    def test_unmapped_view_never_starts(self):
+        self.flow.get_mapped.return_value = False
+        self.now = 10
         self.scanner.tick()
         self.spawn.assert_not_called()
 

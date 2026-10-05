@@ -111,7 +111,6 @@ class IdleInspector:
     def _visible(flow, card):
         return (
             flow.get_mapped()
-            and flow.get_toplevel().is_active()
             and card.get_parent() is flow
             and not card.departing
             and card._scan_alive
@@ -313,13 +312,6 @@ class IdleInspector:
         # Reading SQLite is cheap. No download is needed for cached cards, even after relaunch.
         for flow, moved in list(self.flows.items()):
             if not flow.get_mapped():
-                continue
-            if not flow.get_toplevel().is_active():
-                if now >= self.notice_until:
-                    self._status(
-                        "paused",
-                        "Compatibility checks paused — activate Drape to inspect visible downloads",
-                    )
                 continue
             if now - moved < IDLE_SECONDS:
                 if now >= self.notice_until:
