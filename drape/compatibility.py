@@ -16,8 +16,8 @@ PATH = (
     / "drape"
     / "compatibility.sqlite3"
 )
-# Kvantum file-pair detection changes archive evidence; older listings need rescanning.
-RULES_VERSION = 3
+# v4 understands unquoted Cinnamon imports. Other v3 archive evidence remains valid.
+RULES_VERSION = 4
 FORMAT = "drape-compatibility/v1"
 
 
@@ -176,13 +176,15 @@ class Index:
                 for item in items:
                     for file in item.files:
                         rows = db.execute(
-                            "SELECT parts,complete,checked,rules FROM inspections WHERE item=? AND filename=? AND revision=? AND rules IN (1,?) ORDER BY CASE origin WHEN 'local' THEN 0 ELSE 1 END",
+                            "SELECT parts,complete,checked,rules FROM inspections WHERE item=? AND filename=? AND revision=? AND rules IN (1,3,?) ORDER BY CASE origin WHEN 'local' THEN 0 ELSE 1 END",
                             (item.id, file.name, self.revision(item, file), RULES_VERSION),
                         ).fetchall()
                         for parts, complete, checked, rules in rows:
                             parsed = set(json.loads(parts))
                             if not parsed and not complete and rules < 2:
                                 continue
+                            if rules < 4 and "cinnamon-unknown" in parsed:
+                                continue  # Retry unresolved imports with the corrected parser.
                             if complete or now - checked < 86400:
                                 results[item.id][file.index] = (parsed, bool(complete))
                                 break
@@ -205,7 +207,7 @@ class Index:
             # Positive v1 evidence can still be evaluated by the current desktop rules.
             rows = db.execute(
                 """SELECT parts, complete, checked, rules FROM inspections
-                WHERE item=? AND filename=? AND revision=? AND rules IN (1, ?)
+                WHERE item=? AND filename=? AND revision=? AND rules IN (1, 3, ?)
                 ORDER BY CASE origin WHEN 'local' THEN 0 ELSE 1 END""",
                 (item.id, file.name, self.revision(item, file), RULES_VERSION),
             ).fetchall()
@@ -214,6 +216,8 @@ class Index:
             parsed = set(json.loads(parts))
             if not parsed and not complete and rules < 2:
                 continue  # Legacy transport failures were stored as empty evidence.
+            if rules < 4 and "cinnamon-unknown" in parsed:
+                continue
             # Partial inspection gets another opportunity soon; durable evidence
             # survives relaunches indefinitely; revisions and rules invalidate it.
             if complete or time.time() - checked < 86400:

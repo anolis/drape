@@ -121,6 +121,23 @@ class CompatibilityIndexTest(unittest.TestCase):
         self.assertEqual(self.index.export()["observations"], [])
         self.assertIsNone(self.index.inspection(self.item, self.file))
 
+    def test_import_parser_update_only_rechecks_old_unknown_cinnamon_evidence(self):
+        for parts, expected in (
+            ({"desktop", "cinnamon-unknown"}, None),
+            ({"desktop", "cinnamon-modern"}, ({"desktop", "cinnamon-modern"}, True)),
+            ({"gtk", "gtk-3.0"}, ({"gtk", "gtk-3.0"}, True)),
+            (set(), (set(), True)),
+        ):
+            with self.subTest(parts=parts):
+                self.record(result=(parts, True))
+                with closing(self.index.connect()) as db, db:
+                    db.execute("UPDATE inspections SET rules=3")
+                self.assertEqual(self.index.inspection(self.item, self.file), expected)
+                self.assertEqual(
+                    self.index.read_many([self.item]),
+                    {self.item.id: {1: expected} if expected is not None else {}},
+                )
+
     def test_expired_link_is_refreshed_and_fresh_item_returned(self):
         fresh = replace(self.item, files=[replace(self.file, url="https://example.test/fresh")])
         with (

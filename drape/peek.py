@@ -443,6 +443,8 @@ def cached(item_id, filename):
     if not entry:
         return None
     parts = set(entry["parts"])
+    if "cinnamon-unknown" in parts and entry.get("evidence_version", 1) < 3:
+        return None  # Unquoted imports were not understood by the older parser.
     if not parts and not entry["complete"] and entry.get("evidence_version", 1) < 2:
         return None  # Older releases cached failed requests as empty inspections.
     if not entry["complete"] and time.time() - entry.get("cinnamon_checked_at", 0) >= 600:
@@ -518,7 +520,7 @@ def contents(item_id, url, filename, use_cache=True, inspect_css=None, write_cac
                 "parts": sorted(parts),
                 "complete": complete,
                 "cinnamon_checked_at": time.time(),
-                "evidence_version": 2,
+                "evidence_version": 3,
             }
             try:
                 CACHE.parent.mkdir(parents=True, exist_ok=True)

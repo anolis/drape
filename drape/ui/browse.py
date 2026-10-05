@@ -126,7 +126,9 @@ class Card(FadingCard):
         # Cover the full card, including labels/actions, while retaining child clicks.
         self.hover_area = Gtk.EventBox(visible_window=False)
         self.hover_area.add(box)
-        self.hover_area.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        self.hover_area.add_events(
+            Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
+        )
         self.hover_area.connect("enter-notify-event", self._hover_event, True)
         self.hover_area.connect("leave-notify-event", self._hover_event, False)
         self.add(self.hover_area)
@@ -201,6 +203,15 @@ class Card(FadingCard):
                 note = "Contents pending inspection"
             else:
                 note = "Contents unrecognized"
+        outdated_style = (
+            self.kind == "desktop"
+            and desktop.hide_outdated_cinnamon()
+            and "cinnamon-legacy" in parts
+            and state != "compatible"
+        )
+        if outdated_style:
+            version = ".".join(map(str, desktop.cinnamon_version()))
+            note = f"Checked style lacks Cinnamon {version} dialog styles"
         self.compatibility_note.set_text(note)
         self.compatibility_note.set_visible(state != "compatible")
         self.pack_pending = self.kind == "packs" and not self.compatible and state == "unknown"
@@ -212,7 +223,10 @@ class Card(FadingCard):
             if page:
                 GLib.idle_add(page._filtered_status)
         self.compatibility_note.set_tooltip_text(
-            "Contents have not been inspected yet; this card is still pending."
+            "A checked download contains a Cinnamon style, but lacks the .dialog / .prompt-dialog "
+            "styles required by this Cinnamon version. Uninspected variants remain unverified."
+            if outdated_style
+            else "Contents have not been inspected yet; this card is still pending."
             if not known
             else "Compatibility is evaluated from cached contents; uninspected variants remain unknown."
         )

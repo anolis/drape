@@ -8,7 +8,11 @@ OLD_DIALOG_RE = re.compile(r"(^|[\s,}>])\.modal-dialog\b", re.M)
 
 def cinnamon_css_imports(css):
     css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
-    return re.findall(r"@import\s+(?:url\(\s*)?[\"']([^\"']+)[\"']", css)
+    # Cinnamon themes also use url(path.css) without quotes, including applet styles.
+    pattern = (
+        r"@import\s+(?:url\(\s*(?:\"([^\"]+)\"|'([^']+)'|([^\s)'\"]+))\s*\)|\"([^\"]+)\"|'([^']+)')"
+    )
+    return [next(value for value in match if value) for match in re.findall(pattern, css, re.I)]
 
 
 def cinnamon_css_outdated(css):

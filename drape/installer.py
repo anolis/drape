@@ -541,6 +541,7 @@ def install_file(
         if only_applicable:
             desktop.running_wm(refresh=True)
             usable = []
+            reasons = set()
             for c in comps:
                 if (
                     c.provides[0] in SYSTEM_KINDS and desktop.system_part_compatible(c.provides[0])
@@ -553,10 +554,15 @@ def install_file(
                     usable.append(c)
                 else:
                     skipped.append(c.name)
+                    if "desktop" in c.provides:
+                        reason = desktop.cinnamon_rejection_reason(c.path)
+                        if reason:
+                            reasons.add(reason)
             comps = usable
             if not comps:
                 raise IncompatibleError(
-                    "This download has no supported themes for "
+                    (" ".join(sorted(reasons)) + " " if reasons else "")
+                    + "This download has no supported themes for "
                     f"{desktop.current_desktop() or 'this desktop'} / "
                     f"{desktop.running_wm() or 'unknown window manager'}. "
                     "Nothing was installed. Turn off 'Hide incompatible themes for this desktop' "

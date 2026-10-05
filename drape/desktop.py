@@ -586,6 +586,24 @@ def cinnamon_theme_incompatible(theme_dir):
     return bool(NEW_DIALOG_RE.search(clean)) and not OLD_DIALOG_RE.search(clean)
 
 
+def cinnamon_rejection_reason(theme_dir):
+    """Describe an existing Cinnamon component separately from an absent component."""
+    if current_desktop() != "cinnamon":
+        return None
+    version = cinnamon_version()
+    if version is None:
+        return "The Cinnamon version could not be detected; compatibility cannot be verified."
+    content = _cinnamon_theme_css(theme_dir)
+    if content is None:
+        return "The Cinnamon stylesheet or one of its imports could not be read; compatibility is unverified."
+    release = ".".join(map(str, version))
+    if version >= (5, 4) and cinnamon_css_outdated(content):
+        return f"The Cinnamon style lacks .dialog / .prompt-dialog styles expected by Cinnamon {release}."
+    if version < (5, 4) and cinnamon_theme_incompatible(theme_dir):
+        return f"The Cinnamon style lacks the older .modal-dialog styles expected by Cinnamon {release}."
+    return None
+
+
 def _cinnamon_theme_css(theme_dir):
     """Unresolved imports are unknown; absence of a selector cannot prove a mismatch."""
     css = Path(theme_dir) / "cinnamon" / "cinnamon.css"

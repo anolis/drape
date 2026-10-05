@@ -54,6 +54,35 @@ class CompatibilityUiTest(unittest.TestCase):
         self.assertTrue(card.compatibility_pending)
         card.compatibility_note.set_text.assert_called_once_with("Compatibility unverified")
 
+    def test_cinnamon_rejection_names_dialog_mismatch_without_rejecting_unknown_variants(self):
+        card = SimpleNamespace(
+            kind="desktop",
+            _checks={1: ({"desktop", "cinnamon-legacy"}, True)},
+            item=SimpleNamespace(files=[SimpleNamespace(index=1), SimpleNamespace(index=2)]),
+            in_destruction=lambda: False,
+            departing=False,
+            get_parent=lambda: None,
+            compatibility_note=mock.Mock(),
+            glyphs=mock.Mock(),
+            misfiled=mock.Mock(),
+        )
+        card.glyphs.show_parts.return_value = False
+        with (
+            mock.patch.object(desktop, "current_desktop", return_value="cinnamon"),
+            mock.patch.object(desktop, "cinnamon_version", return_value=(6, 4)),
+            mock.patch.object(desktop, "supported", return_value=True),
+            mock.patch.object(settings, "get", return_value=True),
+        ):
+            Card._show_glyphs(card, {"desktop", "cinnamon-legacy"}, True, checked=True)
+        self.assertTrue(card.compatibility_pending)
+        self.assertFalse(card.compatible)
+        card.compatibility_note.set_text.assert_called_once_with(
+            "Checked style lacks Cinnamon 6.4 dialog styles"
+        )
+        self.assertIn(
+            "Uninspected variants", card.compatibility_note.set_tooltip_text.call_args.args[0]
+        )
+
     def test_unsupported_categories_stay_hidden_in_installed(self):
         kinds = ("wm", "gtk", "desktop", "lookandfeel", "colors", "icons", "cursors", "wallpapers")
         panels = {kind: mock.Mock() for kind in kinds}

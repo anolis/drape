@@ -306,7 +306,17 @@ class ApplyControl(Gtk.Box):
         comps = self._components(entry)
         apply.set_sensitive(bool(comps))
         if not comps:
-            apply.set_tooltip_text("No supported components for this desktop and window manager")
+            record = entry if entry is not None else installer.load_manifest().get(key, {})
+            reasons = {
+                reason
+                for component in record.get("components", [])
+                if kind == "desktop" and "desktop" in component["provides"]
+                if (reason := desktop.cinnamon_rejection_reason(component["path"]))
+            }
+            apply.set_tooltip_text(
+                "\n".join(sorted(reasons))
+                or "No supported components for this desktop and window manager"
+            )
         if len(comps) > 1 and kind != "packs":
             more = Gtk.Button(
                 image=Gtk.Image.new_from_icon_name("pan-down-symbolic", Gtk.IconSize.BUTTON)

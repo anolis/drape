@@ -258,8 +258,15 @@ class ThemeActions:
         parts = only or component["provides"]
         # Visibility preferences never bypass the current desktop's apply requirements.
         if not set(parts) & set(desktop.compatible_parts(component)):
+            reason = (
+                desktop.cinnamon_rejection_reason(component["path"])
+                if "desktop" in parts and "desktop" in component["provides"]
+                else None
+            )
             self.notify(
-                f"{component['name']} has no compatible component for this desktop and version.",
+                f"{component['name']}: {reason}"
+                if reason
+                else f"{component['name']} has no compatible component for this desktop and version.",
                 Gtk.MessageType.WARNING,
             )
             return

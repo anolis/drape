@@ -119,8 +119,10 @@ class CinnamonFilterTest(unittest.TestCase):
                 mock.patch.object(installer, "MANIFEST", root / "records.json"),
                 mock.patch.object(installer, "THEMES_DIR", root / "themes"),
             ):
-                with self.assertRaises(installer.IncompatibleError):
+                with self.assertRaises(installer.IncompatibleError) as rejected:
                     installer.install_file(archive, "1", "Theme", only_applicable=True)
+                self.assertIn('Cinnamon 6.4', str(rejected.exception))
+                self.assertIn('.dialog / .prompt-dialog', str(rejected.exception))
                 self.assertFalse((root / "themes").exists())
                 with mock.patch.object(settings, "get", return_value=False):
                     installer.install_file(archive, "1", "Theme", only_applicable=False)
@@ -151,3 +153,57 @@ class CinnamonFilterTest(unittest.TestCase):
             folder.mkdir()
             (folder / "cinnamon.css").write_text(styles[names[0]])
             self.assertFalse(desktop.cinnamon_theme_outdated(folder.parent))
+
+    def test_unquoted_imports_are_resolved_in_archives_and_installed_styles(self):
+        main = "Theme/cinnamon/cinnamon.css"
+        imported = "Theme/cinnamon/dialogs.css"
+        css = "@import url(dialogs.css); .modal-dialog {}"
+        self.assertEqual(desktop.cinnamon_css_imports(css), ["dialogs.css"])
+        markers = peek._cinnamon_markers(
+            [main, imported], {main: css, imported: ".prompt-dialog {}"}, True
+        )
+        self.assertIn("__drape_cinnamon-modern__", markers)
+        self.assertNotIn("__drape_cinnamon-unknown__", markers)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "cinnamon").mkdir()
+            (root / "cinnamon/cinnamon.css").write_text(css)
+            (root / "cinnamon/dialogs.css").write_text(".prompt-dialog {}")
+            self.assertFalse(desktop.cinnamon_theme_incompatible(root))
+            self.assertIsNone(desktop.cinnamon_rejection_reason(root))
+            self.assertEqual(
+                desktop.compatible_parts(dict(path=str(root), provides=["desktop"])), ["desktop"]
+            )
+
+    def test_rejection_distinguishes_older_dialogs_from_unreadable_imports(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "cinnamon").mkdir()
+            css = root / "cinnamon/cinnamon.css"
+            css.write_text(".modal-dialog {}")
+            self.assertIn("Cinnamon 6.4", desktop.cinnamon_rejection_reason(root))
+            self.assertIn(".dialog / .prompt-dialog", desktop.cinnamon_rejection_reason(root))
+            css.write_text("@import url(missing.css); .modal-dialog {}")
+            self.assertIn("unverified", desktop.cinnamon_rejection_reason(root))
+            with mock.patch.object(desktop, "cinnamon_version", return_value=(5, 2)):
+                css.write_text(".dialog {}")
+                self.assertIn(".modal-dialog", desktop.cinnamon_rejection_reason(root))
+
+    def test_css_import_syntaxes_ignore_comments_and_keep_missing_targets_unknown(self):
+        css = """/* @import url(comment.css); */
+        @import "quoted.css";
+        @import 'single.css';
+        @import url(plain.css);
+        @import url( "spaced.css" );
+        """
+        self.assertEqual(
+            desktop.cinnamon_css_imports(css),
+            ["quoted.css", "single.css", "plain.css", "spaced.css"],
+        )
+        name = "Theme/cinnamon/cinnamon.css"
+        self.assertIn(
+            "__drape_cinnamon-unknown__",
+            peek._cinnamon_markers(
+                [name], {name: "@import url(missing.css); .modal-dialog {}"}, True
+            ),
+        )
