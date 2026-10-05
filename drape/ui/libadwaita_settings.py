@@ -16,7 +16,7 @@ def confirm_application(window, name):
     root = libadwaita.CONFIG_HOME / "gtk-4.0"
     dialog.format_secondary_text(
         f"This replaces {root / 'gtk.css'} with an import of this theme's GTK 4 style. Your original file or symlink is backed up and can be restored from Native GNOME setup.\n\n"
-        "GTK 4 themes may not cover every libadwaita widget or version. Restart Files, Settings and other native GNOME apps afterward. Application menu entries are not changed."
+        "GTK 4 themes may not cover every libadwaita widget or version. Restart Files, Settings and other native GNOME apps afterward. GNOME/X11 desktop-drawn title bars need logout/login to refresh. Application menu entries are not changed."
     )
     accepted = dialog.run() == Gtk.ResponseType.YES
     dialog.destroy()

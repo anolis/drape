@@ -21,7 +21,10 @@ from .session import atomic_text
 
 HOME = Path.home()
 CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config")
-RESTART_NOTE = "Restart native GNOME apps such as Files and Settings to load the GTK 4 style."
+RESTART_NOTE = (
+    "Restart native GNOME apps such as Files and Settings to load the GTK 4 style. "
+    "On GNOME/X11, log out and back in to refresh desktop-drawn title bars, including Kitty’s."
+)
 VALIDATE = """
 import gi, sys
 gi.require_version('Gtk', '4.0')

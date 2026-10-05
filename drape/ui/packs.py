@@ -41,7 +41,7 @@ def component_notes(entry, groups):
     notes = [f"{len(groups)} compatible components for this desktop."]
     if "libadwaita" in groups:
         notes.append(
-            "GNOME / libadwaita replaces your user GTK 4 stylesheet (gtk.css) with an import of the selected theme, using GNOME's light/dark preference. The original file is backed up; restore it from Native GNOME setup. Restart native GNOME apps afterward."
+            "GNOME / libadwaita replaces your user GTK 4 stylesheet (gtk.css) with an import of the selected theme, using GNOME's light/dark preference. The original file is backed up; restore it from Native GNOME setup. Restart native GNOME apps afterward; log out and back in to refresh GNOME/X11 desktop-drawn title bars."
         )
     included = {part for component in entry["components"] for part in component["provides"]}
     references = set()
