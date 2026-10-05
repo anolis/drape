@@ -54,7 +54,7 @@ class CompatibilityUiTest(unittest.TestCase):
         self.assertTrue(card.compatibility_pending)
         card.compatibility_note.set_text.assert_called_once_with("Compatibility unverified")
 
-    def test_cinnamon_rejection_names_dialog_mismatch_without_rejecting_unknown_variants(self):
+    def test_cinnamon_style_stays_visible_with_a_cosmetic_dialog_warning(self):
         card = SimpleNamespace(
             kind="desktop",
             _checks={1: ({"desktop", "cinnamon-legacy"}, True)},
@@ -74,10 +74,10 @@ class CompatibilityUiTest(unittest.TestCase):
             mock.patch.object(settings, "get", return_value=True),
         ):
             Card._show_glyphs(card, {"desktop", "cinnamon-legacy"}, True, checked=True)
-        self.assertTrue(card.compatibility_pending)
-        self.assertFalse(card.compatible)
+        self.assertFalse(card.compatibility_pending)
+        self.assertTrue(card.compatible)
         card.compatibility_note.set_text.assert_called_once_with(
-            "Checked style lacks Cinnamon 6.4 dialog styles"
+            "Cinnamon 6.4 dialog styling may be incomplete"
         )
         self.assertIn(
             "Uninspected variants", card.compatibility_note.set_tooltip_text.call_args.args[0]

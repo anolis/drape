@@ -328,7 +328,12 @@ def compatible_parts(component):
             # Unknown version or unresolved CSS cannot satisfy a strict filter.
             if cinnamon_version() is None or _cinnamon_theme_css(path) is None:
                 continue
-        if part == "desktop" and cinnamon_filter_active() and cinnamon_theme_incompatible(path):
+        if (
+            part == "desktop"
+            and cinnamon_filter_active()
+            and cinnamon_theme_incompatible(path)
+            and not component.get("allow_incomplete_cinnamon")
+        ):
             continue
         if part == "desktop" and current_desktop() == "kde":
             continue  # this format means Cinnamon, even though the UI tab also hosts Plasma
@@ -346,6 +351,27 @@ def compatible_parts(component):
             continue
         result.append(part)
     return result
+
+
+def cinnamon_style_warning(component):
+    """Missing dialog selectors are cosmetic; missing CSS/imports remain unverified."""
+    if (
+        "desktop" in component["provides"]
+        and current_desktop() == "cinnamon"
+        and supported("desktop")
+        and cinnamon_filter_active()
+        and _cinnamon_theme_css(component["path"]) is not None
+        and cinnamon_theme_incompatible(component["path"])
+    ):
+        return cinnamon_rejection_reason(component["path"])
+    return None
+
+
+def selectable_parts(component):
+    """Expose warning-only Cinnamon styles for explicit consent in Apply controls."""
+    if cinnamon_style_warning(component):
+        return compatible_parts({**component, "allow_incomplete_cinnamon": True})
+    return compatible_parts(component)
 
 
 # Catalog scope and archive compatibility
@@ -482,14 +508,12 @@ def system_part_compatible(part):
 
 
 def _cinnamon_archive_status(parts):
-    # The supported CSS generation follows the running release in both directions.
-    if cinnamon_version() >= (5, 4):
-        if "cinnamon-legacy" in parts:
-            return "incompatible"
-        return "compatible" if "cinnamon-modern" in parts else "unknown"
-    if "cinnamon-modern-only" in parts:
-        return "incompatible"
-    return "compatible" if "cinnamon-pre54" in parts else "unknown"
+    # CSS generation mismatches can be accepted explicitly; they are not a wrong format.
+    return (
+        "compatible"
+        if parts & {"cinnamon-modern", "cinnamon-legacy", "cinnamon-pre54"}
+        else "unknown"
+    )
 
 
 def theme_part(kind):

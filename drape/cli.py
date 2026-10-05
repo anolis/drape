@@ -29,6 +29,16 @@ def _print_entry(key, e):
         print(f"{'':12}  ... {len(e['components']) - 6} more")
 
 
+def _confirm_cinnamon(warnings, action="Install anyway"):
+    for warning in warnings:
+        print(f"\n{warning['name']}: {warning['reason']}", file=sys.stderr)
+    print("Some Cinnamon prompts may use default or incomplete styling.", file=sys.stderr)
+    try:
+        return input(f"{action}? [y/N] ").strip().lower() in {"y", "yes"}
+    except EOFError:
+        return False
+
+
 # Catalog commands
 
 
@@ -68,7 +78,13 @@ def cmd_install(a):
     it = pling.get(a.id)
     print(f"Installing {it.name}...", file=sys.stderr)
     e = installer.install_item(
-        it, a.file, _progress, a.force, _replace(a), only_applicable=False if a.all_themes else None
+        it,
+        a.file,
+        _progress,
+        a.force,
+        _replace(a),
+        only_applicable=False if a.all_themes else None,
+        confirm_cinnamon=_confirm_cinnamon,
     )
     print(file=sys.stderr)
     _print_entry(it.id, e)
@@ -78,7 +94,12 @@ def cmd_install(a):
 
 def cmd_install_url(a):
     key, e = installer.install_url(
-        a.url, _progress, a.force, _replace(a), only_applicable=False if a.all_themes else None
+        a.url,
+        _progress,
+        a.force,
+        _replace(a),
+        only_applicable=False if a.all_themes else None,
+        confirm_cinnamon=_confirm_cinnamon,
     )
     print(file=sys.stderr)
     _print_entry(key, e)
@@ -108,6 +129,7 @@ def cmd_file(a):
         file=p.name,
         replace_items=_replace(a),
         only_applicable=False if a.all_themes else None,
+        confirm_cinnamon=_confirm_cinnamon,
     )
     _print_entry(f"file:{p.name}", e)
 
@@ -128,6 +150,12 @@ def _apply(entry, name=None):
     for c in comps:
         # for multi-variant downloads apply the first variant of each part only
         parts = [p for p in c["provides"] if p not in seen]
+        reason = desktop.cinnamon_style_warning(c) if "desktop" in parts else None
+        if reason and not c.get("allow_incomplete_cinnamon"):
+            if _confirm_cinnamon([{"name": c["name"], "reason": reason}], "Apply anyway"):
+                installer.accept_cinnamon_warning(c)
+            else:
+                parts = [p for p in parts if p != "desktop"]
         changed = desktop.apply_component(c, only=parts)
         applied += changed
         seen.update(changed)

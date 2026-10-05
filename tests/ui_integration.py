@@ -439,6 +439,69 @@ with tempfile.TemporaryDirectory() as temp:
             assert theme_actions.ThemeActions.choose_installed_components(win, "1", entry, "gtk")
     win.destroy()
 
+    # Real worker-to-GTK confirmation keeps the extracted archive and remembers consent.
+    import threading
+    import zipfile
+    from drape.ui import cinnamon_warnings
+    from drape.ui.widgets import ApplyControl
+    warning_root = Path(temp) / "cinnamon-warning"
+    warning_root.mkdir()
+    archive = warning_root / "legacy.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("Legacy/cinnamon/cinnamon.css", ".modal-dialog {}")
+    warning_window = Gtk.Window()
+    warning_window._closing = threading.Event()
+    warning_window.notify = mock.Mock()
+    warning_window.refresh_item = mock.Mock()
+    main_thread = threading.get_ident()
+    with (
+        mock.patch.object(installer, "MANIFEST", warning_root / "installed.json"),
+        mock.patch.object(installer, "THEMES_DIR", warning_root / "themes"),
+        mock.patch.object(desktop, "supported", return_value=True),
+        mock.patch.object(desktop, "current_desktop", return_value="cinnamon"),
+        mock.patch.object(desktop, "cinnamon_version", return_value=(6, 4)),
+        mock.patch.object(desktop, "running_wm", return_value="Muffin"),
+    ):
+        for response in (Gtk.ResponseType.CANCEL, Gtk.ResponseType.ACCEPT):
+            results = []
+            def inspect_dialog(dialog):
+                assert threading.get_ident() == main_thread
+                assert "Cinnamon 6.4" in dialog.get_property("secondary-text")
+                assert "Install anyway" in [b.get_label() for b in dialog.get_action_area().get_children()]
+                return response
+            def install_with_confirmation():
+                try:
+                    results.append(installer.install_file(
+                        archive, "legacy", "Legacy", only_applicable=True,
+                        confirm_cinnamon=lambda warnings: cinnamon_warnings.confirm_install(warning_window, warnings),
+                    ))
+                except installer.InstallCancelled as error:
+                    results.append(error)
+            with mock.patch.object(Gtk.MessageDialog, "run", side_effect=inspect_dialog, autospec=True):
+                thread = threading.Thread(target=install_with_confirmation)
+                thread.start()
+                deadline = time.monotonic() + 5
+                while thread.is_alive() and time.monotonic() < deadline:
+                    pump(0.02)
+                thread.join(0.1)
+                assert not thread.is_alive(), "Cinnamon confirmation worker stalled"
+            assert results
+            if response == Gtk.ResponseType.CANCEL:
+                assert isinstance(results[0], installer.InstallCancelled)
+                assert not installer.MANIFEST.exists() and not installer.THEMES_DIR.exists()
+            else:
+                component = installer.load_manifest()["legacy"]["components"][0]
+                assert component["allow_incomplete_cinnamon"]
+                control = ApplyControl(warning_window, "legacy", "desktop")
+                assert control.get_children()[0].get_sensitive()
+                with mock.patch.object(cinnamon_warnings, "confirm") as repeat, mock.patch.object(desktop, "set_", return_value=True) as apply:
+                    theme_actions.ThemeActions.apply(warning_window, component, "desktop")
+                    repeat.assert_not_called()
+                    apply.assert_called_once_with("desktop", "Legacy")
+                control.destroy()
+    warning_window.destroy()
+    print("Cinnamon warning passed: main-loop Install anyway/Cancel, persisted consent and enabled Apply.")
+
     # Large Installed collections must not hydrate hidden tabs or off-screen cards.
     large = {
         str(i): dict(title=f"Theme {i:04}", components=[dict(name=f"Theme {i}", path=f"/themes/{i}", provides=["icons", "cursors"])])

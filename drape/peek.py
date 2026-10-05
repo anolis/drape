@@ -540,7 +540,11 @@ def installed_parts(entry):
     if "gtk" in parts:
         parts.add("gtk-3.0")
     if "desktop" in parts and desktop.current_desktop() == "cinnamon":
-        parts.update({"cinnamon-modern", "cinnamon-pre54"})
+        from .local_inspection import inspect_paths
+
+        roots = [c["path"] for c in entry["components"] if "desktop" in c["provides"]]
+        # Consent permits applying a style; it must never rewrite the raw CSS evidence.
+        parts.update(inspect_paths(roots)[0] & CINNAMON_MARKERS)
     return parts
 
 

@@ -56,6 +56,18 @@ class IncompatibleError(InstallError):
     """The archive has no components usable in the current session."""
 
 
+class CinnamonWarning(InstallError):
+    """Missing dialog styles need an explicit install-anyway choice."""
+
+    def __init__(self, warnings):
+        self.warnings = warnings
+        super().__init__("\n".join(f"{w['name']}: {w['reason']}" for w in warnings))
+
+
+class InstallCancelled(InstallError):
+    """The user declined the cosmetic warning before anything was installed."""
+
+
 class ConflictError(InstallError):
     """Something being installed has the same name as part of another installed item."""
 
@@ -78,6 +90,7 @@ class Component:
     name: str  # name it is installed and applied under
     windows: bool = False  # a Windows .cur/.ani pack that needs converting
     qt_name: str | None = None  # original paired-file stem, retained when names collide
+    allow_incomplete_cinnamon: bool = False  # set only after explicit cosmetic-warning consent
 
 
 # ---------------------------------------------------------------- manifest
@@ -480,6 +493,8 @@ def install_file(
     required_kind=None,
     author="",
     catalog_download=None,
+    confirm_cinnamon=None,
+    allow_incomplete_cinnamon=False,
 ):
     """Install from a local file. `key` identifies the entry in the manifest."""
     manifest = load_manifest()
@@ -523,6 +538,23 @@ def install_file(
             )
         from . import desktop, settings
 
+        warnings = []
+        for component in comps:
+            reason = desktop.cinnamon_style_warning(
+                {"provides": component.provides, "path": str(component.path)}
+            )
+            if reason:
+                warnings.append({"name": component.name, "reason": reason})
+        if warnings:
+            _report_status(status, "Waiting for Cinnamon style confirmation…", 0.60)
+            if not allow_incomplete_cinnamon:
+                if confirm_cinnamon is None:
+                    raise CinnamonWarning(warnings)
+                if not confirm_cinnamon(warnings):
+                    raise InstallCancelled("Installation canceled. No theme was installed.")
+            accepted = {warning["name"] for warning in warnings}
+            comps = [replace(c, allow_incomplete_cinnamon=c.name in accepted) for c in comps]
+
         if required_kind == "libadwaita" and not any(
             "libadwaita"
             in desktop.compatible_parts(
@@ -548,7 +580,12 @@ def install_file(
                 ) or (
                     c.provides[0] not in SYSTEM_KINDS
                     and desktop.compatible_parts(
-                        {"provides": c.provides, "path": str(c.path), "name": c.name}
+                        {
+                            "provides": c.provides,
+                            "path": str(c.path),
+                            "name": c.name,
+                            "allow_incomplete_cinnamon": c.allow_incomplete_cinnamon,
+                        }
                     )
                 ):
                     usable.append(c)
@@ -569,7 +606,15 @@ def install_file(
                     "to install themes for another session."
                 )
         if required_kind == "packs" and not desktop.pack_components(
-            [{"provides": c.provides, "path": str(c.path), "name": c.name} for c in comps]
+            [
+                {
+                    "provides": c.provides,
+                    "path": str(c.path),
+                    "name": c.name,
+                    "allow_incomplete_cinnamon": c.allow_incomplete_cinnamon,
+                }
+                for c in comps
+            ]
         ):
             raise IncompatibleError(
                 "This download is not a theme pack for the current desktop. "
@@ -645,6 +690,8 @@ def install_file(
                     shutil.copy2(c.path, dest)
                 installed.append(str(dest))
                 comp = {"provides": list(c.provides), "name": c.name, "path": str(dest)}
+                if c.allow_incomplete_cinnamon:
+                    comp["allow_incomplete_cinnamon"] = True
                 if c.provides[0] in SYSTEM_KINDS:
                     comp["name"] = dest.name
                     comp["system"] = c.provides[
@@ -725,6 +772,8 @@ def install_item(
     only_applicable=None,
     status=None,
     required_kind=None,
+    confirm_cinnamon=None,
+    allow_incomplete_cinnamon=False,
 ):
     """Install a pling.Item. The item should be freshly fetched (download links expire)."""
     if not item.files:
@@ -755,6 +804,8 @@ def install_item(
                     only_applicable=True if required_kind == "packs" else only_applicable,
                     status=status,
                     required_kind=required_kind,
+                    confirm_cinnamon=confirm_cinnamon,
+                    allow_incomplete_cinnamon=allow_incomplete_cinnamon,
                 )
             except IncompatibleError as e:
                 last_error = e
@@ -775,7 +826,12 @@ def _url_key(url, filename):
 
 
 def install_url(
-    url, progress=None, replace_foreign=False, replace_items=False, only_applicable=None
+    url,
+    progress=None,
+    replace_foreign=False,
+    replace_items=False,
+    only_applicable=None,
+    confirm_cinnamon=None,
 ):
     """Install from an ocs://install?url=...&filename=... link (gnome-look "Install" buttons) or a
     plain download URL. Returns (manifest key, entry)."""
@@ -799,10 +855,21 @@ def install_url(
             file=path.name,
             replace_items=replace_items,
             only_applicable=only_applicable,
+            confirm_cinnamon=confirm_cinnamon,
         )
 
 
 # Record-only metadata updates
+
+
+def accept_cinnamon_warning(component):
+    """Remember explicit Apply-anyway consent for owned components sharing this path."""
+    with ManifestStore(MANIFEST).edit() as records:
+        for entry in records.values():
+            for stored in entry["components"]:
+                if stored["path"] == component["path"]:
+                    stored["allow_incomplete_cinnamon"] = True
+    component["allow_incomplete_cinnamon"] = True
 
 
 def set_chosen(key, kind, name):

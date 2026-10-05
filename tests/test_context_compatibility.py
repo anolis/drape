@@ -25,11 +25,11 @@ class ContextCompatibilityTest(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
 
-    def test_old_and_new_css_follow_the_running_version(self):
+    def test_css_generation_mismatches_keep_cinnamon_archives_visible(self):
         name = "Theme/cinnamon/cinnamon.css"
         fixtures = (
-            (".modal-dialog {}", True, False),
-            (".dialog {}", False, True),
+            (".modal-dialog {}", True, True),
+            (".dialog {}", True, True),
             (".modal-dialog {} .dialog {}", True, True),
         )
         for css, old_ok, new_ok in fixtures:
@@ -51,9 +51,9 @@ class ContextCompatibilityTest(unittest.TestCase):
                 css.write_text(".dialog {} .modal-dialog {}")
                 self.assertFalse(desktop.cinnamon_theme_incompatible(temp))
 
-    def test_mixed_archive_rejects_only_the_incompatible_component(self):
+    def test_mixed_archive_keeps_cinnamon_format_but_requires_consent_for_apply(self):
         parts = {"gtk", "gtk-3.0", "icons", "desktop", "cinnamon-legacy"}
-        self.assertFalse(desktop.archive_compatible(parts, True, "desktop"))
+        self.assertTrue(desktop.archive_compatible(parts, True, "desktop"))
         for kind in ("gtk", "icons", "packs"):
             self.assertTrue(desktop.archive_compatible(parts, True, kind), kind)
         with tempfile.TemporaryDirectory() as temp:

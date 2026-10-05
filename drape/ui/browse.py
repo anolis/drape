@@ -205,15 +205,21 @@ class Card(FadingCard):
                 note = "Contents unrecognized"
         outdated_style = (
             self.kind == "desktop"
-            and desktop.hide_outdated_cinnamon()
-            and "cinnamon-legacy" in parts
-            and state != "compatible"
+            and desktop.cinnamon_filter_active()
+            and (
+                (
+                    desktop.cinnamon_version() >= (5, 4)
+                    and "cinnamon-legacy" in parts
+                    and "cinnamon-modern" not in parts
+                )
+                or (desktop.cinnamon_version() < (5, 4) and "cinnamon-modern-only" in parts)
+            )
         )
         if outdated_style:
             version = ".".join(map(str, desktop.cinnamon_version()))
-            note = f"Checked style lacks Cinnamon {version} dialog styles"
+            note = f"Cinnamon {version} dialog styling may be incomplete"
         self.compatibility_note.set_text(note)
-        self.compatibility_note.set_visible(state != "compatible")
+        self.compatibility_note.set_visible(state != "compatible" or outdated_style)
         self.pack_pending = self.kind == "packs" and not self.compatible and state == "unknown"
         parent = self.get_parent()
         self.compatibility_pending = state == "unknown"
@@ -223,8 +229,8 @@ class Card(FadingCard):
             if page:
                 GLib.idle_add(page._filtered_status)
         self.compatibility_note.set_tooltip_text(
-            "A checked download contains a Cinnamon style, but lacks the .dialog / .prompt-dialog "
-            "styles required by this Cinnamon version. Uninspected variants remain unverified."
+            "A checked download lacks current Cinnamon dialog styles. You can choose Install anyway; "
+            "some prompts may use default or incomplete styling. Uninspected variants remain unverified."
             if outdated_style
             else "Contents have not been inspected yet; this card is still pending."
             if not known

@@ -86,14 +86,33 @@ def unavailable(component):
         return "Theme files are missing" if part != "wallpapers" else "Wallpaper file is missing"
     if part == "wallpapers":
         return "" if path.is_file() else "Wallpaper is not a local image file"
+    component = _appearance_component(part, value, path)
+    if part not in desktop.compatible_parts(component):
+        return "Theme component is incompatible with the current desktop"
+    return ""
+
+
+def _appearance_component(part, value, path):
+    """Keep an installed component's explicit Cinnamon choice when saving/restoring looks."""
     component = {
         "name": value,
         "path": str(path),
         "provides": ["gtk" if part == "libadwaita" else part],
     }
-    if part not in desktop.compatible_parts(component):
-        return "Theme component is incompatible with the current desktop"
-    return ""
+    if part == "desktop":
+        from . import installer
+
+        try:
+            records = installer.load_manifest()
+        except installer.InstallError as error:
+            raise ConfigurationError(str(error)) from error
+        if any(
+            stored.get("allow_incomplete_cinnamon") and stored["path"] == str(path)
+            for entry in records.values()
+            for stored in entry["components"]
+        ):
+            component["allow_incomplete_cinnamon"] = True
+    return component
 
 
 def review(snapshot):
@@ -138,11 +157,7 @@ def apply(snapshot, selected):
             else:
                 path = locate(part, value)
                 done = desktop.apply_component(
-                    {
-                        "name": value,
-                        "path": str(path),
-                        "provides": ["gtk" if part == "libadwaita" else part],
-                    },
+                    _appearance_component(part, value, path),
                     [part],
                 )
             if not done:

@@ -305,6 +305,12 @@ class ApplyControl(Gtk.Box):
         self.pack_start(apply, False, False, 0)
         comps = self._components(entry)
         apply.set_sensitive(bool(comps))
+        if kind == "desktop" and comps:
+            warnings = {note for c in comps if (note := desktop.cinnamon_style_warning(c))}
+            if warnings:
+                apply.set_tooltip_text(
+                    "\n".join(sorted(warnings)) + " You can choose Apply anyway."
+                )
         if not comps:
             record = entry if entry is not None else installer.load_manifest().get(key, {})
             reasons = {
@@ -342,7 +348,7 @@ class ApplyControl(Gtk.Box):
             for c in comps
             if c.get("system")
             or any(
-                p in desktop.compatible_parts(c)
+                p in desktop.selectable_parts(c)
                 for p in (
                     [desktop.theme_part(self.kind)]
                     if self.kind and self.kind != "packs"

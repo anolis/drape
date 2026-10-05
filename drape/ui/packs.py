@@ -30,7 +30,7 @@ ORDER = [
 def choices(entry):
     groups = {}
     for component in entry["components"]:
-        for part in desktop.compatible_parts(component):
+        for part in desktop.selectable_parts(component):
             if part in desktop.PACK_PARTS:
                 groups.setdefault(part, []).append(component)
     return groups
@@ -38,7 +38,11 @@ def choices(entry):
 
 def component_notes(entry, groups):
     """Metatheme references suggest companion themes; they do not install those files."""
-    notes = [f"{len(groups)} compatible components for this desktop."]
+    notes = [f"{len(groups)} available components for this desktop."]
+    for component in groups.get("desktop", []):
+        warning = desktop.cinnamon_style_warning(component)
+        if warning:
+            notes.append(f"{component['name']}: {warning} You can choose Apply anyway.")
     if "libadwaita" in groups:
         notes.append(
             "GNOME / libadwaita replaces your user GTK 4 stylesheet (gtk.css) with an import of the selected theme, using GNOME's light/dark preference. The original file is backed up; restore it from Native GNOME setup. Restart native GNOME apps afterward; log out and back in to refresh GNOME/X11 desktop-drawn title bars."
@@ -113,6 +117,16 @@ def apply_pack(window, key, only_kind=None):
         else []
     )
     dialog.destroy()
+    from .cinnamon_warnings import approve_application
+
+    for part, component in selected:
+        if part == "desktop":
+            try:
+                if not approve_application(window, component):
+                    return  # Resolve cosmetic warnings before any pack appearance changes.
+            except installer.InstallError as error:
+                error_dialog(window, "Couldn't save theme preference", error)
+                return
     applied = []
     for part, component in selected:
         try:

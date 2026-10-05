@@ -397,7 +397,7 @@ class InstalledPage(Gtk.Box):
         revision = self._load_revision
         # CSS/format checks are shared by all categories during this refresh only.
         compatible = {
-            id(c): set(desktop.compatible_parts(c))
+            id(c): set(desktop.selectable_parts(c))
             for entry in m.values()
             for c in entry["components"]
         }

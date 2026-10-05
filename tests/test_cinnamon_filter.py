@@ -47,9 +47,7 @@ class CinnamonFilterTest(unittest.TestCase):
         self.assertIn("__drape_cinnamon-unknown__", peek._cinnamon_markers(names, styles, False))
         styles[names[1]] = ".prompt-dialog {}"
         self.assertIn("__drape_cinnamon-modern__", peek._cinnamon_markers(names, styles, True))
-        self.assertFalse(
-            desktop.archive_compatible({"desktop", "cinnamon-legacy"}, True, "desktop")
-        )
+        self.assertTrue(desktop.archive_compatible({"desktop", "cinnamon-legacy"}, True, "desktop"))
         self.assertFalse(
             desktop.archive_compatible({"desktop", "cinnamon-unknown"}, False, "desktop")
         )
@@ -57,7 +55,7 @@ class CinnamonFilterTest(unittest.TestCase):
             mock.patch.object(settings, "get", return_value=False),
             mock.patch.object(desktop, "supported", return_value=True),
         ):
-            self.assertFalse(
+            self.assertTrue(
                 desktop.archive_compatible({"desktop", "cinnamon-legacy"}, True, "desktop")
             )
 
@@ -109,7 +107,7 @@ class CinnamonFilterTest(unittest.TestCase):
             self.assertIn("cinnamon-unknown", parts)
             self.assertEqual(peek.cached("1", "theme.zip"), (parts, complete))
 
-    def test_install_rejects_old_theme_before_copy_and_toggle_allows_it(self):
+    def test_install_warns_before_copy_and_explicit_consent_enables_application(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             archive = root / "theme.zip"
@@ -119,14 +117,22 @@ class CinnamonFilterTest(unittest.TestCase):
                 mock.patch.object(installer, "MANIFEST", root / "records.json"),
                 mock.patch.object(installer, "THEMES_DIR", root / "themes"),
             ):
-                with self.assertRaises(installer.IncompatibleError) as rejected:
+                with self.assertRaises(installer.CinnamonWarning) as rejected:
                     installer.install_file(archive, "1", "Theme", only_applicable=True)
-                self.assertIn('Cinnamon 6.4', str(rejected.exception))
-                self.assertIn('.dialog / .prompt-dialog', str(rejected.exception))
+                self.assertIn("Cinnamon 6.4", str(rejected.exception))
+                self.assertIn(".dialog / .prompt-dialog", str(rejected.exception))
                 self.assertFalse((root / "themes").exists())
-                with mock.patch.object(settings, "get", return_value=False):
-                    installer.install_file(archive, "1", "Theme", only_applicable=False)
+                installer.install_file(
+                    archive,
+                    "1",
+                    "Theme",
+                    only_applicable=True,
+                    confirm_cinnamon=lambda warnings: True,
+                )
                 self.assertIn("1", installer.load_manifest())
+                comp = installer.load_manifest()["1"]["components"][0]
+                self.assertTrue(comp["allow_incomplete_cinnamon"])
+                self.assertIn("desktop", desktop.compatible_parts(comp))
 
     def test_menu_toggle_persists_and_refreshes_installed(self):
         from drape.ui.window import Window

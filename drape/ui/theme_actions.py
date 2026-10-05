@@ -37,6 +37,16 @@ class ThemeActions:
         self.refresh_item(item.id)
 
         flags = {"foreign": False, "items": False}  # what the user agreed to replace
+        accepted_styles = set()
+
+        def confirm_styles(warnings):
+            from .cinnamon_warnings import confirm_install
+
+            pending = [w for w in warnings if (w["name"], w["reason"]) not in accepted_styles]
+            if pending and not confirm_install(self, pending):
+                return False
+            accepted_styles.update((w["name"], w["reason"]) for w in warnings)
+            return True
 
         def work():
             fresh = pling.get(item.id)  # download links are signed and expire
@@ -49,10 +59,13 @@ class ThemeActions:
                     flags["items"],
                     status=feedback.status,
                     required_kind=required_kind or ("packs" if apply_kind == "packs" else None),
+                    confirm_cinnamon=confirm_styles,
                 )
             except installer.ConflictError as e:
                 return e  # ask the user on the main thread
             except installer.InstallError as e:
+                if isinstance(e, installer.InstallCancelled):
+                    return e
                 if "wasn't installed by drape" not in str(e):
                     raise
                 return e
@@ -69,6 +82,10 @@ class ThemeActions:
                 feedback.complete()
             feedback.close()
             self.busy.pop(item.id, None)
+            if isinstance(result, installer.InstallCancelled):
+                self.refresh_item(item.id)
+                self.notify(str(result))
+                return
             if isinstance(result, installer.ConflictError):
                 self.refresh_item(item.id)
                 self.resolve_conflict(
@@ -256,6 +273,15 @@ class ThemeActions:
             return
         only = [desktop.theme_part(kind)] if kind else None
         parts = only or component["provides"]
+        if "desktop" in parts:
+            from .cinnamon_warnings import approve_application
+
+            try:
+                if not approve_application(self, component):
+                    return
+            except installer.InstallError as error:
+                error_dialog(self, "Couldn't save theme preference", error)
+                return
         # Visibility preferences never bypass the current desktop's apply requirements.
         if not set(parts) & set(desktop.compatible_parts(component)):
             reason = (
@@ -436,14 +462,26 @@ class ThemeActions:
             self.notify(f"Installed {entry['title']}. Pick Apply to use it.")
 
         def attempt(replace=False):
+            from .cinnamon_warnings import confirm_install
+
             def failed(e):
                 if isinstance(e, installer.ConflictError):
                     self.resolve_conflict(
                         e, lambda names: (reapply.extend(names), attempt(replace=True))
                     )
+                elif isinstance(e, installer.InstallCancelled):
+                    self.notify(str(e))
                 else:
                     error_dialog(self, "Couldn't install from link", e)
 
-            run_async(lambda: installer.install_url(url, replace_items=replace), done, failed)
+            run_async(
+                lambda: installer.install_url(
+                    url,
+                    replace_items=replace,
+                    confirm_cinnamon=lambda warnings: confirm_install(self, warnings),
+                ),
+                done,
+                failed,
+            )
 
         attempt()
