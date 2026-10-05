@@ -21,6 +21,13 @@ variant inspection. Uninspected variants stay unknown and cannot prove incompati
 HTTP 429 pauses the queue for the reported cooldown. Disable automatic checks through
 **☰ → Inspect visible themes when scrolling stops**; existing index evidence still works.
 
+Each archive inspection resolves its download gateway once, then reuses the storage
+URL for subsequent ZIP ranges or larger tar prefixes. The resolved signed URL stays
+in memory for that inspection and is never saved in the index or exported.
+Server cooldowns persist locally across worker exits and app restarts, independently
+of compatibility evidence. Cached results and offline inspections remain available;
+new remote checks wait, and the app also defers downloads from the same blocked host.
+
 The scanner status row is visible in the main window and uploader profiles. Active
 archive checks show the theme/download name and a spinner on the card. Waiting for
 scrolling, cancellation, failures and rate-limit countdowns are described explicitly.

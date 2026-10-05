@@ -2,6 +2,8 @@
   "2026-10-04": {
     "title": "Clear theme engines and reversible Qt appearance",
     "changes": [
+      "Resolve each archive download gateway once per compatibility inspection, then reuse the storage URL for ZIP range reads and expanded tar prefixes. This avoids repeatedly consuming Pling gateway requests for the same file; signed storage links remain temporary and are never exported.",
+      "Persist server rate-limit cooldowns across worker cancellation and Drape restarts. New remote checks wait through the saved deadline without recording incompatibility, while cached evidence and offline inspections remain available. The app also honors a scanner cooldown for manual downloads from the same host.",
       "Keep a persistent Update available action in the app header so theme notifications cannot hide it. Check shortly after each launch and hourly while open, respect the automatic-check preference, and offer review plus Update and restart after explicit confirmation. Updates wait for ongoing theme configuration operations.",
       "Add Collections → My configurations to save currently selected appearance components as named personal theme combinations. Review current-to-saved changes before applying selected components, with missing-file and desktop compatibility checks, rename/delete actions and durable local records with backups.",
       "Give hovered cards immediate compatibility inspection priority, including card labels and controls. Hover skips the scroll-idle wait while preserving a running check, cached evidence, job spacing and server cooldowns.",

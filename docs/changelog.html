@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">90 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/6bce565e12be0ee3203a1a018dbed063dca447bc">6bce565</a>.
+      <p class="note">93 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/7d521cbd3119ca456a5c4f17be3ac928591f2cd4">7d521cb</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -163,6 +163,8 @@
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
       <h2 id="title-2026-10-04">Clear theme engines and reversible Qt appearance</h2>
       <ul class="changes">
+        <li>Resolve each archive download gateway once per compatibility inspection, then reuse the storage URL for ZIP range reads and expanded tar prefixes. This avoids repeatedly consuming Pling gateway requests for the same file; signed storage links remain temporary and are never exported.</li>
+        <li>Persist server rate-limit cooldowns across worker cancellation and Drape restarts. New remote checks wait through the saved deadline without recording incompatibility, while cached evidence and offline inspections remain available. The app also honors a scanner cooldown for manual downloads from the same host.</li>
         <li>Keep a persistent Update available action in the app header so theme notifications cannot hide it. Check shortly after each launch and hourly while open, respect the automatic-check preference, and offer review plus Update and restart after explicit confirmation. Updates wait for ongoing theme configuration operations.</li>
         <li>Add Collections → My configurations to save currently selected appearance components as named personal theme combinations. Review current-to-saved changes before applying selected components, with missing-file and desktop compatibility checks, rename/delete actions and durable local records with backups.</li>
         <li>Give hovered cards immediate compatibility inspection priority, including card labels and controls. Hover skips the scroll-idle wait while preserving a running check, cached evidence, job spacing and server cooldowns.</li>
@@ -186,8 +188,11 @@
         <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 30 commits</summary>
+        <summary>View 33 commits</summary>
         <ol class="commits">
+          <li data-commit="7d521cbd3119ca456a5c4f17be3ac928591f2cd4"><a class="commit" href="https://github.com/anolis/drape/commit/7d521cbd3119ca456a5c4f17be3ac928591f2cd4">7d521cb</a><span>fix: preserve compatibility cooldowns across app restarts</span></li>
+          <li data-commit="822854a7c65fe2f93bdfa60922fe49c0b3b85e7f"><a class="commit" href="https://github.com/anolis/drape/commit/822854a7c65fe2f93bdfa60922fe49c0b3b85e7f">822854a</a><span>fix: reuse resolved storage URLs during archive inspection</span></li>
+          <li data-commit="ebfb68f2e3b642dee1e3d48ed3eeead750c343ca"><a class="commit" href="https://github.com/anolis/drape/commit/ebfb68f2e3b642dee1e3d48ed3eeead750c343ca">ebfb68f</a><span>docs: describe personal configurations and persistent update notices</span></li>
           <li data-commit="6bce565e12be0ee3203a1a018dbed063dca447bc"><a class="commit" href="https://github.com/anolis/drape/commit/6bce565e12be0ee3203a1a018dbed063dca447bc">6bce565</a><span>feat: keep update availability visible and check while open</span></li>
           <li data-commit="aedd7f271e866cbf425bb97523be9635cfd75e21"><a class="commit" href="https://github.com/anolis/drape/commit/aedd7f271e866cbf425bb97523be9635cfd75e21">aedd7f2</a><span>feat: save and apply personal appearance configurations</span></li>
           <li data-commit="ff02daabba5211e359b30eba72356842ced0ded8"><a class="commit" href="https://github.com/anolis/drape/commit/ff02daabba5211e359b30eba72356842ced0ded8">ff02daa</a><span>docs: explain hover priority and background compatibility checks</span></li>
