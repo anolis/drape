@@ -63,7 +63,8 @@ click. No hunting for archives, no guessing which folder things go in.
   GTK 4 stylesheet. Applying confirms the user CSS change, validates it with GTK 4
   and backs up the original file or symlink. Restore returns the original appearance.
   GTK 4 files are required; visual compatibility with every libadwaita widget is not
-  guaranteed. Restart native GNOME apps after applying.
+  guaranteed. Restart native GNOME apps after applying; on GNOME/X11, log out and
+  back in to refresh desktop-drawn title bars such as Kitty’s.
 - **Supports KDE Plasma.** Plasma styles, global themes, color schemes and Aurorae window
   decorations install into their native user data folders. Icons, cursors and wallpapers use
   Plasma's apply tools too. Catalog selection follows Plasma 5/6, with KWin detected on X11

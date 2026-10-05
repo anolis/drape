@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">75 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/3177d25e4d0f44d8d9aff4f358071d60db732efb">3177d25</a>.
+      <p class="note">78 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/0c1d4afc3fc89e2dcd935dac887f73500124efa8">0c1d4af</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -163,6 +163,8 @@
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
       <h2 id="title-2026-10-04">Clear theme engines and reversible Qt appearance</h2>
       <ul class="changes">
+        <li>Added visible compatibility scanner status in the main window and uploader profiles, per-card activity spinners and a count-based progress bar for saved-theme indexing. Rate-limit countdowns, scrolling waits, cancellations and failures are explicit; local progress reaches 100% only after the worker exits successfully.</li>
+        <li>Clarified native GNOME theme refresh instructions: current GNOME/X11 draws non-GTK app title bars, including Kitty’s, through a shared GTK 4/libadwaita frame renderer. Logout/login refreshes that renderer; restarting Kitty only refreshes Kitty.</li>
         <li>Inspect downloaded archives locally during installation and cache all discovered components before desktop filtering. An immediate bounded offline startup worker backfills existing installations, retaining partial evidence without claiming the original archive lacked discarded components. Cache failures cannot break installation, and local installed subsets are kept out of community exports.</li>
         <li>Added idle checks for visible theme cards in browsing and uploader profiles. One bounded worker runs outside GTK, paces requests and cancels when its card leaves view or the section closes. Rate limits pause the queue without saving incompatibility. Complete evidence persists across launches until the download revision or inspection rules change; partial listings are cached for a day. Automatic checks have a menu toggle.</li>
         <li>Fixed GTK 4 themes that import styles and assets from gtk.gresource. Drape now prepares bounded, content-addressed local resource files and rewrites CSS resource URLs before validation and application, so native GNOME apps do not need to register the theme bundle. Missing bundles and invalid GTK 4 syntax still fail safely.</li>
@@ -175,8 +177,11 @@
         <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 15 commits</summary>
+        <summary>View 18 commits</summary>
         <ol class="commits">
+          <li data-commit="0c1d4afc3fc89e2dcd935dac887f73500124efa8"><a class="commit" href="https://github.com/anolis/drape/commit/0c1d4afc3fc89e2dcd935dac887f73500124efa8">0c1d4af</a><span>fix: explain GNOME X11 title-bar theme refresh</span></li>
+          <li data-commit="ce70d9887fd0a0af71d9b1668aa2809ae100415b"><a class="commit" href="https://github.com/anolis/drape/commit/ce70d9887fd0a0af71d9b1668aa2809ae100415b">ce70d98</a><span>feat: show compatibility scanner activity and saved-theme progress</span></li>
+          <li data-commit="52e405b7461f5eaeaf647e33cbd7ab38f4192f2b"><a class="commit" href="https://github.com/anolis/drape/commit/52e405b7461f5eaeaf647e33cbd7ab38f4192f2b">52e405b</a><span>docs: explain offline theme compatibility indexing</span></li>
           <li data-commit="3177d25e4d0f44d8d9aff4f358071d60db732efb"><a class="commit" href="https://github.com/anolis/drape/commit/3177d25e4d0f44d8d9aff4f358071d60db732efb">3177d25</a><span>feat: cache downloaded theme evidence and backfill local installs</span></li>
           <li data-commit="5c34263b9f289bbec14b03c4ac0839c646c5e218"><a class="commit" href="https://github.com/anolis/drape/commit/5c34263b9f289bbec14b03c4ac0839c646c5e218">5c34263</a><span>docs: explain visible-card inspection and persistent evidence</span></li>
           <li data-commit="ac00e6f4672807431971a2e1c1f96188d17e7a2d"><a class="commit" href="https://github.com/anolis/drape/commit/ac00e6f4672807431971a2e1c1f96188d17e7a2d">ac00e6f</a><span>feat: inspect idle visible cards with cancellable cached workers</span></li>

@@ -12,6 +12,13 @@ leaving the active window cancels its check. Cancelled and failed checks save no
 HTTP 429 pauses the queue for the reported cooldown. Disable automatic checks through
 **☰ → Inspect visible themes when scrolling stops**; existing index evidence still works.
 
+The scanner status row is visible in the main window and uploader profiles. Active
+archive checks show the theme/download name and a spinner on the card. Waiting for
+scrolling, cancellation, failures and rate-limit countdowns are described explicitly.
+The saved-theme backfill shows the current theme and a count-based progress bar;
+it reaches 100% only after all cache writes finish and the worker exits successfully.
+Interrupted or failed backfills retain their partial progress and report pending checks.
+
 Downloaded archives are inspected locally during installation, before unsupported
 components are filtered out. Their evidence goes straight into the same index, even
 when the archive turns out to be incompatible. No additional download is needed.

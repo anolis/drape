@@ -96,10 +96,16 @@ with local file URLs. This avoids depending on resource registration inside each
 app. Extraction is bounded, and the prepared stylesheet is validated before the
 user CSS changes. Missing resources or invalid GTK 4 syntax still reject the style.
 
-Kitty uses its own rendering and appearance settings; on GNOME Wayland its
-titlebar color is controlled by `wayland_titlebar_color`. Its styling is separate
-from GTK and Qt themes. Drape does not rewrite launchers or force a different
-display backend to change these decorations.
+Kitty's terminal contents use its own color configuration. Its outer title bar is a
+separate layer: on current GNOME/X11, `mutter-x11-frames` draws it with GTK 4 and
+libadwaita, so Drape's native GNOME stylesheet can affect it if the theme covers those
+widgets. That shared renderer can keep the old stylesheet until logout/login;
+restarting Kitty does not restart it. [Mutter's frame header implementation](https://github.com/GNOME/mutter/blob/main/src/frames/meta-frame-header.c)
+uses a GTK header bar with `titlebar` and `default-decoration` CSS classes.
+
+On GNOME Wayland, Kitty draws its own titlebar; `wayland_titlebar_color` controls its
+color. Drape does not rewrite launchers or force a different display backend to change
+these decorations.
 
 References: [Kvantum setup and theme paths](https://github.com/tsujan/Kvantum/blob/master/Kvantum/INSTALL.md),
 [Kvantum selection configuration](https://github.com/tsujan/Kvantum/blob/master/Kvantum/kvantummanager/KvCommand.cpp),
