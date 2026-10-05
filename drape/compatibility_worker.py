@@ -24,6 +24,9 @@ def scan_item(item, index):
         if index.inspection(item, file) is not None:
             continue
         try:
+            host, remaining = index.scan_cooldown()
+            if remaining:
+                raise peek.RateLimited(remaining, host=host)
             try:
                 result = peek.contents(
                     item.id,
@@ -50,6 +53,7 @@ def scan_item(item, index):
                 )
             index.record(item, file, result, "archive", {"scanner": "headless"}, "unknown")
         except peek.RateLimited as exc:
+            index.defer_scans(exc.host, exc.retry_after)
             print(
                 f"{item.id}: rate-limited; retry after {round(exc.retry_after)}s", file=sys.stderr
             )
@@ -69,6 +73,13 @@ def inspect_one(payload, index):
     cached = index.inspection(item, file)
     if cached is not None:
         return {"status": "cached"}
+    host, remaining = index.scan_cooldown()
+    if remaining:
+        return {
+            "status": "rate_limited",
+            "retry_after": remaining,
+            **({"host": host} if host else {}),
+        }
     try:
         try:
             result = peek.contents(
@@ -86,7 +97,13 @@ def inspect_one(payload, index):
         # Return refreshed metadata so the card uses the same cache revision.
         return {"status": "checked", "changed": item.changed, "file": asdict(file)}
     except peek.RateLimited as exc:
-        return {"status": "rate_limited", "retry_after": exc.retry_after}
+        # Write before returning IPC: scrolling may cancel the parent callback.
+        index.defer_scans(exc.host, exc.retry_after)
+        return {
+            "status": "rate_limited",
+            "retry_after": exc.retry_after,
+            **({"host": exc.host} if exc.host else {}),
+        }
     except (peek.InspectionFailed, MemoryError):
         return {"status": "failed"}
 

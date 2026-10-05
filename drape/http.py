@@ -1,9 +1,9 @@
 """Bounded retries and shared rate-limit cooldowns for catalog and file requests."""
 
+import threading
+import time
 from datetime import timezone
 from email.utils import parsedate_to_datetime
-import time
-import threading
 from urllib.parse import urlsplit
 
 import requests
@@ -44,6 +44,15 @@ def _retry_after(value):
             return min(MAX_RETRY_AFTER, max(1, date.timestamp() - time.time()))
         except (ValueError, TypeError, OverflowError):
             return 60
+
+
+def defer(host, delay):
+    """Share a worker's host cooldown with catalog/download requests in the app."""
+    if host:
+        with _rate_lock:
+            _blocked_until[host] = max(
+                _blocked_until.get(host, 0), time.monotonic() + min(MAX_RETRY_AFTER, max(1, delay))
+            )
 
 
 def get(url, *, retry_server_errors=True, **kwargs):

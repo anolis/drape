@@ -1,12 +1,12 @@
 """Persistent inspection evidence and portable, version-specific compatibility records."""
 
-from contextlib import closing
 import json
 import os
-from pathlib import Path
 import sqlite3
 import sys
 import time
+from contextlib import closing
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
@@ -61,7 +61,49 @@ class Index:
         connection.execute(
             "CREATE TABLE IF NOT EXISTS installed_fingerprints (item TEXT PRIMARY KEY, fingerprint TEXT)"
         )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS scan_cooldowns (host TEXT PRIMARY KEY, until REAL)"
+        )
         return connection
+
+    def defer_scans(self, host, delay):
+        """Keep server cooldowns across worker exit/relaunch; this is not evidence."""
+        from . import http
+
+        until = time.time() + min(http.MAX_RETRY_AFTER, max(1, delay))
+        try:
+            with closing(self.connect()) as db, db:
+                db.execute(
+                    "INSERT INTO scan_cooldowns VALUES (?,?) ON CONFLICT(host) "
+                    "DO UPDATE SET until=MAX(until, excluded.until)",
+                    (host or "*", until),
+                )
+        except (OSError, sqlite3.Error):
+            return False  # A metadata failure must not turn a 429 into a failed inspection.
+        return True
+
+    def scan_cooldown(self):
+        """Read the longest remaining scanner cooldown without creating any files."""
+        from . import http
+
+        if not self.path.exists():
+            return None, 0
+        try:
+            with closing(
+                sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=0.1)
+            ) as db:
+                row = db.execute(
+                    "SELECT host, until FROM scan_cooldowns WHERE until>? ORDER BY until DESC LIMIT 1",
+                    (time.time(),),
+                ).fetchone()
+            if row:
+                host, until = row
+                return host if host != "*" else None, min(
+                    http.MAX_RETRY_AFTER, max(0, until - time.time())
+                )
+        except (OSError, sqlite3.Error):
+            pass  # Older indexes simply have no saved cooldown yet.
+        return None, 0
 
     def record_installed(self, item_id, entry, parts, fingerprint=None):
         """Installed subsets are local-only evidence and never prove archive completeness."""

@@ -36,7 +36,9 @@ class IdleInspector:
         self.local_reused = 0
         self.local_scanned = 0
         self.local_timed_out = False
-        self.cooldown = 0
+        host, remaining = self.index.scan_cooldown()
+        self.cooldown = self.clock() + remaining if remaining else 0
+        http.defer(host, remaining)
         self.notice_until = 0
         self.on_status = None
         self.status = {
@@ -46,7 +48,7 @@ class IdleInspector:
             "fraction": None,
         }
         self.retired = []
-        self.next_check = 0
+        self.next_check = self.cooldown
         self.retry = {}
         self.attempts = {}
         self.last_attempt = {}
@@ -304,6 +306,8 @@ class IdleInspector:
                     delay = min(http.MAX_RETRY_AFTER, max(1, result.get("retry_after", 60)))
                     self.next_check = now + delay
                     self.cooldown = now + delay
+                    self.index.defer_scans(result.get("host"), delay)
+                    http.defer(result.get("host"), delay)
                     self._status(
                         "rate_limited", f"Server rate limit — next check in {math.ceil(delay)}s"
                     )

@@ -336,7 +336,8 @@ class IdleInspectionTest(unittest.TestCase):
         self.now = 62
         self.scanner.tick()
         self.spawn.assert_called_once()
-        self.assertFalse(self.index.path.exists())
+        self.assertEqual(self.index.export()["observations"], [])
+        self.assertIsNone(self.index.inspection(self.item, self.item.files[0]))
 
     def test_worker_has_memory_and_time_limits(self):
         self.start()
