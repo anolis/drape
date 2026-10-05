@@ -154,11 +154,27 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">93 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/7d521cbd3119ca456a5c4f17be3ac928591f2cd4">7d521cb</a>.
+      <p class="note">96 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/97d4cea7086b1c69c407fd0a79c4b85119ba4091">97d4cea</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
+    <section class="entry" id="day-2026-10-05" aria-labelledby="title-2026-10-05">
+      <p class="date"><a href="#day-2026-10-05"><time datetime="2026-10-05">October 5, 2026</time></a></p>
+      <h2 id="title-2026-10-05">Clearer Cinnamon compatibility and reliable variant fallback</h2>
+      <ul class="changes">
+        <li>Recognize quoted and unquoted Cinnamon CSS imports, avoiding false unverified results for styles with valid imported dialog rules. Recheck older unknown Cinnamon evidence while retaining unaffected archive caches.</li>
+        <li>Explain why a detected Cinnamon component cannot apply: missing dialog styles for the current Cinnamon release, unreadable stylesheet imports or an unknown version. Show specific feedback on cards, Apply tooltips and rejection messages instead of implying a theme component is absent.</li>
+        <li>When a catalog download contains no recognized theme components, try its next download variant. Explicitly selected files still report their own failure; transport and extraction errors retain their original handling.</li>
+      </ul>
+      <details>
+        <summary>View 2 commits</summary>
+        <ol class="commits">
+          <li data-commit="97d4cea7086b1c69c407fd0a79c4b85119ba4091"><a class="commit" href="https://github.com/anolis/drape/commit/97d4cea7086b1c69c407fd0a79c4b85119ba4091">97d4cea</a><span>fix: try another variant when a download contains no theme</span></li>
+          <li data-commit="8406e24e93979704d73c8d93f53a6a01f922db69"><a class="commit" href="https://github.com/anolis/drape/commit/8406e24e93979704d73c8d93f53a6a01f922db69">8406e24</a><span>fix: resolve Cinnamon CSS imports and explain rejected styles</span></li>
+        </ol>
+      </details>
+    </section>
     <section class="entry" id="day-2026-10-04" aria-labelledby="title-2026-10-04">
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
       <h2 id="title-2026-10-04">Clear theme engines and reversible Qt appearance</h2>
@@ -188,8 +204,9 @@
         <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 33 commits</summary>
+        <summary>View 34 commits</summary>
         <ol class="commits">
+          <li data-commit="fbe4b918144a1134fd3905646fa5987ea77060b5"><a class="commit" href="https://github.com/anolis/drape/commit/fbe4b918144a1134fd3905646fa5987ea77060b5">fbe4b91</a><span>docs: explain archive request reuse and persistent cooldowns</span></li>
           <li data-commit="7d521cbd3119ca456a5c4f17be3ac928591f2cd4"><a class="commit" href="https://github.com/anolis/drape/commit/7d521cbd3119ca456a5c4f17be3ac928591f2cd4">7d521cb</a><span>fix: preserve compatibility cooldowns across app restarts</span></li>
           <li data-commit="822854a7c65fe2f93bdfa60922fe49c0b3b85e7f"><a class="commit" href="https://github.com/anolis/drape/commit/822854a7c65fe2f93bdfa60922fe49c0b3b85e7f">822854a</a><span>fix: reuse resolved storage URLs during archive inspection</span></li>
           <li data-commit="ebfb68f2e3b642dee1e3d48ed3eeead750c343ca"><a class="commit" href="https://github.com/anolis/drape/commit/ebfb68f2e3b642dee1e3d48ed3eeead750c343ca">ebfb68f</a><span>docs: describe personal configurations and persistent update notices</span></li>

@@ -59,6 +59,14 @@ An [independent headless worker](compatibility-worker.md) builds archive evidenc
 
 Cinnamon checks work in both directions across the 5.4 dialog-style change. Newer Cinnamon requires `.dialog` or `.prompt-dialog` styles. Older Cinnamon uses `.modal-dialog`; an inspected modern-only theme is incompatible there. Themes including both generations can remain usable on both. Imported styles are included; unresolved imports and bounded partial reads remain unverified. These checks identify known CSS mismatches, rather than certifying every panel, menu or app style on every Cinnamon release.
 
+Quoted imports and unquoted `url(path.css)` imports are supported. Old unresolved
+Cinnamon evidence is checked again after the import-parser update; unaffected archive
+caches remain usable. Cards, disabled Apply tooltips and rejection messages distinguish
+a present Cinnamon style with missing version-specific dialog rules from unreadable
+imports or an absent component. A mixed theme can still provide usable GTK styles.
+If an automatically chosen download contains no recognized components, installation
+tries another catalog variant. Explicit file selections retain their own error.
+
 Window border formats follow the active window manager: Marco/Metacity, pre-5.4 Muffin, Xfwm or KWin/Aurorae. GTK controls require GTK 3 content. Plasma global-theme catalogs follow Plasma 5/6 and installation validates their extracted metadata. Login-theme formats follow the detected display manager. Installed files and records are preserved when filtering hides an item.
 
 HTTP 429 responses defer worker checks without saving compatibility evidence. The visible-card queue waits for the reported cooldown; rerun batch jobs later. Failed requests never become verdicts; complete evidence persists until its download revision or inspection rules change, and genuine partial listings are reused for a day. Refused signed links can be refreshed once. Worker archive reads and decompression are bounded, while full installation downloads retain their existing retry behavior.
