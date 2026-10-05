@@ -14,7 +14,7 @@ from pathlib import Path
 from . import compatibility, http, pling
 
 IDLE_SECONDS = 2
-JOB_GAP = 15
+JOB_GAP = 10
 JOB_TIMEOUT = 90
 
 
