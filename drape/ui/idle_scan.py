@@ -12,6 +12,8 @@ class ViewportInspector(IdleInspector):
     def __init__(self, window):
         super().__init__(enabled=settings.get("inspect_visible"))
         self.status_views = WeakSet()
+        self.status_source = None
+        self.busy_cards = WeakSet()
         self.on_status = self._update_status
         self.local_manifest = installer.MANIFEST
         self.source = GLib.timeout_add(150, self._poll)
@@ -24,9 +26,30 @@ class ViewportInspector(IdleInspector):
         view.update(self.status)
         return view
 
-    def _update_status(self, status):
+    def _update_status(self, _status):
+        # Adjustment changes may arrive during GTK layout. Repaint only at idle.
+        if self.status_source is None:
+            self.status_source = GLib.idle_add(self._paint_status)
+
+    def _paint_status(self):
+        self.status_source = None
         for view in list(self.status_views):
-            view.update(status)
+            view.update(self.status)
+        return False
+
+    def _card_busy(self, card, busy):
+        card._scan_busy_target = busy
+        if card in self.busy_cards:
+            return
+        self.busy_cards.add(card)
+
+        def update():
+            self.busy_cards.discard(card)
+            if card._scan_alive and not card.in_destruction():
+                super(ViewportInspector, self)._card_busy(card, card._scan_busy_target)
+            return False
+
+        GLib.idle_add(update)
 
     def _poll(self):
         self.tick()
@@ -53,3 +76,6 @@ class ViewportInspector(IdleInspector):
     def _destroy(self, *_):
         GLib.source_remove(self.source)
         self.close()
+        if self.status_source is not None:
+            GLib.source_remove(self.status_source)
+            self.status_source = None

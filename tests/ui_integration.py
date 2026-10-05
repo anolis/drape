@@ -161,6 +161,40 @@ with tempfile.TemporaryDirectory() as temp:
             card.set_scan_busy(False)
             assert not card.scan_spinner.get_visible()
             assert card.compatibility_note.get_text() == "Compatibility unverified"
+        # Cached previews must not destroy overlay children inside the draw callback.
+        from drape.ui import images
+        from drape.ui.gtk import GdkPixbuf
+        preview = "https://test.invalid/cached.png"
+        pixbuf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 8, 8)
+        pixbuf.fill(0x224466ff)
+        key = (pling.thumb_url(preview), 260, 160)
+        draw_active, delivery_during_draw = [False], []
+        original_load = images.load_image
+
+        def first_draw_load(*args, on_done=None, **kwargs):
+            def delivered(ok):
+                delivery_during_draw.append(draw_active[0])
+                if on_done:
+                    on_done(ok)
+            draw_active[0] = True
+            try:
+                original_load(*args, on_done=delivered, **kwargs)
+            finally:
+                draw_active[0] = False
+
+        with mock.patch.dict(images._pixbufs, {key: pixbuf}), mock.patch.object(browse, "load_image", side_effect=first_draw_load):
+            for index in range(60):
+                item = pling.Item(f"cached-{index}", "Cached preview", "", "", "", "", 0, 0, "", previews=[preview])
+                card = browse.Card(win, "gtk", item, checks={})
+                page.flow.add(card)
+                card.show_all()
+            pump(0.1)
+            adj = page.scroller.get_vadjustment()
+            for index in range(35):
+                adj.set_value(min(adj.get_upper() - adj.get_page_size(), index * 250))
+                pump(0.03)
+            assert delivery_during_draw and not any(delivery_during_draw)
+        print(f"Cached-preview scrolling check: {len(delivery_during_draw)} previews delivered outside draw callbacks.")
         win.remove(page)
         page.destroy()
     # Off-screen removals keep row allocations, including cards above the viewport.
@@ -204,6 +238,13 @@ with tempfile.TemporaryDirectory() as temp:
                               files=[pling.Download(1, "theme.zip", "https://test/theme", 1, "abc")])
         card._scan_alive, card._checks = True, {}
     inspector.register_view(flow, scroller)
+    cards[0].set_scan_busy = mock.Mock()
+    inspector._card_busy(cards[0], True)
+    inspector._card_busy(cards[0], False)
+    cards[0].set_scan_busy.assert_not_called()
+    pump(0.02)
+    cards[0].set_scan_busy.assert_called_once_with(False)
+    cards[0].set_scan_busy.reset_mock()
     with mock.patch.object(Gtk.Window, "is_active", return_value=True):
         now[0] = 2
         inspector.tick()

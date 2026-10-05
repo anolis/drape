@@ -163,7 +163,9 @@ def load_image(url, image, width, height, on_done=None, alive=None):
 
     cached = _pixbufs.get(key)
     if cached is not None:
-        deliver(cached)
+        # First-draw handlers can request cached previews. Completing inline can
+        # destroy an overlay spinner while GTK is still walking its draw children.
+        GLib.idle_add(deliver, cached)
         return
 
     def work():

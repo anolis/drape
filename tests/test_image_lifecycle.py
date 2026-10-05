@@ -1,13 +1,44 @@
 import tempfile
+import unittest
 from pathlib import Path
 from types import SimpleNamespace
-import unittest
 from unittest import mock
 
 from drape.ui import images
 
 
 class ImageLifecycleTest(unittest.TestCase):
+    def test_cached_preview_is_queued_instead_of_mutating_widgets_during_draw(self):
+        image = SimpleNamespace(connect=mock.Mock(), set_from_icon_name=mock.Mock())
+        done, result = mock.Mock(), mock.Mock()
+        with (
+            mock.patch.dict(images._pixbufs, {("cached", 280, 171): result}, clear=True),
+            mock.patch.object(images.GLib, "idle_add") as dispatch,
+            mock.patch.object(images, "_show") as show,
+        ):
+            images.load_image("cached", image, 280, 171, on_done=done)
+            show.assert_not_called()
+            done.assert_not_called()
+            callback, *args = dispatch.call_args.args
+            callback(*args)
+            show.assert_called_once_with(image, result)
+            done.assert_called_once_with(True)
+
+    def test_cached_preview_queued_then_destroyed_is_discarded(self):
+        image = SimpleNamespace(connect=mock.Mock(), set_from_icon_name=mock.Mock())
+        done = mock.Mock()
+        with (
+            mock.patch.dict(images._pixbufs, {("cached", 280, 171): mock.Mock()}, clear=True),
+            mock.patch.object(images.GLib, "idle_add") as dispatch,
+            mock.patch.object(images, "_show") as show,
+        ):
+            images.load_image("cached", image, 280, 171, on_done=done)
+            image._drape_destroyed = True
+            callback, *args = dispatch.call_args.args
+            callback(*args)
+            show.assert_not_called()
+            done.assert_not_called()
+
     def test_queued_result_is_ignored_after_widget_destruction(self):
         image = SimpleNamespace(connect=mock.Mock(), set_from_icon_name=mock.Mock())
         done = mock.Mock()
