@@ -46,6 +46,105 @@ class IdleInspectionTest(unittest.TestCase):
         self.spawn.assert_called_once()
         self.assertIsNotNone(self.scanner.active)
 
+    def other_card(self, flow=None):
+        item = pling.Item(
+            "2", "Hovered theme", "", "", "", "today", 0, 0, "",
+            files=[pling.Download(1, "other.zip", "https://test/other", 1, "def")],
+        )
+        card = mock.Mock(item=item, departing=False, _scan_alive=True, _checks={})
+        card.get_parent.return_value = flow or self.flow
+        return card
+
+    def test_hover_starts_immediately_before_scroll_idle(self):
+        other = self.other_card()
+        self.flow.cards.return_value = [self.card, other]
+        self.scanner.hover(other)
+        self.scanner.tick()
+        self.spawn.assert_called_once()
+        self.assertIs(self.scanner.active[1], other)
+
+    def test_hover_after_cache_only_poll_does_not_wait_for_poll_gap(self):
+        self.index.record(self.item, self.item.files[0], ({"gtk"}, True), "archive", {}, "unknown")
+        self.now = 2
+        self.scanner.tick()
+        self.spawn.assert_not_called()
+        other = self.other_card()
+        self.flow.cards.return_value = [self.card, other]
+        self.now = 3
+        self.scanner.hover(other)
+        self.scanner.tick()
+        self.assertIs(self.scanner.active[1], other)
+
+    def test_hover_does_not_interrupt_active_job_and_respects_job_gap(self):
+        self.start()
+        other = self.other_card()
+        self.flow.cards.return_value = [self.card, other]
+        self.scanner.hover(other)
+        self.scanner.tick()
+        self.process.terminate.assert_not_called()
+        self.spawn.assert_called_once()
+        self.process.poll.return_value = 0
+        self.now = 3
+        self.scanner.tick()
+        self.now = 3 + idle_inspection.JOB_GAP - 0.1
+        self.scanner.tick()
+        self.spawn.assert_called_once()
+        self.now += 0.1
+        self.scanner.tick()
+        self.assertIs(self.scanner.active[1], other)
+
+    def test_hover_honors_server_cooldown(self):
+        self.start()
+        self.process.stdout = io.BytesIO(b'{"status":"rate_limited","retry_after":60}')
+        self.process.poll.return_value = 0
+        self.now = 3
+        self.scanner.tick()
+        other = self.other_card()
+        self.flow.cards.return_value = [self.card, other]
+        self.scanner.hover(other)
+        self.now = 62
+        self.scanner.tick()
+        self.spawn.assert_called_once()
+        self.now = 63
+        self.scanner.tick()
+        self.assertIs(self.scanner.active[1], other)
+
+    def test_hover_in_another_flow_takes_priority(self):
+        flow = mock.Mock()
+        flow.get_mapped.return_value = True
+        flow.in_view.return_value = True
+        other = self.other_card(flow)
+        flow.cards.return_value = [other]
+        self.scanner.register(flow)
+        self.now = 2
+        self.scanner.hover(other)
+        self.scanner.tick()
+        self.assertIs(self.scanner.active[1], other)
+
+    def test_leaving_hover_restores_normal_idle_selection(self):
+        other = self.other_card()
+        self.flow.cards.return_value = [self.card, other]
+        self.scanner.hover(other)
+        self.scanner.unhover(other)
+        self.scanner.tick()
+        self.spawn.assert_not_called()
+        self.now = 2
+        self.scanner.tick()
+        self.assertIs(self.scanner.active[1], self.card)
+
+    def test_hover_cannot_rescan_cached_or_offscreen_cards(self):
+        self.index.record(self.item, self.item.files[0], ({"gtk"}, True), "archive", {}, "unknown")
+        self.scanner.hover(self.card)
+        self.scanner.tick()
+        self.spawn.assert_not_called()
+        self.assertIsNone(self.scanner.active)
+        other = self.other_card()
+        self.flow.in_view.return_value = False
+        self.scanner.hover(other)
+        self.now = 2
+        self.scanner.tick()
+        self.spawn.assert_not_called()
+
     def test_local_progress_only_reaches_complete_after_successful_exit(self):
         self.scanner.local_manifest = Path(self.temp.name) / "installed.json"
         self.scanner.tick()

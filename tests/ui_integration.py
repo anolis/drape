@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 from drape import desktop, installer, pling, settings, qt, libadwaita
 from drape.ui import browse, installed, packs, profile, theme_actions
-from drape.ui.gtk import Gtk, GLib
+from drape.ui.gtk import Gdk, Gtk, GLib
 from drape.ui.scroll_state import ScrollState
 from drape.ui.qt_settings import QtSettingsPage
 from drape.ui.navigation import GROUPS, build_sidebar
@@ -169,6 +169,21 @@ with tempfile.TemporaryDirectory() as temp:
             card.set_scan_busy(False)
             assert not card.scan_spinner.get_visible()
             assert card.compatibility_note.get_text() == "Contents pending inspection"
+            # The entire card routes hover intent, without treating child crossings
+            # as leaving the card or consuming ordinary click events.
+            win.idle_inspector = mock.Mock()
+            event = Gdk.Event.new(Gdk.EventType.ENTER_NOTIFY)
+            event.detail = Gdk.NotifyType.NONLINEAR
+            card.hover_area.emit("enter-notify-event", event)
+            win.idle_inspector.hover.assert_called_once_with(card)
+            event = Gdk.Event.new(Gdk.EventType.LEAVE_NOTIFY)
+            event.detail = Gdk.NotifyType.INFERIOR
+            card.hover_area.emit("leave-notify-event", event)
+            win.idle_inspector.unhover.assert_not_called()
+            event.detail = Gdk.NotifyType.NONLINEAR
+            card.hover_area.emit("leave-notify-event", event)
+            win.idle_inspector.unhover.assert_called_once_with(card)
+            del win.idle_inspector
         # Cached previews must not destroy overlay children inside the draw callback.
         from drape.ui import images
         from drape.ui.gtk import GdkPixbuf
@@ -253,7 +268,7 @@ with tempfile.TemporaryDirectory() as temp:
     pump(0.02)
     cards[0].set_scan_busy.assert_called_once_with(False)
     cards[0].set_scan_busy.reset_mock()
-    with mock.patch.object(Gtk.Window, "is_active", return_value=True):
+    with mock.patch.object(Gtk.Window, "is_active", return_value=False):
         now[0] = 2
         inspector.tick()
         inspector.spawn.assert_called_once()

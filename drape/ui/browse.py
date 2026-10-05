@@ -6,7 +6,7 @@ import time
 from .. import compatibility, desktop, installer, peek, pling, settings, system
 from .card_transitions import CardFlow, FadingCard
 from .common import CARD_H, CARD_W, PART_NAMES, TAB_PART, run_async
-from .gtk import GLib, Gtk, Pango
+from .gtk import Gdk, GLib, Gtk, Pango
 from .images import _ui_busy_until, load_image
 from .navigation import DESCRIPTIONS
 from .scroll_state import ScrollState
@@ -123,8 +123,23 @@ class Card(FadingCard):
 
         self.actions = Gtk.Box(spacing=6)
         box.pack_start(self.actions, False, False, 0)
-        self.add(box)
+        # Cover the full card, including labels/actions, while retaining child clicks.
+        self.hover_area = Gtk.EventBox(visible_window=False)
+        self.hover_area.add(box)
+        self.hover_area.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK)
+        self.hover_area.connect("enter-notify-event", self._hover_event, True)
+        self.hover_area.connect("leave-notify-event", self._hover_event, False)
+        self.add(self.hover_area)
         self.refresh()
+
+    def _hover_event(self, _widget, event, entered):
+        # Moving into a child window is still inside this card.
+        if event.detail != Gdk.NotifyType.INFERIOR and hasattr(self.win, "idle_inspector"):
+            if entered:
+                self.win.idle_inspector.hover(self)
+            else:
+                self.win.idle_inspector.unhover(self)
+        return False
 
     # Read-only evidence lookup independent of image previews
 

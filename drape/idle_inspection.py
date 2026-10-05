@@ -26,6 +26,8 @@ class IdleInspector:
         self.clock, self.spawn = clock, spawn
         self.index = index or compatibility.Index()
         self.flows = weakref.WeakKeyDictionary()
+        self.view_checks = weakref.WeakKeyDictionary()
+        self.hovered = None
         self.active = None
         self.local_manifest = None
         self.local_process = None
@@ -50,7 +52,7 @@ class IdleInspector:
         self.last_attempt = {}
 
     def _status(self, state, text, spinning=False, fraction=None):
-        status = dict(state=state, text=text, spinning=spinning, fraction=fraction)
+        status = {"state": state, "text": text, "spinning": spinning, "fraction": fraction}
         if status != self.status:
             self.status = status
             if self.on_status:
@@ -85,6 +87,18 @@ class IdleInspector:
 
     def register(self, flow):
         self.flows[flow] = self.clock()
+        self.view_checks[flow] = 0
+
+    def hover(self, card):
+        """Queue pointer intent immediately, without interrupting a running request."""
+        flow = card.get_parent()
+        if flow in self.flows and self._visible(flow, card):
+            self.hovered = weakref.ref(card)
+            self.view_checks[flow] = 0
+
+    def unhover(self, card):
+        if self.hovered and self.hovered() is card:
+            self.hovered = None
 
     def activity(self, flow):
         if flow in self.flows:
@@ -94,6 +108,7 @@ class IdleInspector:
 
     def unregister(self, flow):
         self.flows.pop(flow, None)
+        self.view_checks.pop(flow, None)
         if self.active and self.active[0] is flow:
             self.cancel()
 
@@ -155,6 +170,8 @@ class IdleInspector:
             process.stdout.close()
         self.retired.clear()
         self.flows.clear()
+        self.view_checks.clear()
+        self.hovered = None
 
     def _reap(self, now):
         pending = []
@@ -310,15 +327,27 @@ class IdleInspector:
         if now >= self.notice_until:
             self._status("idle", "No compatibility check running")
         # Reading SQLite is cheap. No download is needed for cached cards, even after relaunch.
-        for flow, moved in list(self.flows.items()):
+        hovered = self.hovered() if self.hovered else None
+        hovered_flow = hovered.get_parent() if hovered is not None else None
+        if hovered_flow not in self.flows or not self._visible(hovered_flow, hovered):
+            hovered = hovered_flow = None
+        flows = sorted(self.flows.items(), key=lambda entry: entry[0] is not hovered_flow)
+        for flow, moved in flows:
             if not flow.get_mapped():
                 continue
-            if now - moved < IDLE_SECONDS:
+            idle = now - moved >= IDLE_SECONDS
+            if not idle and flow is not hovered_flow:
                 if now >= self.notice_until:
                     self._status("waiting", "Compatibility checks resume when scrolling stops")
                 continue
             cards = [card for card in flow.cards() if self._visible(flow, card)]
-            self.next_check = now + JOB_GAP
+            if not idle:
+                cards = [card for card in cards if card is hovered]
+            # Cache-only polls must not delay a newly hovered card. Network spacing
+            # uses next_check separately, so hover cannot bypass a job gap or 429.
+            if now < self.view_checks.get(flow, 0):
+                continue
+            self.view_checks[flow] = now + JOB_GAP
             checks = self.index.read_many([card.item for card in cards])
             known_cards = sum(
                 any(result[0] for result in checks.get(card.item.id, {}).values()) for card in cards
@@ -330,7 +359,9 @@ class IdleInspector:
                     f"Visible themes — {known_cards} of {len(cards)} have cached contents"
                     + (f" · {unknown} unverified" if unknown else ""),
                 )
-            cards.sort(key=lambda card: self.last_attempt.get(card.item.id, -1))
+            cards.sort(
+                key=lambda card: (card is not hovered, self.last_attempt.get(card.item.id, -1))
+            )
             for card in cards:
                 evidence = checks.get(card.item.id, {})
                 if card._checks != evidence:
