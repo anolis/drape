@@ -58,9 +58,12 @@ class Index:
         connection.execute("""CREATE TABLE IF NOT EXISTS installed_evidence (
             item TEXT PRIMARY KEY, filename TEXT, changed TEXT, md5 TEXT,
             parts TEXT, rules INTEGER)""")
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS installed_fingerprints (item TEXT PRIMARY KEY, fingerprint TEXT)"
+        )
         return connection
 
-    def record_installed(self, item_id, entry, parts):
+    def record_installed(self, item_id, entry, parts, fingerprint=None):
         """Installed subsets are local-only evidence and never prove archive completeness."""
         with closing(self.connect()) as db, db:
             db.execute(
@@ -74,6 +77,27 @@ class Index:
                     RULES_VERSION,
                 ),
             )
+
+            db.execute(
+                "INSERT OR REPLACE INTO installed_fingerprints VALUES (?,?)", (item_id, fingerprint)
+            )
+
+    def installed_fingerprints(self):
+        """One read-only startup snapshot; old schemas simply require a backfill."""
+        if not self.path.exists():
+            return {}
+        try:
+            with closing(
+                sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)
+            ) as db:
+                rows = db.execute(
+                    "SELECT e.item, e.rules, f.fingerprint FROM installed_evidence e JOIN installed_fingerprints f ON e.item=f.item"
+                ).fetchall()
+                return {
+                    item: signature for item, rules, signature in rows if rules == RULES_VERSION
+                }
+        except (OSError, sqlite3.Error):
+            return {}
 
     @staticmethod
     def _installed(db, item, file):

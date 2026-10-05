@@ -1,11 +1,67 @@
 """Bounded inspection of extracted downloads and installed files, without HTTP."""
 
+import hashlib
+import json
 import os
 from pathlib import Path
 
 from . import peek
 
 MAX_PATHS = 30000
+
+
+def fingerprint(entry):
+    """Cheap identity/structure/Cinnamon-style metadata; no archive or asset reads."""
+    identity = [entry.get(key, "") for key in ("file", "changed", "download_md5")]
+    identity.append(entry.get("components", []))
+    candidates = set()
+    for component in entry.get("components", []):
+        if not component.get("path"):
+            continue
+        root = Path(component["path"])
+        candidates.add(root)
+        try:
+            if root.is_dir():
+                # Changes to engine roots, indexes and paired Qt files affect classification.
+                children = list(root.iterdir())
+                if len(children) > 4096:
+                    return None
+                candidates.update(children)
+                for folder in children:
+                    if (
+                        folder.name in ("gtk-2.0", "gtk-3.0", "gtk-4.0", "metacity-1", "xfwm4")
+                        and folder.is_dir()
+                    ):
+                        candidates.update(folder.iterdir())
+                    if folder.name == "cinnamon" and folder.is_dir():
+                        for directory, folders, files in os.walk(folder, followlinks=False):
+                            candidates.add(Path(directory))
+                            folders[:] = [
+                                name
+                                for name in folders
+                                if not (Path(directory) / name).is_symlink()
+                            ]
+                            candidates.update(
+                                Path(directory) / name for name in files if name.endswith(".css")
+                            )
+                            if len(candidates) > 4096:
+                                return None
+                if len(candidates) > 4096:
+                    return None
+        except OSError:
+            return None
+    metadata = []
+    for path in sorted(candidates):
+        try:
+            stat = path.stat()
+            metadata.append(
+                (str(path), stat.st_mode, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+            )
+        except FileNotFoundError:
+            metadata.append((str(path), "missing"))
+        except OSError:
+            return None
+    return hashlib.sha256(json.dumps([identity, metadata], sort_keys=True).encode()).hexdigest()
 
 
 def inspect_paths(paths):

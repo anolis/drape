@@ -91,23 +91,42 @@ def inspect_one(payload, index):
         return {"status": "failed"}
 
 
-def scan_installed(manifest, index, progress=None):
+def scan_installed(manifest, index, progress=None, stats=None):
     """Backfill existing installations without catalog or file-host requests."""
     from . import local_inspection
     from .records import ManifestStore
 
     entries = ManifestStore(manifest).load()
+    cached = index.installed_fingerprints()
+    stats = stats if stats is not None else {}
+    stats.update(reused=0, scanned=0)
     count = 0
     if progress:
         progress(0, len(entries), "")
     for item_id, entry in entries.items():
+        signature = local_inspection.fingerprint(entry)
+        reuse = signature is not None and cached.get(item_id) == signature
         if progress:
-            progress(count, len(entries), entry.get("title", item_id))
-        paths = [
-            component["path"] for component in entry.get("components", []) if component.get("path")
-        ]
-        parts, _ = local_inspection.inspect_paths(paths)
-        index.record_installed(item_id, entry, parts)
+            title = entry.get("title", item_id)
+            progress(
+                count,
+                len(entries),
+                ("Using cached evidence — " if reuse else "Inspecting — ") + title,
+            )
+        if reuse:
+            stats["reused"] += 1
+        else:
+            paths = [
+                component["path"]
+                for component in entry.get("components", [])
+                if component.get("path")
+            ]
+            parts, _ = local_inspection.inspect_paths(paths)
+            # A concurrent edit during inspection must not be labeled as a reusable snapshot.
+            if signature != local_inspection.fingerprint(entry):
+                signature = None
+            index.record_installed(item_id, entry, parts, signature)
+            stats["scanned"] += 1
         count += 1
         if progress:
             progress(count, len(entries), "")
@@ -151,17 +170,20 @@ def main(argv=None):
     index = compatibility.Index(args.database)
     if args.installed_local:
         try:
+            stats = {}
 
             def progress(done, total, title):
                 if args.progress_file:
                     # A small atomic snapshot cannot block the worker on a full UI pipe.
                     temporary = args.progress_file.with_suffix(".tmp")
                     temporary.write_text(
-                        json.dumps({"done": done, "total": total, "title": str(title)[:200]})
+                        json.dumps(
+                            {"done": done, "total": total, "title": str(title)[:200], **stats}
+                        )
                     )
                     temporary.replace(args.progress_file)
 
-            count = scan_installed(args.installed_local, index, progress)
+            count = scan_installed(args.installed_local, index, progress, stats)
             print(json.dumps({"status": "checked", "count": count}))
             return 0
         except (ValueError, OSError) as exc:
