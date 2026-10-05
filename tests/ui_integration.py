@@ -222,6 +222,8 @@ with tempfile.TemporaryDirectory() as temp:
         page.destroy()
     from tests.configurations_ui_checks import check as check_configurations
     check_configurations(win, temp, pump)
+    from tests.update_ui_checks import check as check_update_notice
+    check_update_notice()
     # Off-screen removals keep row allocations, including cards above the viewport.
     from drape.ui.card_transitions import CardFlow, FadingCard
 

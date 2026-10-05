@@ -13,19 +13,40 @@ class AppUpdates:
     def __init__(self, window):
         self.window = window
         self.checking = False
-        GLib.timeout_add_seconds(5, self.automatic)
+        self.available = None
+        # A dedicated header action survives unrelated theme/status notifications.
+        self.button = Gtk.Button(label="Update available", no_show_all=True)
+        self.button.get_style_context().add_class("suggested-action")
+        self.button.set_tooltip_text("Review the available Drape update")
+        self.button.connect("clicked", lambda *_: self.available and self.offer(self.available))
+        window.get_titlebar().pack_start(self.button)
+        self.startup_source = GLib.timeout_add_seconds(5, self.startup)
+        self.periodic_source = GLib.timeout_add_seconds(3600, self.automatic)
+        window.connect("destroy", self._destroy)
 
-    # Daily checks without interrupting startup
+    # Check each launch, then hourly while open, without blocking the GTK thread.
+
+    def startup(self):
+        self.startup_source = None
+        if not self.window._closing.is_set() and settings.get("check_app_updates"):
+            self.check()
+        return False
 
     def automatic(self):
         last = settings.get("app_update_checked_at") or 0
         if (
             not self.window._closing.is_set()
             and settings.get("check_app_updates")
-            and time.time() - last >= 86400
+            and time.time() - last >= 3600
         ):
             self.check()
-        return False
+        return True
+
+    def _destroy(self, *_):
+        for source in (self.startup_source, self.periodic_source):
+            if source is not None:
+                GLib.source_remove(source)
+        self.startup_source = self.periodic_source = None
 
     def check(self, manual=False):
         if self.checking:
@@ -42,7 +63,12 @@ class AppUpdates:
                 settings.set("app_update_checked_at", time.time())
             except OSError:
                 pass
+            self.available = update
+            self.button.set_visible(update is not None)
             if update:
+                self.button.set_tooltip_text(
+                    f"{update.count} new commit(s) available. Click to review and update Drape."
+                )
                 self.window.notify(
                     "A Drape update is available.",
                     action=("View update", lambda: self.offer(update)),
@@ -61,9 +87,9 @@ class AppUpdates:
 
     def offer(self, update):
         win = self.window
-        if win.busy:
+        if win.busy or getattr(getattr(win, "configurations", None), "busy", False):
             win.notify(
-                "Finish the current theme installation before updating Drape.",
+                "Finish the current theme operation before updating Drape.",
                 action=("View update", lambda: self.offer(update)),
             )
             return
