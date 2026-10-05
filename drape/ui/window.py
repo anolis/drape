@@ -7,6 +7,7 @@ from .. import desktop, installer, pling, settings
 from ..installer import system_copies
 from .browse import CHUNK, FIRST_CHUNKS, BrowsePage
 from .common import APP_ID, CARD_H, CARD_W, error_dialog, login_commands, run_async
+from .configurations import ConfigurationsPage
 from .details import DetailsDialog
 from .gtk import Gdk, GLib, Gtk
 from .images import ANIMATIONS, _fetch_thumb, _foreground
@@ -126,6 +127,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.stack.add_titled(p, k.key, desktop.category_label(k.key, k.label))
         self.installed = InstalledPage(self, [k for k in pling.KINDS if k.key in self.pages])
         self.stack.add_titled(self.installed, "installed", "Installed")
+        self.configurations = ConfigurationsPage(self)
+        self.stack.add_titled(self.configurations, "configurations", "My configurations")
         from ..lockpage import LockLoginPage
 
         self.lockpage = LockLoginPage(self, login_commands)
@@ -348,6 +351,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             return
         searchable = child not in (
             self.installed,
+            self.configurations,
             self.lockpage,
             self.wmpage,
             self.xfcepage,
@@ -368,6 +372,8 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
             self.libadwaitapage.load()
         elif child is self.installed:
             self.installed.load()
+        elif child is self.configurations:
+            self.configurations.load()
         elif not child.loaded:
             child.load()
         from .scroll_state import track_section

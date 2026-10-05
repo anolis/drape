@@ -220,6 +220,8 @@ with tempfile.TemporaryDirectory() as temp:
         print(f"Cached-preview scrolling check: {len(delivery_during_draw)} previews delivered outside draw callbacks.")
         win.remove(page)
         page.destroy()
+    from tests.configurations_ui_checks import check as check_configurations
+    check_configurations(win, temp, pump)
     # Off-screen removals keep row allocations, including cards above the viewport.
     from drape.ui.card_transitions import CardFlow, FadingCard
 

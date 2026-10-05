@@ -6,7 +6,7 @@ from .gtk import GLib, Gtk
 # Keep stable page IDs: saved scroll positions, install links and filtering use
 # these IDs even when labels and ordering change.
 GROUPS = (
-    ("COLLECTIONS", ("packs", "installed")),
+    ("COLLECTIONS", ("packs", "configurations", "installed")),
     ("GTK APPLICATIONS", ("gtk",)),
     ("GNOME / LIBADWAITA", ("libadwaita", "libadwaitasettings")),
     ("QT / KVANTUM APPLICATIONS", ("kvantum", "qtsettings")),
@@ -30,6 +30,7 @@ DESCRIPTIONS = {
     "login": "The sign-in screen drawn by your login manager. This is separate from themes used after login.",
     "boot": "The startup screen drawn by Plymouth. This is separate from your desktop and application themes.",
     "packs": "Bundles of appearance components that may use several engines. Choose which components to apply; a pack does not automatically style every application.",
+    "configurations": "Save your current theme selections as a named personal configuration. Review and reapply compatible components using the theme files on this machine.",
 }
 
 

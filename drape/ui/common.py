@@ -22,6 +22,7 @@ PART_NAMES = {
     "libadwaita": "GNOME / libadwaita (GTK 4)",
     "kvantum": "Qt applications (Kvantum)",
     "wm": "Window borders",
+    "xfwm": "Xfwm borders",
     "desktop": "Desktop",
     "wallpapers": "Wallpaper",
     "plymouth": "Boot splash",
