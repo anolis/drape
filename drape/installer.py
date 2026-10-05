@@ -510,7 +510,7 @@ def install_file(
                 print(f"drape: could not cache downloaded theme evidence: {exc}")
         comps = classify(root, title, include_wallpapers=required_kind == "packs")
         if not comps:
-            raise InstallError(
+            raise IncompatibleError(
                 "Couldn't find a supported theme, color scheme or wallpaper in this download."
             )
 

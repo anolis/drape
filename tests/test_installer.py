@@ -226,6 +226,26 @@ class InstallerTest(unittest.TestCase):
     @mock.patch("drape.desktop.current_desktop", return_value="mate")
     @mock.patch("drape.desktop.running_wm", return_value="Marco")
     @mock.patch("drape.desktop._schema_exists", return_value=True)
+    def test_empty_ancillary_download_does_not_stop_variant_fallback(self, *_mocks):
+        extra, theme = self.src / "extra.zip", self.src / "theme.zip"
+        make_zip(extra, {"Extras/README": b"Optional files; no theme here."})
+        make_zip(theme, {"Actual/gtk-3.0/gtk.css": b""})
+        item = pling.Item.from_ocs({"id": "fallback", "name": "Actual theme"})
+        item.files = [
+            pling.Download(1, extra.name, str(extra), 0, ""),
+            pling.Download(2, theme.name, str(theme), 0, ""),
+        ]
+        with mock.patch.object(installer, "download", side_effect=lambda url, *args: Path(url)):
+            with self.assertRaises(installer.IncompatibleError):
+                installer.install_item(item, file_index=1, only_applicable=True)
+            self.assertNotIn(item.id, installer.load_manifest())
+            entry = installer.install_item(item, only_applicable=True)
+        self.assertEqual(entry["file"], theme.name)
+        self.assertEqual(entry["components"][0]["name"], "Actual")
+
+    @mock.patch("drape.desktop.current_desktop", return_value="mate")
+    @mock.patch("drape.desktop.running_wm", return_value="Marco")
+    @mock.patch("drape.desktop._schema_exists", return_value=True)
     def test_download_caches_all_components_before_install_filtering(self, *_mocks):
         archive = self.src / "mixed.zip"
         make_zip(archive, {"T/gtk-3.0/gtk.css": b"", "T/cinnamon/cinnamon.css": b".dialog {}"})
