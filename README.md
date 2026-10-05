@@ -31,6 +31,13 @@ click. No hunting for archives, no guessing which folder things go in.
   converts them to Linux cursors automatically, using the pack's `Install.inf` to map each cursor.
 - **Shows variants before you pick.** Packs with Dark / Light / Compact variants get an
   [Apply | ▾] button; ▾ lists the variants with a live preview drawn from each one's own files.
+- **Saves your own theme combinations.** **Collections → My configurations** saves the
+  currently selected components under a name, including GTK, native GNOME, Kvantum,
+  desktop styles, window borders, icons, cursors and wallpaper where supported.
+  Mix components from different downloads, rename or delete configurations, and review
+  current-to-saved changes before applying selected parts. Missing files and components
+  unsupported by the current desktop are listed and cannot be selected. These are local
+  selections, so keep the underlying theme files installed. See [configurations](docs/configurations.md).
 - **Deletes installed items in batches.** Check wallpaper or theme-pack cards in Installed,
   or use Select all in category, then Delete selected. Selection carries across categories;
   one confirmation lists the affected images/packs and flags anything currently in use.
@@ -179,7 +186,7 @@ Or run it in place: `./bin/drape`.
 
 ### Updating
 
-Drape checks for app updates once a day and offers **Update and restart**. Use **Check for Drape updates** in the ☰ menu to check immediately, or turn off automatic checks there. This updates official Git clones on `main` tracking `origin/main`; local edits, untracked files and local commits block the update so your work is preserved. Network failures during automatic checks do not interrupt startup.
+Drape checks for app updates shortly after each launch and hourly while open. An **Update available** button stays in the header until a successful check finds the checkout current, even when theme notifications replace the message banner. Review the changes and choose **Update and restart** to install them. Use **Check for Drape updates** in the ☰ menu to check immediately, or turn off automatic checks there. This updates official Git clones on `main` tracking `origin/main`; local edits, untracked files and local commits block the update so your work is preserved. Network failures during automatic checks do not interrupt startup.
 
 To update older installs manually, close Drape and run these commands from your clone:
 

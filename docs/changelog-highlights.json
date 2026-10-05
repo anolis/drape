@@ -2,6 +2,8 @@
   "2026-10-04": {
     "title": "Clear theme engines and reversible Qt appearance",
     "changes": [
+      "Keep a persistent Update available action in the app header so theme notifications cannot hide it. Check shortly after each launch and hourly while open, respect the automatic-check preference, and offer review plus Update and restart after explicit confirmation. Updates wait for ongoing theme configuration operations.",
+      "Add Collections → My configurations to save currently selected appearance components as named personal theme combinations. Review current-to-saved changes before applying selected components, with missing-file and desktop compatibility checks, rename/delete actions and durable local records with backups.",
       "Give hovered cards immediate compatibility inspection priority, including card labels and controls. Hover skips the scroll-idle wait while preserving a running check, cached evidence, job spacing and server cooldowns.",
       "Continue inspecting visible theme cards when Drape loses window focus. Hidden sections and off-screen cards remain excluded, and leaving the viewport still cancels a check.",
       "Shortened the idle compatibility scanner’s gap between theme checks from fifteen to ten seconds. Requests within a check remain paced at ten seconds, and server Retry-After cooldowns continue to take priority.",
