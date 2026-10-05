@@ -1,7 +1,9 @@
 # Independent compatibility worker
 
 Cards load immediately from catalog data and the local compatibility index. Unknown
-cards remain visible with “Compatibility unverified”; known mismatches are filtered.
+cards remain visible with “Compatibility unverified”; known format mismatches are filtered.
+Missing Cinnamon dialog styles remain visible as cosmetic warnings with an explicit
+Install anyway choice. Inspection caches retain the original stylesheet findings.
 After the visible view stops scrolling for two seconds, Drape checks missing evidence
 for visible cards using this separate worker. Archive work never runs in the GTK process.
 Hovering anywhere on a card gives it immediate queue priority, without waiting for
