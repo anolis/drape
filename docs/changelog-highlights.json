@@ -2,6 +2,9 @@
   "2026-10-04": {
     "title": "Clear theme engines and reversible Qt appearance",
     "changes": [
+      "Give hovered cards immediate compatibility inspection priority, including card labels and controls. Hover skips the scroll-idle wait while preserving a running check, cached evidence, job spacing and server cooldowns.",
+      "Continue inspecting visible theme cards when Drape loses window focus. Hidden sections and off-screen cards remain excluded, and leaving the viewport still cancels a check.",
+      "Shortened the idle compatibility scanner’s gap between theme checks from fifteen to ten seconds. Requests within a check remain paced at ten seconds, and server Retry-After cooldowns continue to take priority.",
       "Prevent one visible theme with many distro/color downloads from monopolizing compatibility checks. Automatic checks stop when useful cached contents are available, yield between cards, cap unrecognized-file attempts and increase pacing to ten seconds between requests and fifteen seconds between jobs. Rate-limit delays remain honored; exhaustive variant checks stay available in the explicit worker.",
       "Reuse unchanged installed-theme evidence across launches after a small metadata fingerprint check, instead of rereading theme trees every time. Changed download metadata, engine structure, Cinnamon style metadata or inspection rules trigger a local rescan; the startup summary distinguishes reused and inspected themes.",
       "Show known contents from cached alternative downloads on cards, even when the preferred download is still uninspected. Component absence is only claimed after every variant has complete evidence. Cards distinguish pending or unrecognized contents, and scanner status explicitly reports inactive-window pauses rather than implying every visible theme is cached.",

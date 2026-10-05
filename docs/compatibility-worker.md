@@ -2,13 +2,17 @@
 
 Cards load immediately from catalog data and the local compatibility index. Unknown
 cards remain visible with “Compatibility unverified”; known mismatches are filtered.
-After the active view stops scrolling for two seconds, Drape checks missing evidence
+After the visible view stops scrolling for two seconds, Drape checks missing evidence
 for visible cards using this separate worker. Archive work never runs in the GTK process.
+Hovering anywhere on a card gives it immediate queue priority, without waiting for
+scrolling to settle. A running check finishes first; request pacing, job gaps and server
+cooldowns still apply. Cards with useful cached contents do not need another check.
 
 Only one file is checked at a time, with a ten-second pause between requests and a
-fifteen-second gap between jobs. Each process has a 384 MiB address-space limit and a
-90-second deadline. Leaving the viewport, switching sections, closing a profile or
-leaving the active window cancels its check. Cancelled and failed checks save no verdict.
+ten-second gap between jobs. Each process has a 384 MiB address-space limit and a
+90-second deadline. Leaving the viewport, switching sections or closing a profile
+cancels its check. Losing window focus does not pause or cancel checks; hidden views
+remain excluded. Cancelled and failed checks save no verdict.
 Once a card has useful cached contents, automatic checks move on instead of inspecting
 every distro/color variant under that card. Unrecognized downloads get at most three
 attempts per card per session, yielding to other visible cards. Cancelled checks and

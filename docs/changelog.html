@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">83 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/88db8adecf14fe23ab71f013ee0c66dddac0929d">88db8ad</a>.
+      <p class="note">87 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/44170c6c79d20c83674b0af9ec12e63df9ceabfa">44170c6</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -163,6 +163,9 @@
       <p class="date"><a href="#day-2026-10-04"><time datetime="2026-10-04">October 4, 2026</time></a></p>
       <h2 id="title-2026-10-04">Clear theme engines and reversible Qt appearance</h2>
       <ul class="changes">
+        <li>Give hovered cards immediate compatibility inspection priority, including card labels and controls. Hover skips the scroll-idle wait while preserving a running check, cached evidence, job spacing and server cooldowns.</li>
+        <li>Continue inspecting visible theme cards when Drape loses window focus. Hidden sections and off-screen cards remain excluded, and leaving the viewport still cancels a check.</li>
+        <li>Shortened the idle compatibility scanner’s gap between theme checks from fifteen to ten seconds. Requests within a check remain paced at ten seconds, and server Retry-After cooldowns continue to take priority.</li>
         <li>Prevent one visible theme with many distro/color downloads from monopolizing compatibility checks. Automatic checks stop when useful cached contents are available, yield between cards, cap unrecognized-file attempts and increase pacing to ten seconds between requests and fifteen seconds between jobs. Rate-limit delays remain honored; exhaustive variant checks stay available in the explicit worker.</li>
         <li>Reuse unchanged installed-theme evidence across launches after a small metadata fingerprint check, instead of rereading theme trees every time. Changed download metadata, engine structure, Cinnamon style metadata or inspection rules trigger a local rescan; the startup summary distinguishes reused and inspected themes.</li>
         <li>Show known contents from cached alternative downloads on cards, even when the preferred download is still uninspected. Component absence is only claimed after every variant has complete evidence. Cards distinguish pending or unrecognized contents, and scanner status explicitly reports inactive-window pauses rather than implying every visible theme is cached.</li>
@@ -181,8 +184,12 @@
         <li>Added Restore previous Qt appearance with an original-settings backup retained across theme switches. Restoration preserves unrelated edits, refuses conflicting changes and explains the limits of older setups without backups. Qt setup leaves menu entries and autostart commands untouched; any future launcher edits require an exact-change confirmation and undo.</li>
       </ul>
       <details>
-        <summary>View 23 commits</summary>
+        <summary>View 27 commits</summary>
         <ol class="commits">
+          <li data-commit="44170c6c79d20c83674b0af9ec12e63df9ceabfa"><a class="commit" href="https://github.com/anolis/drape/commit/44170c6c79d20c83674b0af9ec12e63df9ceabfa">44170c6</a><span>feat: prioritize hovered cards for compatibility inspection</span></li>
+          <li data-commit="91c139cc901f72005e7688ea4461a4a024060d37"><a class="commit" href="https://github.com/anolis/drape/commit/91c139cc901f72005e7688ea4461a4a024060d37">91c139c</a><span>fix: keep visible compatibility checks running without focus</span></li>
+          <li data-commit="082383213657bb66538af37137b42890f3d91365"><a class="commit" href="https://github.com/anolis/drape/commit/082383213657bb66538af37137b42890f3d91365">0823832</a><span>perf: shorten pauses between visible theme checks</span></li>
+          <li data-commit="64ac7da05a46ed95afeac2b28e3cc2b15aec20d3"><a class="commit" href="https://github.com/anolis/drape/commit/64ac7da05a46ed95afeac2b28e3cc2b15aec20d3">64ac7da</a><span>docs: describe reusable cache and conservative visible inspection</span></li>
           <li data-commit="88db8adecf14fe23ab71f013ee0c66dddac0929d"><a class="commit" href="https://github.com/anolis/drape/commit/88db8adecf14fe23ab71f013ee0c66dddac0929d">88db8ad</a><span>fix: share visible checks fairly and show cached variant contents</span></li>
           <li data-commit="f30c875b5a4b82087d779dbcd4e31dfa5772dc25"><a class="commit" href="https://github.com/anolis/drape/commit/f30c875b5a4b82087d779dbcd4e31dfa5772dc25">f30c875</a><span>fix: reuse unchanged installed-theme inspection evidence</span></li>
           <li data-commit="291042314edfbd3c16a70798b14e855b0de7512d"><a class="commit" href="https://github.com/anolis/drape/commit/291042314edfbd3c16a70798b14e855b0de7512d">2910423</a><span>docs: record GTK scrolling crash fix</span></li>
