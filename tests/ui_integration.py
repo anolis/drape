@@ -154,13 +154,21 @@ with tempfile.TemporaryDirectory() as temp:
             pump(0.25)
             card = next(card for card in page.cards() if card.item.id == "unknown")
             assert card.get_child_visible() and card.compatibility_pending
-            assert card.compatibility_note.get_text() == "Compatibility unverified"
+            assert card.compatibility_note.get_text() == "Contents pending inspection"
+            primary = unknown.files[0]
+            alternate = pling.Download(2, "alternate.zip", "url", 1, "")
+            unknown.files.append(alternate)
+            card.refresh_evidence({2: ({"gtk", "gtk-3.0"}, True)})
+            assert card.glyphs.get_visible() and "GTK" in card.glyphs.get_tooltip_text()
+            assert card._checks.get(primary.index) is None
+            unknown.files.pop()
+            card.refresh_evidence({})
             card.set_scan_busy(True)
             assert card.scan_spinner.get_visible() and card.scan_spinner.get_property("active")
             assert card.compatibility_note.get_text() == "Inspecting download…"
             card.set_scan_busy(False)
             assert not card.scan_spinner.get_visible()
-            assert card.compatibility_note.get_text() == "Compatibility unverified"
+            assert card.compatibility_note.get_text() == "Contents pending inspection"
         # Cached previews must not destroy overlay children inside the draw callback.
         from drape.ui import images
         from drape.ui.gtk import GdkPixbuf

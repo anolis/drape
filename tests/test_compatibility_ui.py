@@ -25,7 +25,7 @@ class CompatibilityUiTest(unittest.TestCase):
         Card._show_glyphs(card, set(), False, checked=True)
         self.assertFalse(card.compatible)
         self.assertTrue(card.compatibility_pending)
-        card.compatibility_note.set_text.assert_called_once_with("Compatibility unverified")
+        card.compatibility_note.set_text.assert_called_once_with("Contents pending inspection")
 
     def test_unknown_alternative_remains_visible_without_online_scanning(self):
         card = SimpleNamespace(

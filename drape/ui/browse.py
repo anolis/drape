@@ -167,13 +167,26 @@ class Card(FadingCard):
             else peek.cached(self.item.id, f.name)
             for f in self.item.files
         ]
+        # A stored installation may correspond to an alternative download, not best_file().
+        # Show all known contents, but claim absence only after every variant is complete.
+        known = [result for result in checks if result is not None]
+        parts = set(parts).union(*(result[0] for result in known))
+        complete = bool(checks) and all(result is not None and result[1] for result in checks)
         state = desktop.download_status(checks, self.kind)
         self.compatible = state == "compatible"
-        self.compatibility_note.set_text(
+        note = (
             "Incompatible with this desktop"
             if state == "incompatible"
             else "Compatibility unverified"
         )
+        if state == "unknown" and not parts:
+            if not self.item.files:
+                note = "No direct download to inspect"
+            elif not known:
+                note = "Contents pending inspection"
+            else:
+                note = "Contents unrecognized"
+        self.compatibility_note.set_text(note)
         self.compatibility_note.set_visible(state != "compatible")
         self.pack_pending = self.kind == "packs" and not self.compatible and state == "unknown"
         parent = self.get_parent()
@@ -183,6 +196,11 @@ class Card(FadingCard):
             page = self.win.pages.get(self.kind)
             if page:
                 GLib.idle_add(page._filtered_status)
+        self.compatibility_note.set_tooltip_text(
+            "Contents have not been inspected yet; this card is still pending."
+            if not known
+            else "Compatibility is evaluated from cached contents; uninspected variants remain unknown."
+        )
         if "gtk-4.0" in parts:
             parts = {*parts, "libadwaita"}
         parts = {"wm" if p in ("xfwm", "aurorae") else p for p in parts}
@@ -200,6 +218,8 @@ class Card(FadingCard):
                 text = f"⚠ Contains {GLib.markup_escape_text(names)}, not {not_}"
             self.misfiled.set_markup(f"<small>{text}</small>")
             self.misfiled.show()
+        else:
+            self.misfiled.hide()
         return False
 
     # Install and apply controls

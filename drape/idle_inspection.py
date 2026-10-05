@@ -14,7 +14,7 @@ from pathlib import Path
 from . import compatibility, http, pling
 
 IDLE_SECONDS = 2
-JOB_GAP = 5
+JOB_GAP = 15
 JOB_TIMEOUT = 90
 
 
@@ -31,6 +31,8 @@ class IdleInspector:
         self.local_process = None
         self.local_progress = None
         self.local_counts = (0, 0)
+        self.local_reused = 0
+        self.local_scanned = 0
         self.local_timed_out = False
         self.cooldown = 0
         self.notice_until = 0
@@ -44,6 +46,8 @@ class IdleInspector:
         self.retired = []
         self.next_check = 0
         self.retry = {}
+        self.attempts = {}
+        self.last_attempt = {}
 
     def _status(self, state, text, spinning=False, fraction=None):
         status = dict(state=state, text=text, spinning=spinning, fraction=fraction)
@@ -63,6 +67,8 @@ class IdleInspector:
                 if isinstance(done, int) and isinstance(total, int) and 0 <= done <= total:
                     self.local_counts = done, total
                     title = data.get("title", "")
+                    self.local_reused = data.get("reused", 0)
+                    self.local_scanned = data.get("scanned", 0)
             except (OSError, ValueError, KeyError, TypeError):
                 pass
         return title
@@ -121,6 +127,7 @@ class IdleInspector:
         _, card, _, key, process, _ = self.active
         self.active = None
         self._card_busy(card, False)
+        self.attempts[card.item.id] = max(0, self.attempts.get(card.item.id, 0) - 1)
         self.notice_until = self.clock() + 2
         self._status("cancelled", "Check cancelled — theme left the active view")
         self.retry[key] = self.clock() + JOB_GAP
@@ -207,7 +214,10 @@ class IdleInspector:
                 self.notice_until = now + 8
                 if process.returncode == 0 and not self.local_timed_out:
                     self._status(
-                        "complete", f"Saved-theme checks complete — {done} themes cached", False, 1
+                        "complete",
+                        f"Theme cache ready — {done} themes · {self.local_reused} reused · {self.local_scanned} inspected",
+                        False,
+                        1,
                     )
                 else:
                     self._status(
@@ -234,7 +244,7 @@ class IdleInspector:
                 )
                 return
             else:
-                text = f"Checking saved themes — {done} of {total} cached"
+                text = f"Updating theme cache — {done} of {total} ready"
                 if title:
                     text += f" · {title}"
                 self._status("local", text, True, min(fraction, 0.99))
@@ -274,6 +284,7 @@ class IdleInspector:
                     self._status("cached", f"Compatibility cached — {card.item.name}")
                     self.notice_until = now + 2
                 elif status == "rate_limited":
+                    self.attempts[card.item.id] = max(0, self.attempts.get(card.item.id, 0) - 1)
                     delay = min(http.MAX_RETRY_AFTER, max(1, result.get("retry_after", 60)))
                     self.next_check = now + delay
                     self.cooldown = now + delay
@@ -298,10 +309,17 @@ class IdleInspector:
         if self.active or self.retired or not self.enabled or now < self.next_check:
             return
         if now >= self.notice_until:
-            self._status("idle", "Compatibility scanner idle — cached evidence is available")
+            self._status("idle", "No compatibility check running")
         # Reading SQLite is cheap. No download is needed for cached cards, even after relaunch.
         for flow, moved in list(self.flows.items()):
             if not flow.get_mapped():
+                continue
+            if not flow.get_toplevel().is_active():
+                if now >= self.notice_until:
+                    self._status(
+                        "paused",
+                        "Compatibility checks paused — activate Drape to inspect visible downloads",
+                    )
                 continue
             if now - moved < IDLE_SECONDS:
                 if now >= self.notice_until:
@@ -310,18 +328,27 @@ class IdleInspector:
             cards = [card for card in flow.cards() if self._visible(flow, card)]
             self.next_check = now + JOB_GAP
             checks = self.index.read_many([card.item for card in cards])
-            total = sum(len(card.item.files) for card in cards)
-            cached = sum(len(checks.get(card.item.id, {})) for card in cards)
+            known_cards = sum(
+                any(result[0] for result in checks.get(card.item.id, {}).values()) for card in cards
+            )
             if cards and now >= self.notice_until:
+                unknown = len(cards) - known_cards
                 self._status(
-                    "cached" if cached == total else "waiting",
-                    f"Visible downloads — {cached} of {total} cached"
-                    + (" · remaining checks will retry later" if cached < total else ""),
+                    "cached" if not unknown else "waiting",
+                    f"Visible themes — {known_cards} of {len(cards)} have cached contents"
+                    + (f" · {unknown} unverified" if unknown else ""),
                 )
+            cards.sort(key=lambda card: self.last_attempt.get(card.item.id, -1))
             for card in cards:
                 evidence = checks.get(card.item.id, {})
                 if card._checks != evidence:
                     card.refresh_evidence(evidence)
+                # Browsing only needs useful contents, not every distro/color variant.
+                # Exhaustive archive scans belong to the explicit backend worker.
+                if any(result[0] for result in evidence.values()):
+                    continue
+                if self.attempts.get(card.item.id, 0) >= 3:
+                    continue
                 best = card.item.best_file()
                 files = sorted(card.item.files, key=lambda f: f is not best)
                 for file in files:
@@ -365,7 +392,7 @@ class IdleInspector:
                         "--memory-mib",
                         "384",
                         "--request-interval",
-                        "3",
+                        "10",
                         "--database",
                         str(self.index.path),
                     ],
@@ -379,6 +406,8 @@ class IdleInspector:
             self.notice_until = now + 5
             self._status("failed", "Could not start compatibility check — will retry later")
             return
+        self.attempts[card.item.id] = self.attempts.get(card.item.id, 0) + 1
+        self.last_attempt[card.item.id] = now
         self.active = flow, card, file, key, process, now
         self._card_busy(card, True)
         self._status("scanning", f"Checking compatibility — {card.item.name} · {file.name}", True)

@@ -95,6 +95,58 @@ class IdleInspectionTest(unittest.TestCase):
         self.assertIn("50s", self.scanner.status["text"])
         self.card.set_scan_busy.assert_called_with(False)
 
+    def test_known_first_card_does_not_scan_its_other_twenty_variants(self):
+        self.item.files += [
+            pling.Download(n, f"variant-{n}.zip", "https://test/theme", 1, "") for n in range(2, 22)
+        ]
+        self.index.record(self.item, self.item.files[0], ({"gtk"}, False), "archive", {}, "unknown")
+        other_item = pling.Item(
+            "2",
+            "Next card",
+            "",
+            "",
+            "",
+            "today",
+            0,
+            0,
+            "",
+            files=[pling.Download(1, "theme.zip", "https://test/theme", 1, "")],
+        )
+        other = mock.Mock(item=other_item, departing=False, _scan_alive=True, _checks={})
+        other.get_parent.return_value = self.flow
+        self.flow.cards.return_value = [self.card, other]
+        self.now = 2
+        self.scanner.tick()
+        self.assertIs(self.scanner.active[1], other)
+        self.spawn.assert_called_once()
+
+    def test_empty_result_card_yields_to_next_card(self):
+        self.start()
+        self.index.record(self.item, self.item.files[0], (set(), True), "archive", {}, "unknown")
+        self.item.files.append(pling.Download(2, "other.zip", "https://test/theme", 1, ""))
+        other_item = pling.Item(
+            "2",
+            "Next card",
+            "",
+            "",
+            "",
+            "today",
+            0,
+            0,
+            "",
+            files=[pling.Download(1, "theme.zip", "https://test/theme", 1, "")],
+        )
+        other = mock.Mock(item=other_item, departing=False, _scan_alive=True, _checks={})
+        other.get_parent.return_value = self.flow
+        self.flow.cards.return_value = [self.card, other]
+        self.process.poll.return_value = 0
+        self.now = 3
+        self.scanner.tick()
+        self.now = 19
+        self.process.poll.return_value = None
+        self.scanner.tick()
+        self.assertIs(self.scanner.active[1], other)
+
     def test_local_backfill_starts_without_idle_or_visible_cards(self):
         self.scanner.local_manifest = Path(self.temp.name) / "installed.json"
         self.scanner.set_enabled(False)
