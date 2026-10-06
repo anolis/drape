@@ -38,16 +38,30 @@ click. No hunting for archives, no guessing which folder things go in.
   current-to-saved changes before applying selected parts. Missing files and components
   unsupported by the current desktop are listed and cannot be selected. These are local
   selections, so keep the underlying theme files installed. See [configurations](docs/configurations.md).
-- **Plays local video wallpapers on Cinnamon/X11.** **Shared assets → Video wallpapers**
-  remembers local videos, loops them silently on every monitor, and offers Fill/Fit,
-  Pause/Resume and Stop. Desktop icons remain above the video and accept clicks.
-  Enabling playback adds a tray icon; closing the main window hides it. The tray offers
+- **Plays live wallpapers on Cinnamon and GNOME/X11.** **Shared assets → Live wallpapers**
+  offers local videos, installed XScreenSaver animations, and audio visualizations.
+  Videos loop silently on every monitor with Fill/Fit. Animations offer a frame-rate
+  target where supported. Audio styles include bars, a flowing curve, rings and blocks,
+  with a color picker and separate Desktop audio / Microphone checkboxes; desktop audio
+  is enabled by default and the microphone is off. Audio is analyzed locally and never saved.
+  All sources share Pause/Resume and Stop. Desktop icons remain visible and clickable.
+  Enabling playback adds a tray icon where supported; closing the main window hides it.
+  GNOME can keep playback running without a tray extension: reopen Drape for controls,
+  or use Quit Drape on the live-wallpapers page to stop playback and exit. The tray offers
   Show Drape, Pause/Resume, Stop wallpaper and Quit Drape. Stop or Quit reveals the static
-  wallpaper; choosing a still wallpaper in Drape also stops playback. Requires `mpv`.
+  wallpaper; choosing a still wallpaper in Drape also stops playback. Videos need `mpv`,
+  animations need XScreenSaver's animation packages, and audio needs `cava` and `pactl`
+  with PulseAudio or PipeWire's PulseAudio service. Missing optional source packages
+  have install buttons that show the command and ask before installation.
+  Changes to live-wallpaper selections and controls apply automatically during playback.
+  XScreenSaver animations have per-animation settings with saved choices and a default reset.
+  Audio offers nine visualization styles, custom two-color gradients, multicolor palettes
+  and smooth color cycling, with separate Desktop audio and Microphone choices.
   Playback pauses while the screen is locked and starts manually after login. Videos
   are referenced in place, so moving a file makes it unavailable; removing a list entry
-  does not delete the video. GNOME, other desktops and Cinnamon/Wayland are not supported
-  by this first version. See [video wallpapers](docs/video-wallpapers.md).
+  does not delete the video. Wayland, including GNOME/Wayland, and other desktops are not
+  supported yet. Desktop integration is separate from rendering to support
+  additional desktops later. See [live wallpapers](docs/video-wallpapers.md).
 - **Deletes installed items in batches.** Check wallpaper or theme-pack cards in Installed,
   or use Select all in category, then Delete selected. Selection carries across categories;
   one confirmation lists the affected images/packs and flags anything currently in use.

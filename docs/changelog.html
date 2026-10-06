@@ -154,15 +154,33 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">103 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/8546fe8385b95896d9c3d84fb49f9eb0f7ee6819">8546fe8</a>.
+      <p class="note">106 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/0c1fe8da8996d7c9e580bcb2c7949bece89db2d0">0c1fe8d</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
+    <section class="entry" id="day-2026-10-06" aria-labelledby="title-2026-10-06">
+      <p class="date"><a href="#day-2026-10-06"><time datetime="2026-10-06">October 6, 2026</time></a></p>
+      <h2 id="title-2026-10-06">More audio visualizations and animated color palettes</h2>
+      <ul class="changes">
+        <li>Add a GNOME/X11 host for local videos, XScreenSaver animations and audio visualizations, verified on GNOME 48.7 across three monitors. Keep wallpaper surfaces behind ordinary windows and existing icon hosts, use GNOME’s screen-lock service, and allow playback to continue with the main window hidden even without a tray extension. Reopen Drape for controls or use the new Quit Drape action. GNOME/Wayland remains unsupported.</li>
+        <li>Expand live audio wallpapers to nine styles with mirrored spectrum, circular wave, layered ribbons, orbiting lights and spectrum spiral. Add seven color modes, including custom two-color gradients and Rainbow, Aurora, Sunset, Fire &amp; gold and Ocean palettes. Preview the palette and cycle colors smoothly at three speeds; changes apply live and persist. Pause freezes animation, silence avoids continuous repainting, and older preferences load with compatible defaults.</li>
+      </ul>
+      <details>
+        <summary>View 2 commits</summary>
+        <ol class="commits">
+          <li data-commit="0c1fe8da8996d7c9e580bcb2c7949bece89db2d0"><a class="commit" href="https://github.com/anolis/drape/commit/0c1fe8da8996d7c9e580bcb2c7949bece89db2d0">0c1fe8d</a><span>feat: add live wallpaper sources and GNOME X11 support</span></li>
+          <li data-commit="521152f2d3ebd26c182ca213a8a9993ec49458a6"><a class="commit" href="https://github.com/anolis/drape/commit/521152f2d3ebd26c182ca213a8a9993ec49458a6">521152f</a><span>fix: keep update notifications in the header</span></li>
+        </ol>
+      </details>
+    </section>
     <section class="entry" id="day-2026-10-05" aria-labelledby="title-2026-10-05">
       <p class="date"><a href="#day-2026-10-05"><time datetime="2026-10-05">October 5, 2026</time></a></p>
       <h2 id="title-2026-10-05">Cinnamon video wallpapers and clearer theme compatibility</h2>
       <ul class="changes">
+        <li>Switch live-wallpaper selections and controls automatically during playback while preserving a manual pause. Add per-animation XScreenSaver settings dialogs from installed metadata, save choices independently, and offer Apply, Cancel and Restore defaults without changing the screensaver daemon configuration.</li>
+        <li>Add XScreenSaver animations and audio visualizations as live-wallpaper sources, with shared tray and pause/stop controls. Audio offers bars, curves, rings and blocks, color selection, and independent Desktop audio / Microphone checkboxes. Confirm optional package installation, keep capture local and shared across monitors, and separate desktop hosting from rendering for future GNOME, MATE and Xfce support. The first host remains Cinnamon/X11.</li>
+        <li>Show available Drape updates only in the persistent header button; remove the duplicate banner action.</li>
         <li>Fix 4K wallpaper crashes at loop boundaries on NVIDIA by using copy-mode hardware decoding, OpenGL output and bounded decoder threads. Recover from player exits or startup timeouts through two bounded software fallbacks, preserve pause and icon layering, and retain capped per-monitor logs instead of discarding diagnostics.</li>
         <li>Add local video wallpapers for Cinnamon on X11. Remember MP4, WebM and other local videos, loop silently on all monitors, choose Fill or Fit, pause while locked and restore the static wallpaper with Stop. Keep desktop icons visible and clickable above the video; other desktops and Wayland remain unsupported in this first version.</li>
         <li>Keep Drape in the system tray after enabling video playback, using Drape’s own logo. Closing the main window hides it; tray actions reopen Drape, pause or resume, stop the wallpaper, and quit with player cleanup. Existing menu and login-startup entries are left unchanged.</li>
@@ -172,8 +190,9 @@
         <li>When a catalog download contains no recognized theme components, try its next download variant. Explicitly selected files still report their own failure; transport and extraction errors retain their original handling.</li>
       </ul>
       <details>
-        <summary>View 9 commits</summary>
+        <summary>View 10 commits</summary>
         <ol class="commits">
+          <li data-commit="23510d279956eb50d8c0b8ae3e9e76d5112ab4c8"><a class="commit" href="https://github.com/anolis/drape/commit/23510d279956eb50d8c0b8ae3e9e76d5112ab4c8">23510d2</a><span>docs: describe video playback recovery and diagnostics</span></li>
           <li data-commit="8546fe8385b95896d9c3d84fb49f9eb0f7ee6819"><a class="commit" href="https://github.com/anolis/drape/commit/8546fe8385b95896d9c3d84fb49f9eb0f7ee6819">8546fe8</a><span>test: use a valid Cinnamon stylesheet in theme pack fixture</span></li>
           <li data-commit="2f1ea6aa43a4420f3089b8ebb1ba2297950519dd"><a class="commit" href="https://github.com/anolis/drape/commit/2f1ea6aa43a4420f3089b8ebb1ba2297950519dd">2f1ea6a</a><span>fix: recover video wallpapers from graphics driver failures</span></li>
           <li data-commit="36a39bd2c8659af5b64d3741d2f940abcf4e8a8f"><a class="commit" href="https://github.com/anolis/drape/commit/36a39bd2c8659af5b64d3741d2f940abcf4e8a8f">36a39bd</a><span>docs: document video wallpapers and tray behavior</span></li>

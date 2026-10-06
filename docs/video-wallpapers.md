@@ -1,7 +1,10 @@
-# Video wallpapers
+# Live wallpapers
 
-The first backend supports Cinnamon on X11. Install `mpv` through your system's
-package manager, open **Shared assets → Video wallpapers**, add a local video and
+Live wallpapers support Cinnamon and GNOME on X11. GNOME video, XScreenSaver
+animations and audio visualizations were verified on GNOME 48.7 with three monitors.
+GNOME/Wayland remains unsupported: an XWayland display cannot host desktop wallpapers.
+Install `mpv` through your system's
+package manager, open **Shared assets → Live wallpapers**, choose **Local video**, add a file and
 choose **Play wallpaper**. Supported file extensions are MP4, WebM, MKV, MOV, M4V,
 AVI and OGV; actual decoding depends on the installed mpv and codecs.
 
@@ -10,15 +13,26 @@ Fit keeps the whole picture with bars where needed. Pause/Resume keeps the curre
 frame. Playback pauses on screen lock, and unlocking preserves a manual pause.
 Monitor changes rebuild playback surfaces for the new layout.
 
+Once playback is running, changing the source, selected video or animation, layout,
+frame-rate target, visualization style, color or audio inputs applies automatically.
+Quick edits are combined into one switch. A manual pause is preserved; changing
+controls while stopped does not start playback.
+
 Starting playback puts Drape in Cinnamon's system tray. Closing the main window
 hides it; the tray's **Show Drape** action or launching Drape again reopens it.
 The tray also offers Pause/Resume, Stop wallpaper and Quit Drape. Stop reveals
 the existing static wallpaper and leaves Drape available in the tray. Quit stops
-the player and exits Drape. If the tray applet is disabled, Drape keeps its window
-visible and explains how to enable the applet.
+the player and exits Drape. The page also offers **Quit Drape**. If Cinnamon's tray
+applet is disabled, Drape keeps its window visible and explains how to enable the applet.
 
-Static wallpaper settings stay unchanged beneath the video. Choosing a still
-wallpaper through Drape stops video playback before applying the image. There is
+GNOME does not require a tray extension. Closing Drape during playback hides the
+window and keeps its background process running. Launch Drape again to reopen
+Pause/Resume, Stop and Quit controls. If GNOME has a compatible tray extension,
+the tray menu is also available. The GNOME host uses its own screen-lock service;
+it does not enable extensions or change desktop or startup settings.
+
+Static wallpaper settings stay unchanged beneath live playback. Choosing a still
+wallpaper through Drape stops playback before applying the image. There is
 no login startup entry in this version: start playback manually after login.
 Menu entries and existing startup commands are not edited.
 
@@ -27,16 +41,93 @@ stores file references and the last layout, with locked, atomic writes. No video
 are copied or deleted. Removing an entry stops it if it is playing and only removes
 the reference. Moving or deleting the original file makes the entry unavailable.
 
+## XScreenSaver animations
+
+Choose **XScreenSaver animation**, select an installed animation and click **Play wallpaper**.
+The description comes from its packaged metadata. The frame-rate target offers
+15, 30 or 60 FPS where the animation exposes a compatible frame-delay option;
+it is a target rather than a guaranteed render rate. **Refresh installed animations**
+finds newly installed packages without restarting Drape.
+
+**Animation settings…** opens the selected animation's controls from its installed
+XScreenSaver metadata: numbers, checkboxes, option lists and any text or file fields.
+**Apply** saves the choices and updates active playback; **Cancel** discards dialog
+edits. **Restore defaults**, followed by Apply, clears that animation's custom choices.
+These settings are stored separately in `~/.config/drape/xscreensaver-settings.json`
+(or the XDG config equivalent), without changing the XScreenSaver daemon's configuration.
+The page's frame-rate target controls frame delay. Available controls depend on the
+animation's packaged metadata.
+
+**Install animation packages…** offers `xscreensaver`
+on Arch/CachyOS or `xscreensaver-data` and `xscreensaver-gl` on Debian/Ubuntu.
+Extra animation packages can be installed separately through the package manager.
+The confirmation shows the exact command before administrator authentication.
+On Arch, missing repository databases require a separately explained full system
+upgrade. Drape does not start the XScreenSaver daemon or change your screen locker.
+Only the selected animation runs, inside Drape's wallpaper surface rather than the
+root window. Pause freezes its owned processes; Stop also terminates its helper children.
+
+## Audio visualizations
+
+Choose **Audio visualization**, select a style, and enable **Desktop audio**, **Microphone**,
+or both. Styles include spectrum bars, a flowing curve, radial rings, blocks, mirrored
+spectrum, circular wave, layered ribbons, orbiting lights and a spectrum spiral. Desktop audio
+is on by default; the microphone is off. Click **Play wallpaper** to start playback.
+While a live wallpaper is running, these controls update playback automatically,
+including changes to the selected audio inputs. The playback status and tray tooltip
+show the active audio inputs. Changing controls while stopped does not start capture.
+
+**Color palette** offers Single color, a custom Two-color gradient, Rainbow, Aurora,
+Sunset, Fire & gold and Ocean. The strip previews your selected colors. Custom palettes
+show primary and second color pickers where relevant. **Cycle colors** shifts colors
+smoothly at Slow, Normal or Fast speed and works with every style and palette. Changes
+apply during playback and are remembered across source switches and launches. Color
+cycling and moving geometry freeze on pause or screen lock; silence leaves rendering idle.
+
+Desktop audio uses the monitor of your default output device. Microphone uses your
+default input device, and rejects an output monitor selected as the default input.
+Change defaults in your system's Sound settings, then click Play again. Both inputs
+combine their strongest spectrum amplitudes. This is a frequency-spectrum display;
+the flowing curve is not a raw audio waveform. Silence leaves the visualizer idle.
+
+This source requires CAVA and `pactl`, with PulseAudio or PipeWire's PulseAudio service.
+**Install audio support…** shows and confirms installation of `cava` plus
+`pulseaudio-utils` on Debian/Ubuntu, or `cava` plus `libpulse` on Arch/CachyOS.
+It does not replace or reconfigure the sound server. One capture per enabled input
+serves every monitor; Drape receives only spectrum levels, never saves audio, and
+closes its capture processes on Stop or Quit. Pause and screen lock freeze capture
+processing and rendering while preserving a manual pause.
+
+Source, animation, frame-rate target, audio style, color and input choices are saved
+with palette, secondary color and cycling settings through locked, atomic writes in
+`~/.config/drape/wallpaper-sources.json` (or the XDG
+config equivalent), independently of `videos.json`. Playback still starts manually.
+The visualizations are Drape's own Cairo renderers, inspired by common spectrum
+styles such as [Kurve](https://github.com/luisbocanegra/kurve); they do not need KDE Plasma.
+
 ## Backend
 
 `video_wallpapers.py` manages the library and private local controls. `video_player.py`
-owns the GTK/X11 surfaces and mpv child processes, independently of browsing and
-archive scanning. `video_mpv.py` handles mpv arguments and JSON controls.
-`video_x11.py` places only Drape's surfaces below existing desktop windows through
-Muffin's EWMH desktop-manager interface. Ordinary GDK lowering can be rejected by
-Muffin's user-time checks; stacking is verified before revealing a decoded video,
+owns the source lifecycle independently of browsing and archive scanning.
+`wallpaper_surface.py` hosts per-monitor renderers; `video_mpv.py` handles video
+arguments and JSON controls, `wallpaper_xscreensaver.py` discovers and embeds installed
+animations, and `wallpaper_audio.py` reads bounded CAVA frames. `wallpaper_visualizers.py`
+draws spectrum styles, and `wallpaper_colors.py` supplies palettes and smooth color cycling.
+`wallpaper_process.py` bounds logs and controls only worker-owned processes.
+
+`wallpaper_desktop.py` owns desktop-specific window setup, icon layering and lock
+service details. The registered hosts are Cinnamon/X11 and GNOME/X11, using their
+respective screen-lock services. Rendering sources do not
+depend on Cinnamon: MATE and Xfce hosts can reuse them after their desktop-window
+and screen-lock behavior is implemented and tested. A Wayland host needs compositor
+integration rather than X11 window IDs; it is not enabled by an XWayland connection.
+
+The X11 hosts use `video_x11.py` to place only Drape's surfaces below any icon-hosting
+desktop windows through the window manager's EWMH interface. Ordinary GDK lowering
+can be rejected by focus-stealing checks; stacking is verified before revealing a decoded video,
 then checked again when desktop windows change. Input regions are empty, preserving
-Nemo's icons, selection, drag-and-drop and context menu.
+desktop clicks and any icon host's selection, drag-and-drop and context menu. GNOME
+without desktop icons needs no separate icon window or Shell extension.
 
 The worker listens on a private Unix socket in `$XDG_RUNTIME_DIR/drape-video`
 (or a private per-user temporary directory). It runs one mpv per monitor, disables
@@ -54,5 +145,6 @@ releases the video windows and reports an error; it never retries indefinitely.
 Compatibility playback is shown in the page status and can use more CPU.
 
 The GTK page is in `ui/video_wallpapers.py`; application lifetime and the extensible
-tray menu are in `ui/tray.py`. Drape can reconnect to a surviving player after a GUI
+source controls are in `ui/wallpaper_source_controls.py`, confirmed optional installs
+in `ui/optional_packages.py`, and the tray menu in `ui/tray.py`. Drape can reconnect to a surviving player after a GUI
 crash, without starting duplicate players.

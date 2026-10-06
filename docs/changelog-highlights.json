@@ -84,6 +84,9 @@
   "2026-10-05": {
     "title": "Cinnamon video wallpapers and clearer theme compatibility",
     "changes": [
+      "Switch live-wallpaper selections and controls automatically during playback while preserving a manual pause. Add per-animation XScreenSaver settings dialogs from installed metadata, save choices independently, and offer Apply, Cancel and Restore defaults without changing the screensaver daemon configuration.",
+      "Add XScreenSaver animations and audio visualizations as live-wallpaper sources, with shared tray and pause/stop controls. Audio offers bars, curves, rings and blocks, color selection, and independent Desktop audio / Microphone checkboxes. Confirm optional package installation, keep capture local and shared across monitors, and separate desktop hosting from rendering for future GNOME, MATE and Xfce support. The first host remains Cinnamon/X11.",
+      "Show available Drape updates only in the persistent header button; remove the duplicate banner action.",
       "Fix 4K wallpaper crashes at loop boundaries on NVIDIA by using copy-mode hardware decoding, OpenGL output and bounded decoder threads. Recover from player exits or startup timeouts through two bounded software fallbacks, preserve pause and icon layering, and retain capped per-monitor logs instead of discarding diagnostics.",
       "Add local video wallpapers for Cinnamon on X11. Remember MP4, WebM and other local videos, loop silently on all monitors, choose Fill or Fit, pause while locked and restore the static wallpaper with Stop. Keep desktop icons visible and clickable above the video; other desktops and Wayland remain unsupported in this first version.",
       "Keep Drape in the system tray after enabling video playback, using Drape’s own logo. Closing the main window hides it; tray actions reopen Drape, pause or resume, stop the wallpaper, and quit with player cleanup. Existing menu and login-startup entries are left unchanged.",
@@ -91,6 +94,13 @@
       "Recognize quoted and unquoted Cinnamon CSS imports, avoiding false unverified results for styles with valid imported dialog rules. Recheck older unknown Cinnamon evidence while retaining unaffected archive caches.",
       "Explain why a detected Cinnamon component cannot apply: missing dialog styles for the current Cinnamon release, unreadable stylesheet imports or an unknown version. Show specific feedback on cards, Apply tooltips and rejection messages instead of implying a theme component is absent.",
       "When a catalog download contains no recognized theme components, try its next download variant. Explicitly selected files still report their own failure; transport and extraction errors retain their original handling."
+    ]
+  },
+  "2026-10-06": {
+    "title": "More audio visualizations and animated color palettes",
+    "changes": [
+      "Add a GNOME/X11 host for local videos, XScreenSaver animations and audio visualizations, verified on GNOME 48.7 across three monitors. Keep wallpaper surfaces behind ordinary windows and existing icon hosts, use GNOME’s screen-lock service, and allow playback to continue with the main window hidden even without a tray extension. Reopen Drape for controls or use the new Quit Drape action. GNOME/Wayland remains unsupported.",
+      "Expand live audio wallpapers to nine styles with mirrored spectrum, circular wave, layered ribbons, orbiting lights and spectrum spiral. Add seven color modes, including custom two-color gradients and Rainbow, Aurora, Sunset, Fire & gold and Ocean palettes. Preview the palette and cycle colors smoothly at three speeds; changes apply live and persist. Pause freezes animation, silence avoids continuous repainting, and older preferences load with compatible defaults."
     ]
   }
 }
