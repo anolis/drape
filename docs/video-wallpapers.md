@@ -44,6 +44,14 @@ audio, scripts, external references and player input, and does not inhibit the
 screensaver. Stop terminates only those child processes. Playback failures release
 the video surfaces, reveal the static wallpaper and appear in the page/tray status.
 Worker startup errors are logged to `player.log` in that runtime directory.
+Per-monitor mpv warnings are kept in bounded `mpv-N.log` files, with one previous
+attempt retained. Playback uses OpenGL and copy-mode hardware decoding to avoid
+direct-frame and Vulkan interop failures at loop boundaries. Decoder threads are
+limited per monitor. If a player exits or fails to start, Drape retries once with
+software decoding, then once with a software video output. It keeps manual pause,
+screen-lock behavior and icon layering during recovery. After all modes fail, it
+releases the video windows and reports an error; it never retries indefinitely.
+Compatibility playback is shown in the page status and can use more CPU.
 
 The GTK page is in `ui/video_wallpapers.py`; application lifetime and the extensible
 tray menu are in `ui/tray.py`. Drape can reconnect to a surviving player after a GUI

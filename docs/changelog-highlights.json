@@ -84,6 +84,7 @@
   "2026-10-05": {
     "title": "Cinnamon video wallpapers and clearer theme compatibility",
     "changes": [
+      "Fix 4K wallpaper crashes at loop boundaries on NVIDIA by using copy-mode hardware decoding, OpenGL output and bounded decoder threads. Recover from player exits or startup timeouts through two bounded software fallbacks, preserve pause and icon layering, and retain capped per-monitor logs instead of discarding diagnostics.",
       "Add local video wallpapers for Cinnamon on X11. Remember MP4, WebM and other local videos, loop silently on all monitors, choose Fill or Fit, pause while locked and restore the static wallpaper with Stop. Keep desktop icons visible and clickable above the video; other desktops and Wayland remain unsupported in this first version.",
       "Keep Drape in the system tray after enabling video playback, using Drape’s own logo. Closing the main window hides it; tray actions reopen Drape, pause or resume, stop the wallpaper, and quit with player cleanup. Existing menu and login-startup entries are left unchanged.",
       "Treat missing Cinnamon dialog selectors as cosmetic warnings. Keep these styles visible and offer Install anyway before copying, or Apply anyway for existing installations. Remember per-component consent across restarts, theme packs and saved configurations; terminal installs use y/n. Cancel preserves files and appearance, confirmation reuses the current download, and raw compatibility evidence remains unchanged.",

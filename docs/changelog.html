@@ -154,8 +154,8 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">100 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/e258324e6968c94949e550092cbf849da4957c59">e258324</a>.
+      <p class="note">103 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/8546fe8385b95896d9c3d84fb49f9eb0f7ee6819">8546fe8</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
@@ -163,6 +163,7 @@
       <p class="date"><a href="#day-2026-10-05"><time datetime="2026-10-05">October 5, 2026</time></a></p>
       <h2 id="title-2026-10-05">Cinnamon video wallpapers and clearer theme compatibility</h2>
       <ul class="changes">
+        <li>Fix 4K wallpaper crashes at loop boundaries on NVIDIA by using copy-mode hardware decoding, OpenGL output and bounded decoder threads. Recover from player exits or startup timeouts through two bounded software fallbacks, preserve pause and icon layering, and retain capped per-monitor logs instead of discarding diagnostics.</li>
         <li>Add local video wallpapers for Cinnamon on X11. Remember MP4, WebM and other local videos, loop silently on all monitors, choose Fill or Fit, pause while locked and restore the static wallpaper with Stop. Keep desktop icons visible and clickable above the video; other desktops and Wayland remain unsupported in this first version.</li>
         <li>Keep Drape in the system tray after enabling video playback, using Drape’s own logo. Closing the main window hides it; tray actions reopen Drape, pause or resume, stop the wallpaper, and quit with player cleanup. Existing menu and login-startup entries are left unchanged.</li>
         <li>Treat missing Cinnamon dialog selectors as cosmetic warnings. Keep these styles visible and offer Install anyway before copying, or Apply anyway for existing installations. Remember per-component consent across restarts, theme packs and saved configurations; terminal installs use y/n. Cancel preserves files and appearance, confirmation reuses the current download, and raw compatibility evidence remains unchanged.</li>
@@ -171,8 +172,11 @@
         <li>When a catalog download contains no recognized theme components, try its next download variant. Explicitly selected files still report their own failure; transport and extraction errors retain their original handling.</li>
       </ul>
       <details>
-        <summary>View 6 commits</summary>
+        <summary>View 9 commits</summary>
         <ol class="commits">
+          <li data-commit="8546fe8385b95896d9c3d84fb49f9eb0f7ee6819"><a class="commit" href="https://github.com/anolis/drape/commit/8546fe8385b95896d9c3d84fb49f9eb0f7ee6819">8546fe8</a><span>test: use a valid Cinnamon stylesheet in theme pack fixture</span></li>
+          <li data-commit="2f1ea6aa43a4420f3089b8ebb1ba2297950519dd"><a class="commit" href="https://github.com/anolis/drape/commit/2f1ea6aa43a4420f3089b8ebb1ba2297950519dd">2f1ea6a</a><span>fix: recover video wallpapers from graphics driver failures</span></li>
+          <li data-commit="36a39bd2c8659af5b64d3741d2f940abcf4e8a8f"><a class="commit" href="https://github.com/anolis/drape/commit/36a39bd2c8659af5b64d3741d2f940abcf4e8a8f">36a39bd</a><span>docs: document video wallpapers and tray behavior</span></li>
           <li data-commit="e258324e6968c94949e550092cbf849da4957c59"><a class="commit" href="https://github.com/anolis/drape/commit/e258324e6968c94949e550092cbf849da4957c59">e258324</a><span>feat: add Cinnamon video wallpapers and tray controls</span></li>
           <li data-commit="69a49d980f812e481d38c30a8e6502528254cc74"><a class="commit" href="https://github.com/anolis/drape/commit/69a49d980f812e481d38c30a8e6502528254cc74">69a49d9</a><span>docs: describe explicit Cinnamon style overrides</span></li>
           <li data-commit="aa5abef4588ca26b8bd909583af5ad002272f937"><a class="commit" href="https://github.com/anolis/drape/commit/aa5abef4588ca26b8bd909583af5ad002272f937">aa5abef</a><span>feat: allow incomplete Cinnamon styles with explicit consent</span></li>
