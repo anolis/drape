@@ -154,21 +154,25 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">106 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/0c1fe8da8996d7c9e580bcb2c7949bece89db2d0">0c1fe8d</a>.
+      <p class="note">108 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/4d4a813092738f50adfab4063aced0d7829fba78">4d4a813</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
     <section class="entry" id="day-2026-10-06" aria-labelledby="title-2026-10-06">
       <p class="date"><a href="#day-2026-10-06"><time datetime="2026-10-06">October 6, 2026</time></a></p>
-      <h2 id="title-2026-10-06">More audio visualizations and animated color palettes</h2>
+      <h2 id="title-2026-10-06">Live wallpapers on more desktops and colorful audio visualizations</h2>
       <ul class="changes">
+        <li>Add MATE/X11 live wallpapers while keeping Caja’s icons and desktop input. Present frames through its shared background and restore the exact original pixels on Stop, Quit or loss of the player connection; preserve externally changed wallpapers. Use software X11 video at 30 FPS to avoid uncaptured hardware overlays. Verify video, animations and audio on three-monitor MATE/Compiz, and video plus animations on Marco with and without compositing.</li>
+        <li>Update the website homepage with a dedicated live-wallpaper guide, previews of all nine audio visualizers, source requirements, playback controls and current desktop support.</li>
         <li>Add a GNOME/X11 host for local videos, XScreenSaver animations and audio visualizations, verified on GNOME 48.7 across three monitors. Keep wallpaper surfaces behind ordinary windows and existing icon hosts, use GNOME’s screen-lock service, and allow playback to continue with the main window hidden even without a tray extension. Reopen Drape for controls or use the new Quit Drape action. GNOME/Wayland remains unsupported.</li>
         <li>Expand live audio wallpapers to nine styles with mirrored spectrum, circular wave, layered ribbons, orbiting lights and spectrum spiral. Add seven color modes, including custom two-color gradients and Rainbow, Aurora, Sunset, Fire &amp; gold and Ocean palettes. Preview the palette and cycle colors smoothly at three speeds; changes apply live and persist. Pause freezes animation, silence avoids continuous repainting, and older preferences load with compatible defaults.</li>
       </ul>
       <details>
-        <summary>View 2 commits</summary>
+        <summary>View 4 commits</summary>
         <ol class="commits">
+          <li data-commit="4d4a813092738f50adfab4063aced0d7829fba78"><a class="commit" href="https://github.com/anolis/drape/commit/4d4a813092738f50adfab4063aced0d7829fba78">4d4a813</a><span>feat: add MATE X11 live wallpaper support</span></li>
+          <li data-commit="dd2873c3b5713feca8dc3c211ea43c31361cb4bd"><a class="commit" href="https://github.com/anolis/drape/commit/dd2873c3b5713feca8dc3c211ea43c31361cb4bd">dd2873c</a><span>docs: describe live wallpaper sources and GNOME support</span></li>
           <li data-commit="0c1fe8da8996d7c9e580bcb2c7949bece89db2d0"><a class="commit" href="https://github.com/anolis/drape/commit/0c1fe8da8996d7c9e580bcb2c7949bece89db2d0">0c1fe8d</a><span>feat: add live wallpaper sources and GNOME X11 support</span></li>
           <li data-commit="521152f2d3ebd26c182ca213a8a9993ec49458a6"><a class="commit" href="https://github.com/anolis/drape/commit/521152f2d3ebd26c182ca213a8a9993ec49458a6">521152f</a><span>fix: keep update notifications in the header</span></li>
         </ol>

@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>drape — theme manager for Linux</title>
-<meta name="description" content="Browse and install icons, cursors, GTK themes, window borders, wallpapers, login screens and boot splashes from GNOME-Look, KDE-Look and Xfce-Look one piece at a time. One click to install, one click to apply.">
+<meta name="description" content="Theme your Linux desktop one piece at a time. Browse and apply themes, save your configurations, and play videos, XScreenSaver animations or colorful audio visualizations as live wallpapers on Cinnamon, GNOME and MATE/X11.">
 <meta property="og:title" content="drape — theme manager for Linux">
-<meta property="og:description" content="Icons, cursors, themes, wallpapers, login screens and boot splashes from GNOME-Look, KDE-Look and Xfce-Look. One click to install, one click to apply.">
+<meta property="og:description" content="Mix icons, cursors and themes from GNOME-Look, KDE-Look and Xfce-Look. Add live video wallpapers, XScreenSaver animations and nine audio visualizers with multicolor palettes on Cinnamon, GNOME and MATE/X11.">
 <meta property="og:image" content="img/shot-icons.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M6 4h20v4c-3 0-5 3-5 7v13H11V15c0-4-2-7-5-7z' fill='%23d9480f'/%3E%3C/svg%3E">
 <style>
@@ -126,6 +126,7 @@
     </a>
     <nav>
       <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#live-wallpapers">Live wallpapers</a>
       <a href="#install">Install</a>
       <a href="changelog.html">Changelog</a>
       <a href="https://github.com/anolis/drape">GitHub</a>
@@ -134,7 +135,7 @@
 
   <div class="hero">
     <h1>Theme your Linux desktop <em>one piece at a time.</em></h1>
-    <p>Icons, cursors, themes, wallpapers, login screens and boot splashes from GNOME-Look, KDE-Look and Xfce-Look. One click to install, one click to apply. No archives, no hidden folders.</p>
+    <p>Mix icons, cursors, themes and wallpapers from GNOME-Look, KDE-Look and Xfce-Look. Save your favorite combinations, then bring your desktop to life with videos, animations and colorful audio visualizers. One click to install, one click to apply.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Install drape</a>
       <a class="btn" href="https://github.com/anolis/drape">View source</a>
@@ -146,9 +147,10 @@
     <h2>Mix and match, the way theming should work</h2>
     <p class="lede">Most theme tools only hand you whole theme packages. drape gives every part of your desktop its own catalog, so you can pair Papirus icons with Bibata cursors and a mountain wallpaper without touching a terminal.</p>
     <div class="pieces">
-      <span>Icons</span><span>Cursors</span><span>Controls (GTK)</span><span>Window borders</span><span>Desktop styles</span><span>KDE global themes</span><span>Color schemes</span><span>Wallpapers</span><span>Login screen</span><span>Boot splash</span>
+      <span>Icons</span><span>Cursors</span><span>Controls (GTK)</span><span>Window borders</span><span>Desktop styles</span><span>KDE global themes</span><span>Color schemes</span><span>Wallpapers</span><span>Live wallpapers</span><span>Audio visualizers</span><span>Login screen</span><span>Boot splash</span>
     </div>
     <div class="grid">
+      <div class="card"><h3>Bring your wallpaper to life</h3><p>Play local videos, installed XScreenSaver animations or audio visualizations behind your windows and desktop icons on Cinnamon, GNOME and MATE/X11. Changes apply while playback is running. Close the window and keep the wallpaper playing; reopen Drape for controls. <a href="#live-wallpapers">Explore live wallpapers</a>.</p></div>
       <div class="card"><h3>Know what each theme changes</h3><p>Browse GTK applications, GNOME/libadwaita, Qt/Kvantum applications, desktop styles, window decorations and shared assets in separate groups. Native GNOME setup applies a theme's GTK 4 stylesheet after validation and confirmation, with a backup and Restore action. Each catalog explains its scope.</p></div>
       <div class="card"><h3>Checks the themes you’re viewing</h3><p>Cards appear immediately. After scrolling stops, one isolated worker slowly checks visible themes and caches the evidence across launches. Checks cancel when a card leaves view, and rate limits pause the queue. Scanner status and card spinners show ongoing checks, while saved-theme indexing has a progress bar. Automatic checks can be disabled in the menu.</p></div>
       <div class="card"><h3>Your whole look, in one view</h3><p>The <em>In use</em> tab previews every active part of your desktop, from controls to boot splash, and where each came from. It works for themes drape didn't install too.</p></div>
@@ -174,9 +176,9 @@
     <div class="table-scroll">
       <table class="compare">
         <tr><th>Desktop</th><th>Supported appearance settings</th></tr>
-        <tr><td>Cinnamon</td><td>GTK controls (including window borders on Cinnamon 5.4+), icons, cursors, desktop/panel themes and wallpapers</td></tr>
-        <tr><td>MATE</td><td>GTK controls, icons, cursors, Marco borders and wallpapers</td></tr>
-        <tr><td>GNOME</td><td>GTK controls, icons, cursors and wallpapers</td></tr>
+        <tr><td>Cinnamon</td><td>GTK controls (including window borders on Cinnamon 5.4+), icons, cursors, desktop/panel themes and wallpapers; live wallpapers on X11</td></tr>
+        <tr><td>MATE</td><td>GTK controls, icons, cursors, Marco borders and wallpapers; live wallpapers on X11</td></tr>
+        <tr><td>GNOME</td><td>GTK application themes, optional native GTK 4/libadwaita setup, icons, cursors and wallpapers; live wallpapers on X11</td></tr>
         <tr><td>Xfce</td><td>GTK controls, icons, cursors, wallpapers and Xfwm border previews; panel appearance and layout presets with Undo</td></tr>
         <tr><td>KDE Plasma</td><td>Plasma styles, global themes, colors, Aurorae borders, icons, cursors and wallpapers</td></tr>
         <tr><td>Qt apps on any desktop</td><td>Kvantum widget themes, with separate Qt 5 and Qt 6 engine detection</td></tr>
@@ -186,6 +188,25 @@
     <p class="note">Qt theme setup requires logging out and back in once; later theme changes require restarting Qt apps. Custom application stylesheets can override the Qt theme, and sandboxed apps may need their own engine. <a href="https://github.com/anolis/drape/blob/main/docs/qt.md">Read the Qt setup guide</a>.</p>
     <p class="note">Xfce panel presets keep existing widgets and affect only the selected panel. Xfce wallpapers apply to configured monitors and workspaces, discovering active displays on X11 even before their wallpaper settings exist, and stop wallpaper cycling. Xfwm previews show the theme's own artwork. Compiz decorators, GNOME Shell themes and arbitrary compiled Qt/KWin plugins are not supported yet. Unknown downloads stay visible until their contents can be checked. <a href="https://github.com/anolis/drape/blob/main/docs/compatibility.md">Read the compatibility guide</a>.</p>
     <p class="note">Temporary catalog and download server errors are retried twice. Persistent failures identify the download host so you can try later or use an archive from the author.</p>
+  </section>
+
+  <section id="live-wallpapers">
+    <h2>A desktop that moves with you</h2>
+    <p class="lede">Open <strong>Shared assets → Live wallpapers</strong> on Cinnamon, GNOME or MATE/X11. Choose a source and press Play once; switching wallpapers, styles and controls updates playback automatically.</p>
+    <div class="grid">
+      <div class="card"><h3>Local videos, on every monitor</h3><p>Choose an MP4, WebM or another supported local video. Playback loops silently, with Fill or Fit for each screen. Your videos stay in their original location, and removing a library entry never deletes the file.</p></div>
+      <div class="card"><h3>XScreenSaver animations</h3><p>Choose from installed animations, refresh the list after adding packages, and adjust a frame-rate target where supported. Each animation has its own settings dialog with saved choices, Apply, Cancel and Restore defaults. Drape runs the animation without replacing your screen locker.</p></div>
+      <div class="card"><h3>Nine ways to see your audio</h3><p>Try bars, curves, rings, blocks, mirrored spectrum, a circular wave, layered ribbons, orbiting lights or a spiral. Enable Desktop audio, Microphone or both. The microphone starts off; analysis stays local and Drape never saves audio.</p></div>
+      <div class="card"><h3>Your colors, still in motion</h3><p>Pick a single color, make a custom two-color gradient, or choose Rainbow, Aurora, Sunset, Fire &amp; gold or Ocean. Preview the palette and turn on smooth color cycling at Slow, Normal or Fast speed. Your style and color choices are remembered.</p></div>
+      <div class="card"><h3>Keep playing when you close the window</h3><p>Drape stays available in the tray where supported. GNOME needs no tray extension: close the window and reopen Drape whenever you want controls. Pause freezes playback, Stop reveals your static wallpaper, and Quit Drape stops playback and exits.</p></div>
+      <div class="card"><h3>Part of your desktop</h3><p>Playback sits behind ordinary windows and desktop icons across your monitors. It pauses on screen lock and preserves a manual pause when you unlock. Selecting a still wallpaper in Drape stops live playback; your underlying static wallpaper stays intact.</p></div>
+    </div>
+    <figure class="shot">
+      <img src="img/audio-visualizers.png" alt="Nine audio visualization previews: spectrum bars, flowing curve, radial rings, blocks, mirrored spectrum, circular wave, layered ribbons, orbiting lights and spiral, using several color palettes" loading="lazy" width="1440" height="936">
+      <figcaption class="note">Drape's nine audio visualizers, shown with sample audio levels and a selection of palettes.</figcaption>
+    </figure>
+    <p class="note">Live wallpapers currently support <strong>Cinnamon, GNOME and MATE on X11</strong>, verified on GNOME 48.7 and MATE 1.26 with Compiz. GNOME/Wayland and other desktop hosts are not supported yet. Start playback manually after login.</p>
+    <p class="note">Videos need <code>mpv</code>; animations use installed XScreenSaver packages; audio needs <code>cava</code> and <code>pactl</code> with PulseAudio or PipeWire's PulseAudio service. Optional animation and audio support can be installed from the page after you review and confirm the package command. <a href="https://github.com/anolis/drape/blob/main/docs/video-wallpapers.md">Read the live-wallpaper guide</a>.</p>
   </section>
 
   <section id="wm">
