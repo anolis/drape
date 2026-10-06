@@ -1,4 +1,4 @@
-"""Request desktop layering through Muffin's EWMH desktop-manager interface.
+"""Request desktop layering through the window manager's EWMH interface.
 
 Ordinary XConfigureWindow/GDK restacks are subject to focus-stealing checks.
 Wallpaper management uses the EWMH pager/desktop source, and targets only a
@@ -52,7 +52,7 @@ def restack_below(window, sibling):
     lib.XCloseDisplay.argtypes = [ctypes.c_void_p]
     display = lib.XOpenDisplay(None)
     if not display:
-        raise VideoError("Cannot access the Cinnamon X11 desktop.")
+        raise VideoError("Cannot access the X11 desktop.")
     try:
         event = _Event()
         event.client.type = 33  # ClientMessage
@@ -67,7 +67,7 @@ def restack_below(window, sibling):
         if not lib.XSendEvent(
             display, lib.XDefaultRootWindow(display), 0, mask, ctypes.byref(event)
         ):
-            raise VideoError("Cinnamon rejected the wallpaper stacking request.")
+            raise VideoError("The window manager rejected the wallpaper stacking request.")
         lib.XFlush(display)
     finally:
         lib.XCloseDisplay(display)

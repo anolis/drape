@@ -27,7 +27,7 @@ DESCRIPTIONS = {
     "icons": "Application, folder and action icons. Apps can bundle their own icons rather than using the system icon theme.",
     "cursors": "Mouse pointer images. Apps can retain cached pointers until restarted or use their own cursors.",
     "wallpapers": "Desktop background images. Application and desktop-shell themes are separate.",
-    "videos": "Silent, looping local videos on Cinnamon/X11. Drape stays in the tray during playback. Stop reveals your static wallpaper.",
+    "videos": "Local videos, XScreenSaver animations and audio visualizations on Cinnamon or GNOME/X11. Playback continues when the window closes; reopen Drape for controls. Stop reveals your static wallpaper.",
     "login": "The sign-in screen drawn by your login manager. This is separate from themes used after login.",
     "boot": "The startup screen drawn by Plymouth. This is separate from your desktop and application themes.",
     "packs": "Bundles of appearance components that may use several engines. Choose which components to apply; a pack does not automatically style every application.",

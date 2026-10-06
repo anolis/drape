@@ -46,6 +46,26 @@ class DependenciesTest(unittest.TestCase):
         ):
             self.assertIsNone(deps.install_command(["pillow"]))
 
+    def test_optional_playback_packages_use_native_names_and_deduplicate(self):
+        with (
+            mock.patch.object(deps.platform, "freedesktop_os_release", return_value={"ID": "arch"}),
+            mock.patch.object(deps.shutil, "which", return_value="/usr/bin/pacman"),
+        ):
+            self.assertEqual(
+                deps.install_command(["xscreensaver", "xscreensaver_gl"]),
+                ["pacman", "-S", "--needed", "--noconfirm", "xscreensaver"],
+            )
+        with (
+            mock.patch.object(
+                deps.platform, "freedesktop_os_release", return_value={"ID": "debian"}
+            ),
+            mock.patch.object(deps.shutil, "which", return_value="/usr/bin/apt-get"),
+        ):
+            self.assertEqual(
+                deps.install_command(["cava", "pactl"]),
+                ["apt-get", "install", "-y", "cava", "pulseaudio-utils"],
+            )
+
     def setup_prompt(self, terminal=True):
         patches = [
             mock.patch.object(deps, "missing", return_value=["pillow"]),

@@ -21,6 +21,11 @@ from drape.ui.navigation import GROUPS, build_sidebar
 from drape.ui.libadwaita_settings import LibadwaitaSettingsPage
 from drape.ui.video_wallpapers import VideoWallpapersPage
 from drape import video_wallpapers as videos
+from drape import wallpaper_sources as sources, wallpaper_xscreensaver as saver, wallpaper_audio as audio
+from drape import wallpaper_animation_settings as animation_settings
+from drape.ui.animation_settings import edit as edit_animation
+from tests.test_wallpaper_animation_settings import XML
+import xml.etree.ElementTree as ET
 
 
 def pump(duration=0.1):
@@ -48,12 +53,16 @@ with tempfile.TemporaryDirectory() as temp:
     # Video UI persists file references and activates the tray only after a
     # successful playback request. No desktop player runs in this GTK check.
     videos.PATH = Path(temp) / "videos.json"
+    sources.PATH = Path(temp) / "wallpaper-sources.json"
+    animation_settings.PATH = Path(temp) / "xscreensaver-settings.json"
     fixture = Path(temp) / "wallpaper.mp4"
     fixture.touch()
     videos.remember(str(fixture), "fit")
     video_page = VideoWallpapersPage(win)
     app = mock.Mock()
     win.get_application = lambda: app
+    video_page.quit_button.clicked()
+    app.quit.assert_called_once()
     with mock.patch.object(videos, "request", return_value={"state": "stopped", "path": ""}):
         video_page.load()
         pump()
@@ -73,6 +82,136 @@ with tempfile.TemporaryDirectory() as temp:
             pump()
             forget.assert_called_once_with(str(fixture))
     video_page.destroy()
+    # Source changes share tray/lifecycle controls, without requiring mpv for
+    # animations or accidentally enabling microphone capture.
+    animation = {"name": "fuzzyflakes", "label": "Fuzzy Flakes", "description": "Falling flakes", "delay": "--delay", "executable": "/fake/fuzzyflakes"}
+    with mock.patch.object(saver, "catalog", return_value=[animation]), mock.patch.object(audio, "available", return_value=True), mock.patch.object(videos, "request", return_value={"state": "stopped", "path": ""}):
+        live_page = VideoWallpapersPage(win)
+        live_page.load()
+        pump()
+        live_page.sources.source.set_active_id("xscreensaver")
+        live_page.sources.fps.set_active_id("15")
+        assert live_page.play_button.get_sensitive()
+        assert live_page.sources.stack.get_visible_child_name() == "xscreensaver"
+        with mock.patch.object(videos, "play", return_value={"state": "starting", "source": "xscreensaver", "path": "fuzzyflakes", "name": "Fuzzy Flakes"}) as play:
+            live_page._play()
+            pump()
+            play.assert_called_once_with("fuzzyflakes", "fill", source="xscreensaver", fps=15)
+        live_page.update_status({"state": "stopped", "path": ""})
+        live_page.sources.source.set_active_id("audio")
+        assert live_page.sources.desktop_audio.get_active()
+        assert not live_page.sources.microphone.get_active()
+        live_page.sources.desktop_audio.set_active(False)
+        assert not live_page.play_button.get_sensitive()
+        live_page.sources.microphone.set_active(True)
+        assert live_page.play_button.get_sensitive()
+        live_page.sources.desktop_audio.set_active(True)
+        live_page.sources.style.set_active_id("rings")
+        with mock.patch.object(videos, "play", return_value={"state": "playing", "source": "audio", "path": "rings", "name": "Radial rings"}) as play:
+            live_page._play()
+            pump()
+            play.assert_called_once_with("rings", "fill", source="audio", desktop_audio=True, microphone=True, color="#65d6ce")
+            assert "Radial rings" in live_page.status.get_text()
+        live_page.update_status({"state": "stopped", "path": ""})
+        with mock.patch.object(saver, "catalog", return_value=[]):
+            live_page.sources.source.set_active_id("xscreensaver")
+            live_page.sources.refresh()
+            assert not live_page.play_button.get_sensitive()
+            assert "No installed" in live_page.sources.description.get_text()
+        live_page.destroy()
+    # Running wallpapers follow edits, while page loads and stopped selections
+    # never launch renderers. Quick edits yield one playback request.
+    active = {"state": "playing", "source": "video", "path": str(fixture)}
+    animation["settings"] = animation_settings.schema(ET.fromstring(XML))
+    with mock.patch.object(saver, "catalog", return_value=[animation]), mock.patch.object(audio, "available", return_value=True), mock.patch.object(videos, "request", return_value=active) as request, mock.patch.object(videos, "play", return_value=active) as play:
+        live_page = VideoWallpapersPage(win)
+        live_page.load()
+        pump(.35)
+        play.assert_not_called()
+        live_page.fit.set_active_id("fill")
+        live_page.fit.set_active_id("fit")
+        live_page.fit.set_active_id("fill")
+        pump(.4)
+        play.assert_called_once_with(str(fixture), "fill")
+        play.reset_mock()
+        live_page.sources.source.set_active_id("xscreensaver")
+        live_page.sources.fps.set_active_id("60")
+        pump(.4)
+        play.assert_called_once_with("fuzzyflakes", "fill", source="xscreensaver", fps=60)
+        assert live_page.sources.settings_button.get_sensitive()
+        play.reset_mock()
+        # A settings dialog saves only on Apply; Cancel leaves saved values alone.
+        def answer_settings(response, value=None):
+            for top in Gtk.Window.list_toplevels():
+                if isinstance(top, Gtk.Dialog) and top.get_title() == "Fuzzy Flakes settings":
+                    def change(widget):
+                        if isinstance(widget, Gtk.SpinButton) and widget.get_value() == 10:
+                            widget.set_value(value)
+                        elif isinstance(widget, Gtk.Container):
+                            for child in widget.get_children():
+                                change(child)
+                    if value is not None:
+                        change(top)
+                    top.response(response)
+            return False
+        GLib.idle_add(answer_settings, Gtk.ResponseType.CANCEL, 25)
+        assert not edit_animation(win, animation)
+        assert animation_settings.saved("fuzzyflakes", animation["settings"]) == {}
+        GLib.idle_add(answer_settings, Gtk.ResponseType.ACCEPT, 25)
+        live_page.sources.settings_button.clicked()
+        pump(.4)
+        play.assert_called_once_with("fuzzyflakes", "fill", source="xscreensaver", fps=60, settings={"speed": 25})
+        play.reset_mock()
+        live_page.sources.source.set_active_id("audio")
+        live_page.sources.style.set_active_id("blocks")
+        live_page.sources.microphone.set_active(True)
+        pump(.4)
+        play.assert_called_once_with("blocks", "fill", source="audio", desktop_audio=True, microphone=True, color="#65d6ce")
+        play.reset_mock()
+        request.return_value = {"state": "paused", "path": "blocks", "manual_paused": True}
+        live_page.update_status(request.return_value)
+        live_page.sources.style.set_active_id("rings")
+        pump(.4)
+        assert play.call_count == 1
+        request.assert_called_with("pause", paused=True)
+        play.reset_mock()
+        request.return_value = {"state": "stopped", "path": ""}
+        live_page.sources.style.set_active_id("curve")
+        pump(.4)
+        play.assert_not_called()  # The tray stopped playback after the last UI status.
+        live_page.update_status(request.return_value)
+        live_page.sources.style.set_active_id("bars")
+        pump(.4)
+        play.assert_not_called()
+        request.return_value = active
+        live_page.update_status(active)
+        live_page.sources.color_mode.set_active_id("gradient")
+        assert live_page.sources.color_row.get_visible()
+        assert live_page.sources.second_color_row.get_visible()
+        assert live_page.sources.color.get_visible()
+        assert live_page.sources.color2.get_visible()
+        accent = Gdk.RGBA()
+        accent.parse("#ffd166")
+        live_page.sources.color2.set_rgba(accent)
+        live_page.sources.color2.emit("color-set")
+        live_page.sources.cycle_colors.set_active(True)
+        live_page.sources.color_speed.set_active_id("fast")
+        pump(.4)
+        play.assert_called_once_with("bars", "fill", source="audio", desktop_audio=True, microphone=True,
+                                    color="#65d6ce", color2="#ffd166", color_mode="gradient", cycle_colors=True, color_speed="fast")
+        play.reset_mock()
+        live_page.sources.color_mode.set_active_id("aurora")
+        assert not live_page.sources.color_row.get_visible()
+        assert not live_page.sources.second_color_row.get_visible()
+        assert live_page.sources.color_speed.get_sensitive()
+        pump(.4)
+        assert play.call_args.kwargs["color_mode"] == "aurora"
+        play.reset_mock()
+        live_page.update_status(active)
+        live_page.sources.style.set_active_id("rings")
+        live_page.destroy()
+        pump(.4)
+        play.assert_not_called()
     qt_page = QtSettingsPage(win)
     with mock.patch.object(qt, "engines", return_value={6}):
         qt_page.load()

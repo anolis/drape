@@ -1,7 +1,7 @@
-"""Cinnamon/X11 video surfaces, kept outside the theme-browser process.
+"""Live-wallpaper lifecycle, kept outside the theme-browser process.
 
-Only this process owns its mpv children. A private control socket marshals all
-GTK mutations onto the main loop; Stop never kills unrelated media players.
+Only this process owns its renderers and capture children. A private control
+socket marshals GTK mutations onto the main loop; Stop never kills other apps.
 """
 
 import fcntl
@@ -9,91 +9,24 @@ import json
 import os
 import signal
 import socketserver
-import subprocess
 import threading
 import time
 
-import cairo
 import gi
 
 gi.require_version("GdkX11", "3.0")
 from gi.repository import GdkX11
 
-from . import video_mpv, video_x11
+from . import (
+    video_mpv,
+    wallpaper_audio,
+    wallpaper_desktop,
+    wallpaper_sources,
+    wallpaper_xscreensaver,
+)
 from . import video_wallpapers as videos
 from .ui.gtk import Gdk, GLib, Gtk
-
-
-class Surface:
-    def __init__(self, monitor, path, fit, number, profile="gpu"):
-        self.ipc = videos.runtime_dir() / f"mpv-{number}.sock"
-        self.log = self.ipc.with_suffix(".log")
-        self.ipc.unlink(missing_ok=True)
-        self.process = None
-        self.window = Gtk.Window(title="Drape Video Wallpaper")
-        self.window.set_wmclass("drape-video-wallpaper", "DrapeVideoWallpaper")
-        self.window.set_type_hint(Gdk.WindowTypeHint.DESKTOP)
-        self.window.set_decorated(False)
-        self.window.set_accept_focus(False)
-        self.window.set_focus_on_map(False)
-        self.window.set_skip_taskbar_hint(True)
-        self.window.set_skip_pager_hint(True)
-        self.window.set_keep_below(True)
-        # Do not expose a black/new topmost desktop surface while Muffin is
-        # mapping it. Reveal only after decoding and ordering beneath Nemo.
-        self.window.set_opacity(0)
-        self.window.stick()
-        area = Gtk.DrawingArea()
-        self.window.add(area)
-        rect = monitor.get_geometry()
-        self.window.move(rect.x, rect.y)
-        self.window.set_default_size(rect.width, rect.height)
-        self.window.show_all()
-        # Keep desktop clicks and drags available to Nemo, including when an mpv
-        # child covers the entire surface. The panel and icons stay above us.
-        self.window.get_window().input_shape_combine_region(cairo.Region(), 0, 0)
-        self.window.get_window().lower()
-        try:
-            if self.log.exists():
-                self.log.replace(self.log.with_suffix(".previous.log"))
-            # Append lets the periodic cap truncate the file without leaving
-            # sparse holes at the child's previous write position.
-            with self.log.open("ab") as log:
-                self.process = subprocess.Popen(
-                    video_mpv.command(path, area.get_window().get_xid(), self.ipc, fit, profile),
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                )
-        except OSError:
-            self.close()
-            raise
-
-    def limit_log(self):
-        """Keep warnings bounded even if a driver emits errors every frame."""
-        try:
-            if self.log.stat().st_size > 256 * 1024:
-                with self.log.open("r+b") as stream:
-                    stream.seek(-64 * 1024, os.SEEK_END)
-                    tail = stream.read(64 * 1024)
-                    stream.seek(0)
-                    stream.write(tail)
-                    stream.truncate()
-        except OSError:
-            pass  # log maintenance must never stop otherwise healthy playback
-
-    def close(self):
-        if self.process is not None:
-            if self.process.poll() is None:
-                self.process.terminate()
-                try:
-                    self.process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self.process.kill()
-                    self.process.wait(timeout=2)
-            self.process = None
-        self.window.destroy()
-        self.ipc.unlink(missing_ok=True)
+from .wallpaper_surface import Surface
 
 
 class Player:
@@ -107,6 +40,14 @@ class Player:
         self.locked = False
         self.deadline = 0
         self.renderer = video_mpv.PROFILES[0]
+        self.source = "video"
+        self.name = ""
+        self.host = wallpaper_desktop.current()
+        if self.host is None:
+            raise videos.VideoError("No supported live-wallpaper desktop host is available.")
+        self.options = wallpaper_sources.DEFAULTS.copy()
+        self.audio = None
+        self.audio_timer = None
         display = Gdk.Display.get_default()
         display.connect("monitor-added", self._monitors_changed)
         display.connect("monitor-removed", self._monitors_changed)
@@ -116,8 +57,8 @@ class Player:
 
         self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
         self.subscription = self.bus.signal_subscribe(
-            "org.cinnamon.ScreenSaver",
-            "org.cinnamon.ScreenSaver",
+            self.host.lock_service,
+            self.host.lock_service,
             "ActiveChanged",
             None,
             None,
@@ -126,9 +67,9 @@ class Player:
         )
         try:
             result = self.bus.call_sync(
-                "org.cinnamon.ScreenSaver",
-                "/org/cinnamon/ScreenSaver",
-                "org.cinnamon.ScreenSaver",
+                self.host.lock_service,
+                self.host.lock_path,
+                self.host.lock_service,
                 "GetActive",
                 None,
                 GLib.VariantType.new("(b)"),
@@ -145,12 +86,24 @@ class Player:
     def status(self):
         return {
             "state": self.state,
+            "manual_paused": self.paused,
             "path": self.path,
             "fit": self.fit,
+            "source": self.source,
+            "name": self.name,
+            "audio_inputs": [
+                label
+                for key, label in (("desktop_audio", "Desktop audio"), ("microphone", "Microphone"))
+                if self.source == "audio" and self.options[key]
+            ],
+            "sources": sorted(wallpaper_sources.SOURCES),
+            "audio_visuals": 1,
             "message": self.error
             or (
                 "Using compatibility playback after a graphics-driver failure."
-                if self.renderer != "gpu" and self.state in {"starting", "playing", "paused"}
+                if self.source == "video"
+                and self.renderer != "gpu"
+                and self.state in {"starting", "playing", "paused"}
                 else ""
             ),
             "renderer": self.renderer,
@@ -158,42 +111,18 @@ class Player:
         }
 
     def _clear(self):
+        if self.audio_timer is not None:
+            GLib.source_remove(self.audio_timer)
+            self.audio_timer = None
+        if self.audio is not None:
+            self.audio.close()
+            self.audio = None
         for surface in self.surfaces:
             surface.close()
         self.surfaces.clear()
 
     def _stack_below_icons(self):
-        """Muffin puts new DESKTOP windows above existing Nemo surfaces.
-
-        GDK requests are ignored when the focused app has newer user-time.
-        Use the EWMH desktop-manager request and verify its result before making
-        a video visible. Recheck when Nemo or the monitor layout changes.
-        """
-        if not self.surfaces:
-            return True
-        owned = {surface.window.get_window().get_xid() for surface in self.surfaces}
-        stack = Gdk.Screen.get_default().get_window_stack() or []
-        anchor = next(
-            (
-                window
-                for window in stack
-                if window.get_xid() not in owned
-                and window.get_type_hint() == Gdk.WindowTypeHint.DESKTOP
-            ),
-            None,
-        )
-        present = {window.get_xid() for window in stack}
-        correct = owned <= present
-        if anchor is not None:
-            anchor_index = stack.index(anchor)
-            above_icons = {window.get_xid() for window in stack[anchor_index + 1 :]}
-            for surface in self.surfaces:
-                window = surface.window.get_window()
-                if window.get_xid() in above_icons:
-                    surface.window.set_opacity(0)
-                    video_x11.restack_below(window.get_xid(), anchor.get_xid())
-                    correct = False
-        return correct
+        return self.host.restack(self.surfaces)
 
     def _maintain_stacking(self):
         try:
@@ -208,9 +137,22 @@ class Player:
         self._clear()
         display = Gdk.Display.get_default()
         try:
+            if self.source == "audio":
+                self.audio = wallpaper_audio.Session(
+                    self.options["desktop_audio"], self.options["microphone"]
+                )
             for number in range(display.get_n_monitors()):
                 self.surfaces.append(
-                    Surface(display.get_monitor(number), self.path, self.fit, number, self.renderer)
+                    Surface(
+                        display.get_monitor(number),
+                        self.path,
+                        self.fit,
+                        number,
+                        self.renderer,
+                        self.source,
+                        self.options,
+                        self.audio,
+                    )
                 )
             if not self.surfaces:
                 raise videos.VideoError("No monitor is available for video playback.")
@@ -219,16 +161,52 @@ class Player:
             raise
         self.state = "starting"
         self.deadline = time.monotonic() + 15
+        if self.source == "audio":
+            self.audio_timer = GLib.timeout_add(33, self._animate_audio)
+
+    def _animate_audio(self):
+        try:
+            if self.audio is not None and self.state in {"playing", "starting"}:
+                previous = self.audio.values
+                self.audio.advance()
+                moving = (
+                    self.options.get("cycle_colors")
+                    or self.path in {"ribbons", "particles", "spiral"}
+                ) and any(self.audio.values)
+                if (
+                    self.state == "starting"
+                    or moving
+                    or any(abs(a - b) > 0.001 for a, b in zip(previous, self.audio.values))
+                ):
+                    for surface in self.surfaces:
+                        surface.area.queue_draw()
+        except (OSError, videos.VideoError) as exc:
+            # _clear removes this timer too; mark it absent before returning.
+            self.audio_timer = None
+            self._failed(str(exc))
+            return False
+        return self.audio is not None
 
     def dispatch(self, data):
         action = data.get("action")
         if action == "play":
             if not videos.supported():
-                raise videos.VideoError("Video wallpapers currently require Cinnamon on X11.")
-            path = videos.validate_video(data.get("path"))
-            fit = data.get("fit")
-            if fit not in {"fill", "fit"}:
-                raise videos.VideoError("Unknown video layout.")
+                raise videos.VideoError(
+                    "Live wallpapers currently require Cinnamon or GNOME on X11."
+                )
+            source = data.get("source", "video")
+            options = data.get("options", {})
+            if not isinstance(options, dict):
+                raise videos.VideoError("Invalid wallpaper playback options.")
+            fit = data.get("fit", "fill")
+            path, options = videos.selection(data.get("path"), fit, source, **options)
+            self.source, self.options = source, options
+            if source == "xscreensaver":
+                self.name = wallpaper_xscreensaver.validate(path)["label"]
+            elif source == "audio":
+                self.name = wallpaper_sources.STYLES[path]
+            else:
+                self.name = os.path.basename(path)
             self.path, self.fit, self.paused, self.error = path, fit, False, ""
             self.renderer = video_mpv.PROFILES[0]
             try:
@@ -238,7 +216,7 @@ class Player:
                 raise
         elif action == "pause":
             if self.state not in {"playing", "paused", "starting"}:
-                raise videos.VideoError("No video wallpaper is playing.")
+                raise videos.VideoError("No live wallpaper is playing.")
             if not isinstance(data.get("paused"), bool):
                 raise videos.VideoError("Invalid pause command.")
             self.paused = data["paused"]
@@ -246,10 +224,10 @@ class Player:
                 self._set_pause()
         elif action == "stop":
             self._clear()
-            self.state, self.path, self.error = "stopped", "", ""
+            self.state, self.path, self.error, self.name = "stopped", "", "", ""
         elif action == "quit":
             self._clear()
-            self.state, self.path, self.error = "stopped", "", ""
+            self.state, self.path, self.error, self.name = "stopped", "", "", ""
             GLib.idle_add(Gtk.main_quit)
         elif action != "status":
             raise videos.VideoError("Unknown video wallpaper action.")
@@ -257,8 +235,14 @@ class Player:
 
     def _set_pause(self):
         pause = self.paused or self.locked
-        for surface in self.surfaces:
-            video_mpv.send(surface.ipc, ["set_property", "pause", pause])
+        if self.source == "audio":
+            self.audio.pause(pause)
+        else:
+            for surface in self.surfaces:
+                if self.source == "xscreensaver":
+                    surface.pause_animation(pause)
+                else:
+                    video_mpv.send(surface.ipc, ["set_property", "pause", pause])
         self.state = "paused" if pause else "playing"
 
     def _lock_changed(self, _bus, _sender, _path, _interface, _signal, parameters):
@@ -275,6 +259,8 @@ class Player:
 
     def _retry(self, reason):
         """Each play request may try each backend once; never crash-loop."""
+        if self.source != "video":
+            return False
         index = video_mpv.PROFILES.index(self.renderer) + 1
         if index == len(video_mpv.PROFILES):
             return False
@@ -291,16 +277,24 @@ class Player:
             return True
         for surface in self.surfaces:
             surface.limit_log()
-        exits = [s.process.poll() for s in self.surfaces]
+        exits = [s.process.poll() for s in self.surfaces if s.process is not None]
         if any(code is not None for code in exits):
-            reason = f"mpv exited during playback (monitor exit codes: {exits})."
+            reason = f"{self.source} player exited during playback (monitor exit codes: {exits})."
             if not self._retry(reason):
-                self._failed(reason + " Check the mpv logs in Drape's video runtime folder.")
+                self._failed(reason + " Check the logs in Drape's video runtime folder.")
         elif self.state == "starting":
             try:
-                ready = all(
-                    video_mpv.send(s.ipc, ["get_property", "video-params"]) for s in self.surfaces
-                )
+                if self.source == "audio":
+                    ready = self.audio.ready()
+                elif self.source == "xscreensaver":
+                    # Hacks have no mpv-style readiness IPC. Give the child a
+                    # first rendering interval, then verify desktop ordering.
+                    ready = all(time.monotonic() - s.started >= 1 for s in self.surfaces)
+                else:
+                    ready = all(
+                        video_mpv.send(s.ipc, ["get_property", "video-params"])
+                        for s in self.surfaces
+                    )
                 if ready and self._stack_below_icons():
                     for surface in self.surfaces:
                         surface.window.set_opacity(1)
@@ -308,7 +302,7 @@ class Player:
             except (OSError, ValueError, videos.VideoError):
                 pass  # sockets and decoded video parameters appear after process startup
             if self.state == "starting" and time.monotonic() > self.deadline:
-                reason = "Video playback did not start within 15 seconds."
+                reason = "Wallpaper playback did not start within 15 seconds."
                 if not self._retry(reason):
                     self._failed(reason)
         return True
@@ -339,11 +333,29 @@ class Handler(socketserver.StreamRequestHandler):
             data = json.loads(raw)
             if not isinstance(data, dict):
                 raise videos.VideoError("Invalid wallpaper request.")
+            if getattr(self.server, "stopping", False):
+                if data.get("action") not in {"status", "stop", "quit"}:
+                    raise videos.VideoError("The wallpaper player is shutting down. Try again.")
+                self.wfile.write(
+                    json.dumps(
+                        {
+                            "state": "stopped",
+                            "path": "",
+                            "fit": "fill",
+                            "available": True,
+                            "stopping": True,
+                        }
+                    ).encode()
+                    + b"\n"
+                )
+                return
             event, reply = threading.Event(), {}
 
             def dispatch():
                 try:
                     reply.update(self.server.player.dispatch(data))
+                    if data.get("action") == "quit":
+                        self.server.stopping = True
                 except Exception as exc:  # noqa: BLE001 - keep the control loop alive
                     reply.update(error=str(exc))
                 finally:
@@ -351,8 +363,12 @@ class Handler(socketserver.StreamRequestHandler):
                 return False
 
             GLib.idle_add(dispatch)
-            if not event.wait(10):
-                raise videos.VideoError("Wallpaper player is not responding.")
+            deadline = time.monotonic() + 10
+            while not event.wait(0.1):
+                if self.server.stopping:
+                    raise videos.VideoError("The wallpaper player is shutting down. Try again.")
+                if time.monotonic() > deadline:
+                    raise videos.VideoError("Wallpaper player is not responding.")
         except (OSError, ValueError, videos.VideoError) as exc:
             reply = {"error": str(exc)}
         try:
@@ -363,7 +379,7 @@ class Handler(socketserver.StreamRequestHandler):
 
 def main():
     if not videos.supported():
-        raise videos.VideoError("Video wallpapers currently require Cinnamon on X11.")
+        raise videos.VideoError("Live wallpapers currently require Cinnamon or GNOME on X11.")
     directory = videos.runtime_dir()
     # Held for the worker's entire lifetime; a stale socket never owns a player.
     with (directory / "player.lock").open("w") as lock:
@@ -381,14 +397,17 @@ def main():
             with Control(str(socket_path), Handler) as control:
                 os.chmod(socket_path, 0o600)
                 control.player = player
+                control.stopping = False
                 thread = threading.Thread(target=control.serve_forever, daemon=True)
                 thread.start()
-                GLib.unix_signal_add(
-                    GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: (Gtk.main_quit(), False)[1]
-                )
-                GLib.unix_signal_add(
-                    GLib.PRIORITY_DEFAULT, signal.SIGINT, lambda: (Gtk.main_quit(), False)[1]
-                )
+
+                def shutdown():
+                    control.stopping = True
+                    Gtk.main_quit()
+                    return False
+
+                GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, shutdown)
+                GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGINT, shutdown)
                 try:
                     Gtk.main()
                 finally:

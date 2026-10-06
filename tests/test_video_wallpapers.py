@@ -1,5 +1,7 @@
 """Video persistence, IPC boundaries, lifecycle and safe playback defaults."""
 
+import io
+import json
 import os
 import socket
 import tempfile
@@ -7,13 +9,14 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
-from drape import desktop, video_mpv, video_x11
+from drape import desktop, video_mpv, video_x11, wallpaper_desktop, wallpaper_sources
 from drape import video_wallpapers as videos
 from drape.ui.gtk import Gdk
 from drape.ui.tray import WallpaperTray
-from drape.video_player import Player, Surface
+from drape.video_player import Handler, Player, Surface
 
 
 class VideoTests(unittest.TestCase):
@@ -21,6 +24,9 @@ class VideoTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        patch = mock.patch.object(wallpaper_sources, "PATH", self.root / "sources.json")
+        patch.start()
+        self.addCleanup(patch.stop)
         patch = mock.patch.object(videos, "PATH", self.root / "videos.json")
         patch.start()
         self.addCleanup(patch.stop)
@@ -59,6 +65,26 @@ class VideoTests(unittest.TestCase):
         videos.stop()
         self.assertFalse((self.root / "drape-video").exists())
 
+    def test_socket_reset_during_shutdown_is_unavailable_for_status_but_not_a_successful_play(self):
+        (videos.runtime_dir() / "control.sock").touch()
+        with mock.patch.object(videos.socket, "socket") as socket:
+            socket.return_value.__enter__.return_value.makefile.return_value.__enter__.return_value.readline.side_effect = ConnectionResetError()
+            self.assertFalse(videos.request("status")["available"])
+            with self.assertRaises(videos.VideoError):
+                videos.request("play", path=str(self.video))
+
+    def test_worker_restart_waits_for_its_singleton_lock_after_socket_closes(self):
+        (videos.runtime_dir() / "player.lock").touch()
+        with (
+            mock.patch.object(
+                videos.fcntl, "flock", side_effect=[BlockingIOError(), None, None]
+            ) as flock,
+            mock.patch.object(videos.time, "sleep") as sleep,
+        ):
+            videos._wait_for_worker_exit()
+        sleep.assert_called_once_with(0.05)
+        self.assertEqual(flock.call_count, 3)
+
     def test_runtime_rejects_shared_directory_and_symlink(self):
         directory = videos.runtime_dir()
         directory.chmod(0o755)
@@ -80,6 +106,8 @@ class VideoTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "wayland"}):
                 self.assertFalse(videos.supported())
             with mock.patch.object(desktop, "current_desktop", return_value="gnome"):
+                self.assertTrue(videos.supported())
+            with mock.patch.object(desktop, "current_desktop", return_value="mate"):
                 self.assertFalse(videos.supported())
 
     def test_player_argv_cannot_load_scripts_audio_or_external_references(self):
@@ -160,6 +188,65 @@ class VideoTests(unittest.TestCase):
             videos.play(str(self.video))
             launch.assert_not_called()
 
+    def test_new_source_restarts_only_a_legacy_worker_through_its_socket(self):
+        socket_path = videos.runtime_dir() / "control.sock"
+        socket_path.touch()
+        with (
+            mock.patch.object(
+                videos,
+                "request",
+                side_effect=[
+                    {"available": True, "state": "playing"},
+                    {"state": "stopped"},
+                    {"available": True, "state": "stopped"},
+                ],
+            ) as request,
+            mock.patch.object(videos.subprocess, "Popen") as launch,
+            mock.patch.object(videos.time, "sleep", side_effect=lambda _: socket_path.unlink()),
+        ):
+            videos._ensure_worker("xscreensaver")
+        launch.assert_called_once()
+        self.assertEqual(
+            [call.args[0] for call in request.call_args_list],
+            ["status", "quit", "status"],
+        )
+
+    def test_source_capable_worker_is_reused_for_animation_playback(self):
+        with (
+            mock.patch.object(
+                videos,
+                "request",
+                return_value={
+                    "available": True,
+                    "state": "stopped",
+                    "sources": ["video", "xscreensaver", "audio"],
+                    "audio_visuals": 1,
+                },
+            ),
+            mock.patch.object(videos.subprocess, "Popen") as launch,
+        ):
+            videos._ensure_worker("audio")
+        launch.assert_not_called()
+
+    def test_new_audio_options_replace_an_older_audio_capable_worker(self):
+        with (
+            mock.patch.object(
+                videos,
+                "request",
+                side_effect=[
+                    {"available": True, "state": "playing", "sources": ["audio"]},
+                    {"state": "stopped"},
+                    {"available": True, "state": "stopped", "audio_visuals": 1},
+                ],
+            ) as request,
+            mock.patch.object(videos.subprocess, "Popen") as launch,
+        ):
+            videos._ensure_worker("audio")
+        launch.assert_called_once()
+        self.assertEqual(
+            [call.args[0] for call in request.call_args_list], ["status", "quit", "status"]
+        )
+
     def test_still_wallpaper_stops_video_before_gsettings_write(self):
         order = []
         with (
@@ -184,6 +271,10 @@ class PlayerTests(unittest.TestCase):
         player.state, player.path, player.fit, player.error = "playing", "/video.mp4", "fill", ""
         player.paused, player.locked = False, False
         player.renderer = "gpu"
+        player.source, player.name = "video", "video.mp4"
+        player.options = wallpaper_sources.DEFAULTS.copy()
+        player.audio, player.audio_timer = None, None
+        player.host = wallpaper_desktop.CinnamonX11()
         return player
 
     def test_lock_resume_preserves_manual_pause(self):
@@ -267,6 +358,96 @@ class PlayerTests(unittest.TestCase):
         surface.close.assert_called_once()
         self.assertEqual(player.path, "")
 
+    def test_animation_pause_uses_only_owned_child_groups_and_no_mpv_ipc(self):
+        player = self.player()
+        player.source, player.path = "xscreensaver", "flakes"
+        surface = player.surfaces[0]
+        with mock.patch.object(video_mpv, "send") as send:
+            player.dispatch({"action": "pause", "paused": True})
+            self.assertEqual(player.state, "paused")
+            surface.pause_animation.assert_called_once_with(True)
+            player.dispatch({"action": "pause", "paused": False})
+            surface.pause_animation.assert_called_with(False)
+            send.assert_not_called()
+
+    def test_animation_exit_has_no_video_decoder_retry_and_releases_windows(self):
+        player = self.player()
+        player.source = "xscreensaver"
+        player.surfaces[0].process.poll.return_value = 1
+        with mock.patch.object(player, "_build") as build:
+            player._tick()
+            build.assert_not_called()
+        self.assertEqual(player.state, "error")
+        self.assertEqual(player.surfaces, [])
+
+    def test_audio_capture_failure_closes_session_and_desktop_windows(self):
+        player = self.player()
+        player.source = "audio"
+        player.audio = mock.Mock(advance=mock.Mock(side_effect=videos.VideoError("capture failed")))
+        session, surface = player.audio, player.surfaces[0]
+        self.assertFalse(player._animate_audio())
+        session.close.assert_called_once()
+        surface.close.assert_called_once()
+        self.assertEqual(player.state, "error")
+        self.assertIsNone(player.audio)
+
+    def test_audio_pause_and_stop_keep_capture_shared_and_close_it_once(self):
+        player = self.player()
+        player.source = "audio"
+        session = player.audio = mock.Mock()
+        player.dispatch({"action": "pause", "paused": True})
+        session.pause.assert_called_once_with(True)
+        player.dispatch({"action": "stop"})
+        session.close.assert_called_once()
+        self.assertIsNone(player.audio)
+
+    def test_active_audio_inputs_are_reported_from_worker_choices(self):
+        player = self.player()
+        player.source = "audio"
+        self.assertEqual(player.status()["audio_inputs"], ["Desktop audio"])
+        player.options.update(desktop_audio=False, microphone=True)
+        self.assertEqual(player.status()["audio_inputs"], ["Microphone"])
+        player.options["desktop_audio"] = True
+        self.assertEqual(player.status()["audio_inputs"], ["Desktop audio", "Microphone"])
+
+    def test_silent_audio_does_not_repaint_full_monitor_frames(self):
+        player = self.player()
+        player.source = "audio"
+        player.audio = mock.Mock(values=[0.0] * 64)
+        player._animate_audio()
+        player.surfaces[0].area.queue_draw.assert_not_called()
+        player.audio.advance.side_effect = lambda: setattr(player.audio, "values", [0.8] * 64)
+        player._animate_audio()
+        player.surfaces[0].area.queue_draw.assert_called_once()
+
+    def test_color_motion_repaints_steady_audio_but_not_silence_or_pause(self):
+        player = self.player()
+        player.source, player.path = "audio", "bars"
+        player.options["cycle_colors"] = True
+        player.audio = mock.Mock(values=[0.8] * 64)
+        area = player.surfaces[0].area
+        player._animate_audio()
+        area.queue_draw.assert_called_once()
+        area.queue_draw.reset_mock()
+        player.audio.values = [0.0] * 64
+        player._animate_audio()
+        area.queue_draw.assert_not_called()
+        player.state = "paused"
+        player.audio.values = [0.8] * 64
+        player._animate_audio()
+        area.queue_draw.assert_not_called()
+
+    def test_invalid_new_source_preserves_existing_playback(self):
+        player = self.player()
+        with (
+            mock.patch.object(videos, "supported", return_value=True),
+            self.assertRaises(videos.VideoError),
+        ):
+            player.dispatch({"action": "play", "source": "unknown", "path": "/bin/sh"})
+        self.assertEqual(player.source, "video")
+        self.assertEqual(player.path, "/video.mp4")
+        player.surfaces[0].close.assert_not_called()
+
     def test_video_is_restacked_below_lowest_nemo_desktop(self):
         player = self.player()
         video = player.surfaces[0].window.get_window.return_value
@@ -316,6 +497,40 @@ class PlayerTests(unittest.TestCase):
             player._tick()
             player.surfaces[0].window.set_opacity.assert_called_once_with(1)
             self.assertEqual(player.state, "playing")
+
+
+class HandlerTests(unittest.TestCase):
+    def handler(self, action, stopping=True):
+        handler = object.__new__(Handler)
+        handler.request = mock.Mock()
+        handler.rfile = io.BytesIO(json.dumps({"action": action}).encode() + b"\n")
+        handler.wfile = io.BytesIO()
+        handler.server = SimpleNamespace(stopping=stopping, player=mock.Mock())
+        return handler
+
+    def test_shutdown_status_does_not_wait_for_the_exited_gtk_loop(self):
+        handler = self.handler("status")
+        with mock.patch("drape.video_player.GLib.idle_add") as idle:
+            handler.handle()
+        idle.assert_not_called()
+        reply = json.loads(handler.wfile.getvalue())
+        self.assertEqual(reply["state"], "stopped")
+        self.assertTrue(reply["stopping"])
+
+    def test_shutdown_rejects_play_without_launching_any_renderer(self):
+        handler = self.handler("play")
+        handler.handle()
+        self.assertIn("shutting down", json.loads(handler.wfile.getvalue())["error"])
+        handler.server.player.dispatch.assert_not_called()
+
+    def test_quit_marks_the_server_stopping_before_main_loop_exit(self):
+        handler = self.handler("quit", stopping=False)
+        handler.server.player.dispatch.return_value = {"state": "stopped"}
+        with mock.patch(
+            "drape.video_player.GLib.idle_add", side_effect=lambda callback: callback()
+        ):
+            handler.handle()
+        self.assertTrue(handler.server.stopping)
 
 
 class TrayTests(unittest.TestCase):

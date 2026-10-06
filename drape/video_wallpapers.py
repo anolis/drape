@@ -1,5 +1,6 @@
-"""Local video library and bounded IPC to the Cinnamon wallpaper player."""
+"""Local video library and bounded IPC to the live-wallpaper player."""
 
+import fcntl
 import json
 import os
 import shutil
@@ -12,7 +13,6 @@ import threading
 import time
 from pathlib import Path
 
-from . import desktop
 from .records import InstallError, _atomic_write, file_lock
 
 PATH = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "drape/videos.json"
@@ -25,13 +25,10 @@ class VideoError(Exception):
 
 
 def supported():
-    """XWayland is not enough: the wallpaper needs Cinnamon's X11 desktop."""
-    return (
-        desktop.current_desktop() == "cinnamon"
-        and os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland"
-        and not os.environ.get("WAYLAND_DISPLAY")
-        and bool(os.environ.get("DISPLAY"))
-    )
+    """XWayland is not enough: the wallpaper needs a verified desktop host."""
+    from . import wallpaper_desktop
+
+    return wallpaper_desktop.current() is not None
 
 
 def validate_video(value):
@@ -146,7 +143,7 @@ def request(action, **values):
         if reply.get("error"):
             raise VideoError(reply["error"])
         return reply
-    except (FileNotFoundError, ConnectionRefusedError):
+    except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
         if action in {"status", "stop", "quit"}:
             return {"state": "stopped", "path": "", "fit": "fill", "available": False}
         raise VideoError("The video wallpaper player is not running.") from None
@@ -154,17 +151,28 @@ def request(action, **values):
         raise VideoError(f"Cannot contact the video wallpaper player: {exc}") from exc
 
 
-def play(path, fit="fill"):
-    if not supported():
-        raise VideoError("Video wallpapers currently require Cinnamon on X11.")
-    if not shutil.which("mpv"):
-        raise VideoError("Install mpv with your system's package manager to play video wallpapers.")
-    path = validate_video(path)
-    if fit not in {"fill", "fit"}:
-        raise VideoError("Unknown video layout.")
-    # A failed save must not leave playback alive without its tray controls.
-    remember(path, fit)
-    if not request("status").get("available"):
+def _ensure_worker(source):
+    state = request("status")
+    if (
+        state.get("stopping")
+        or (state.get("available") and source != "video" and source not in state.get("sources", []))
+        or (state.get("available") and source == "audio" and state.get("audio_visuals") != 1)
+    ):
+        # A player from an older checkout cannot render the new source. Stop it
+        # through its private socket before launching the updated worker.
+        if not state.get("stopping"):
+            request("quit")
+        deadline = time.monotonic() + 8
+        # Older workers marshal status through GTK even after the main loop
+        # exits. Poll the socket's removal instead of sending late requests.
+        socket_path = runtime_dir(create=False) / "control.sock"
+        while socket_path.exists():
+            if time.monotonic() > deadline:
+                raise VideoError("The previous wallpaper player is still shutting down. Try again.")
+            time.sleep(0.05)
+        state = {"available": False}
+    if not state.get("available"):
+        _wait_for_worker_exit()
         # The worker has its own singleton lock. Two Drape launches cannot create
         # competing players, and closing the browsing window leaves playback alive.
         root = Path(__file__).resolve().parent.parent
@@ -180,13 +188,98 @@ def play(path, fit="fill"):
         threading.Thread(target=process.wait, daemon=True).start()
         deadline = time.monotonic() + 8
         while not request("status").get("available"):
-            if process.poll() is not None or time.monotonic() > deadline:
+            if process.poll() not in (None, 0) or time.monotonic() > deadline:
                 raise VideoError(
                     f"Video player could not start. See {runtime_dir() / 'player.log'}."
                 )
             time.sleep(0.05)
-    result = request("play", path=path, fit=fit)
-    return result
+
+
+def _wait_for_worker_exit():
+    """A closed socket can precede release of the worker's singleton lock."""
+    path = runtime_dir(create=False) / "player.lock"
+    if not path.exists():
+        return
+    deadline = time.monotonic() + 8
+    with path.open("a+b") as lock:
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    raise VideoError(
+                        "The previous wallpaper player is still shutting down. Try again."
+                    ) from None
+                time.sleep(0.05)
+            else:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                return
+
+
+def selection(path, fit="fill", source="video", **options):
+    """Validate on both sides of IPC; only known source types may launch children."""
+    from . import wallpaper_sources as sources
+
+    if not isinstance(source, str) or source not in sources.SOURCES:
+        raise VideoError("Unknown wallpaper playback source.")
+    allowed = {
+        "xscreensaver": {"fps", "settings"},
+        "audio": {"desktop_audio", "microphone", *sources.COLOR_OPTIONS},
+    }.get(source, set())
+    if options.keys() - allowed:
+        raise VideoError("Unknown wallpaper playback option.")
+    if fit not in {"fill", "fit"}:
+        raise VideoError("Unknown video layout.")
+    values = sources.validate({**sources.DEFAULTS, "source": source, **options})
+    if source == "video":
+        path = validate_video(path)
+    elif source == "xscreensaver":
+        from . import wallpaper_animation_settings as animation_settings
+        from . import wallpaper_xscreensaver as saver
+
+        entry = saver.validate(path)
+        values["animation"] = path
+        values["settings"] = animation_settings.validate(
+            entry.get("settings", []), options.get("settings", {})
+        )
+    else:
+        if not isinstance(path, str) or path not in sources.STYLES:
+            raise VideoError("Choose an audio visualization style.")
+        if not (values["desktop_audio"] or values["microphone"]):
+            raise VideoError("Enable Desktop audio, Microphone, or both.")
+        values["style"] = path
+    return path, values
+
+
+def play(path, fit="fill", source="video", **options):
+    from . import wallpaper_sources as sources
+
+    if not supported():
+        raise VideoError("Live wallpapers currently require Cinnamon or GNOME on X11.")
+    path, values = selection(path, fit, source, **options)
+    if source == "video":
+        if not shutil.which("mpv"):
+            raise VideoError(
+                "Install mpv with your system's package manager to play video wallpapers."
+            )
+        remember(path, fit)
+    elif source == "audio":
+        from . import wallpaper_audio as audio
+
+        if not audio.available():
+            raise VideoError("Install cava and pactl to play audio visualizations.")
+    # A failed save must not leave playback alive without its tray controls.
+    preferences = {"source": source}
+    if source == "xscreensaver":
+        preferences.update(animation=path, fps=values["fps"])
+    elif source == "audio":
+        preferences.update(
+            style=path,
+            **{key: values[key] for key in ("desktop_audio", "microphone", *sources.COLOR_OPTIONS)},
+        )
+    sources.remember(**preferences)
+    _ensure_worker(source)
+    return request("play", path=path, fit=fit, source=source, options=options)
 
 
 def stop():

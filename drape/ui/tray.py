@@ -1,4 +1,4 @@
-"""Cinnamon tray lifetime and a menu that can grow beyond wallpaper controls."""
+"""Background playback lifetime and optional tray controls."""
 
 from pathlib import Path
 
@@ -48,12 +48,18 @@ class WallpaperTray:
     def hide_window(self, window, _event):
         if self.icon is None or self.quitting:
             return False
-        # A disabled tray applet must not strand a hidden application. Launching
-        # Drape again always reopens it, but keep the window if no icon is embedded.
+        # GNOME can reopen its held application without a tray. Cinnamon keeps
+        # the window visible when its expected tray applet is disabled.
         if not self.icon.is_embedded():
+            from .. import wallpaper_desktop
+
+            host = wallpaper_desktop.current()
+            if host is not None and host.background_without_tray:
+                window.hide()
+                return True
             self.app.activate()
             window.notify(
-                "Enable Cinnamon's system tray applet to hide Drape during video playback."
+                "Enable Cinnamon's system tray applet to hide Drape during wallpaper playback."
             )
             return True
         window.hide()
@@ -62,9 +68,13 @@ class WallpaperTray:
     def _update(self, state):
         self.state = state
         if self.icon:
-            name = Path(state.get("path", "")).name
+            name = state.get("name") or Path(state.get("path", "")).name
             self.icon.set_tooltip_text(
-                "Drape · " + (name or "Static wallpaper") + " · " + state["state"]
+                "Drape · "
+                + (name or "Static wallpaper")
+                + " · "
+                + state["state"]
+                + (" · " + " + ".join(state["audio_inputs"]) if state.get("audio_inputs") else "")
             )
         for window in self.app.get_windows():
             page = getattr(window, "videopage", None)
@@ -104,7 +114,7 @@ class WallpaperTray:
         def failed(error):
             self.checking = False
             self.app.activate()
-            error_dialog(self.app.get_active_window(), "Could not control video wallpaper", error)
+            error_dialog(self.app.get_active_window(), "Could not control live wallpaper", error)
 
         run_async(work, done, failed)
 

@@ -1,28 +1,32 @@
-"""Local video selection and playback controls for Cinnamon."""
+"""Local video selection and controls for supported live-wallpaper desktops."""
 
 import shutil
 from pathlib import Path
 
 from .. import video_wallpapers as videos
+from .. import wallpaper_sources as sources
 from .common import error_dialog, run_async
-from .gtk import Gtk
+from .gtk import GLib, Gtk
+from .wallpaper_source_controls import SourceControls
 
 
 class VideoWallpapersPage(Gtk.ScrolledWindow):
     def __init__(self, window):
         super().__init__(hscrollbar_policy=Gtk.PolicyType.NEVER)
         self.win, self.alive, self.busy = window, True, False
-        self.connect("destroy", lambda *_: setattr(self, "alive", False))
+        self.loading, self.change_timer = False, None
+        self.connect("destroy", self._destroyed)
         self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14, margin=24)
         self.add(self.body)
-        title = Gtk.Label(label="Video wallpapers", xalign=0)
+        title = Gtk.Label(label="Live wallpapers", xalign=0)
         title.get_style_context().add_class("title")
         self.body.pack_start(title, False, False, 0)
         self.body.pack_start(
             Gtk.Label(
-                label="Play a local video on your Cinnamon desktop. Videos loop silently on all monitors. "
-                "Drape stays in the system tray during playback; closing this window hides it. "
-                "Use the tray to reopen Drape, pause, stop, or quit.",
+                label="Play a local video, an XScreenSaver animation, or an audio visualization on your desktop. "
+                "Playback appears beneath your desktop icons on all monitors. Videos loop silently. "
+                "Closing this window keeps playback running. Reopen Drape for playback controls, "
+                "or use the system tray where available. GNOME can run without a tray extension.",
                 xalign=0,
                 wrap=True,
             ),
@@ -32,11 +36,12 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
         )
         self.controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.body.pack_start(self.controls, False, False, 0)
+        video_controls = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.selector = Gtk.ComboBoxText()
         self.selector.connect("changed", lambda *_: self._selected())
-        self.controls.pack_start(self.selector, False, False, 0)
+        video_controls.pack_start(self.selector, False, False, 0)
         self.location = Gtk.Label(xalign=0, wrap=True, selectable=True)
-        self.controls.pack_start(self.location, False, False, 0)
+        video_controls.pack_start(self.location, False, False, 0)
         files = Gtk.Box(spacing=8)
         self.add_button = Gtk.Button(label="Add video…")
         self.add_button.connect("clicked", self._add)
@@ -47,12 +52,15 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
         )
         self.remove_button.connect("clicked", self._remove)
         files.pack_start(self.remove_button, False, False, 0)
-        self.controls.pack_start(files, False, False, 0)
+        video_controls.pack_start(files, False, False, 0)
         self.fit = Gtk.ComboBoxText()
         self.fit.append("fill", "Fill screen (crop edges)")
         self.fit.append("fit", "Fit video (keep entire picture)")
         self.fit.set_active_id("fill")
-        self.controls.pack_start(self.fit, False, False, 0)
+        self.fit.connect("changed", lambda *_: self._selected())
+        video_controls.pack_start(self.fit, False, False, 0)
+        self.sources = SourceControls(self, video_controls)
+        self.controls.pack_start(self.sources, False, False, 0)
         actions = Gtk.Box(spacing=8)
         self.play_button = Gtk.Button(label="Play wallpaper")
         self.play_button.get_style_context().add_class("suggested-action")
@@ -61,17 +69,24 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
         self.pause_button.connect("clicked", self._pause)
         self.stop_button = Gtk.Button(label="Stop & restore static wallpaper")
         self.stop_button.connect("clicked", lambda *_: self._run(videos.stop))
+        self.quit_button = Gtk.Button(label="Quit Drape")
+        self.quit_button.set_tooltip_text(
+            "Stop live playback and quit Drape, including background playback."
+        )
+        self.quit_button.connect("clicked", lambda *_: self.win.get_application().quit())
         for button in (self.play_button, self.pause_button, self.stop_button):
             actions.pack_start(button, False, False, 0)
+        actions.pack_end(self.quit_button, False, False, 0)
         self.controls.pack_start(actions, False, False, 0)
         self.status = Gtk.Label(xalign=0, wrap=True)
         self.body.pack_start(self.status, False, False, 0)
         self.body.pack_start(
             Gtk.Label(
                 label="Your static wallpaper stays unchanged underneath. Selecting a still wallpaper "
-                "in Drape stops video playback. Videos are remembered by their file location; "
+                "in Drape stops live playback. Videos are remembered by their file location; "
                 "moving or deleting a file makes it unavailable. Playback pauses while the screen is locked. "
-                "This first version supports Cinnamon on X11 and requires mpv. Start playback manually after login.",
+                "Supports Cinnamon and GNOME on X11. Local video requires mpv; other sources use their own optional packages. "
+                "Start playback manually after login.",
                 xalign=0,
                 wrap=True,
             ),
@@ -84,30 +99,67 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
     def load(self):
         if self.busy:
             return
+        if self.change_timer is not None:
+            GLib.source_remove(self.change_timer)
+            self.change_timer = None
         try:
             data = videos.library()
+            preferences = sources.preferences()
         except videos.VideoError as exc:
             self.status.set_text(str(exc))
             self.controls.set_sensitive(False)
             self.show_all()
             return
-        self.selector.remove_all()
-        for path in data["videos"]:
-            suffix = " (file missing)" if not Path(path).is_file() else ""
-            self.selector.append(path, Path(path).name + suffix)
-        self.selector.set_active_id(data["selected"])
-        self.fit.set_active_id(data["fit"])
+        # Rebuilding widgets must never restart playback or start audio capture.
+        self.loading = True
+        try:
+            self.selector.remove_all()
+            for path in data["videos"]:
+                suffix = " (file missing)" if not Path(path).is_file() else ""
+                self.selector.append(path, Path(path).name + suffix)
+            self.selector.set_active_id(data["selected"])
+            self.fit.set_active_id(data["fit"])
+            self.sources.load(preferences)
+        finally:
+            self.loading = False
         self._selected()
         self.show_all()
         self._run(lambda: videos.request("status"))
 
     def _selected(self):
+        if not hasattr(self, "sources") or not hasattr(self, "play_button"):
+            return
         path = self.selector.get_active_id()
         self.location.set_text(path or "Add a video to begin.")
+        playable = self.sources.playable()
         self.play_button.set_sensitive(
-            bool(path) and Path(path).is_file() and bool(shutil.which("mpv"))
+            playable
+            if playable is not None
+            else bool(path) and Path(path).is_file() and bool(shutil.which("mpv"))
         )
         self.remove_button.set_sensitive(bool(path))
+        if (
+            not self.loading
+            and not self.sources.updating
+            and not self.busy
+            and self.state["state"] in {"starting", "playing", "paused"}
+        ):
+            # Coalesce a quick series of control edits into one renderer change.
+            if self.change_timer is not None:
+                GLib.source_remove(self.change_timer)
+            self.change_timer = GLib.timeout_add(200, self._apply_change)
+
+    def _destroyed(self, *_):
+        self.alive = False
+        if self.change_timer is not None:
+            GLib.source_remove(self.change_timer)
+            self.change_timer = None
+
+    def _apply_change(self):
+        self.change_timer = None
+        if self.alive and not self.busy and self.play_button.get_sensitive():
+            self._play(automatic=True)
+        return False
 
     def update_status(self, state):
         self.state = state
@@ -117,15 +169,21 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
         self.stop_button.set_sensitive(active or state["state"] == "error")
         text = {
             "stopped": "Static wallpaper is showing.",
-            "starting": "Starting video playback…",
-            "playing": "Playing: " + Path(state.get("path", "")).name,
-            "paused": "Video wallpaper is paused (by you or the screen lock).",
-            "error": state.get("message") or "Video playback failed.",
+            "starting": "Starting wallpaper playback…",
+            "playing": "Playing: " + (state.get("name") or Path(state.get("path", "")).name),
+            "paused": "Wallpaper is paused (by you or the screen lock).",
+            "error": state.get("message") or "Wallpaper playback failed.",
         }.get(state["state"], "")
         if active and state.get("message"):
             text += "\n" + state["message"]
-        if not shutil.which("mpv"):
-            text = "Install mpv with your system's package manager to enable video playback."
+        if active and state.get("audio_inputs"):
+            text += "\nAudio inputs: " + " + ".join(state["audio_inputs"])
+        if (
+            not active
+            and (self.sources.source.get_active_id() or "video") == "video"
+            and not shutil.which("mpv")
+        ):
+            text += "\nInstall mpv with your system's package manager to enable video playback."
         self.status.set_text(text)
 
     def _run(self, work, enabled=False, reload=False):
@@ -133,7 +191,7 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
             return
         self.busy = True
         self.controls.set_sensitive(False)
-        self.status.set_text("Updating video wallpaper…")
+        self.status.set_text("Updating live wallpaper…")
 
         def done(state):
             if not self.alive:
@@ -151,7 +209,7 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
                 self.busy = False
                 self.controls.set_sensitive(True)
                 self.status.set_text(str(error))
-                error_dialog(self.win, "Could not update video wallpaper", error)
+                error_dialog(self.win, "Could not update live wallpaper", error)
 
         run_async(work, done, failed)
 
@@ -185,17 +243,37 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
             return
 
         def work():
-            if videos.request("status").get("path") == path:
+            state = videos.request("status")
+            if state.get("source", "video") == "video" and state.get("path") == path:
                 videos.stop()
             videos.forget(path)
             return videos.request("status")
 
         self._run(work, reload=True)
 
-    def _play(self, *_):
-        path, fit = self.selector.get_active_id(), self.fit.get_active_id()
+    def _play(self, *_, automatic=False):
+        try:
+            path, fit, source, options = self.sources.selection()
+        except videos.VideoError as exc:
+            error_dialog(self.win, "Could not update live wallpaper", exc)
+            return
         if path:
-            self._run(lambda: videos.play(path, fit), enabled=True)
+
+            def work():
+                state = videos.request("status") if automatic else {}
+                # The tray may have stopped playback since the last UI update.
+                if automatic and state["state"] not in {"starting", "playing", "paused"}:
+                    return state
+                result = (
+                    videos.play(path, fit)
+                    if source == "video"
+                    else videos.play(path, fit, source=source, **options)
+                )
+                if automatic and state.get("manual_paused", state.get("state") == "paused"):
+                    result = videos.request("pause", paused=True)
+                return result
+
+            self._run(work, enabled=True)
 
     def _pause(self, *_):
         self._run(lambda: videos.request("pause", paused=self.state["state"] != "paused"))

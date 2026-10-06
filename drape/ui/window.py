@@ -153,7 +153,7 @@ class Window(ThemeActions, SystemActions, Gtk.ApplicationWindow):
         from .video_wallpapers import VideoWallpapersPage
 
         self.videopage = VideoWallpapersPage(self)
-        self.stack.add_titled(self.videopage, "videos", "Video wallpapers")
+        self.stack.add_titled(self.videopage, "videos", "Live wallpapers")
         if app is not None:
             self.connect("delete-event", app.wallpaper_tray.hide_window)
         self.stack.connect("notify::visible-child", lambda *_: self.on_page())

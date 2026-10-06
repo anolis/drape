@@ -15,6 +15,10 @@ LABELS = {
     "requests": "Requests",
     "gi": "PyGObject",
     "gtk": "GTK 3 bindings",
+    "cava": "CAVA audio analyzer",
+    "pactl": "PulseAudio-compatible audio controls",
+    "xscreensaver": "XScreenSaver animations",
+    "xscreensaver_gl": "XScreenSaver OpenGL animations",
 }
 PACKAGES = {
     "arch": {
@@ -22,12 +26,20 @@ PACKAGES = {
         "requests": "python-requests",
         "gi": "python-gobject",
         "gtk": "gtk3",
+        "cava": "cava",
+        "pactl": "libpulse",
+        "xscreensaver": "xscreensaver",
+        "xscreensaver_gl": "xscreensaver",
     },
     "debian": {
         "pillow": "python3-pil",
         "requests": "python3-requests",
         "gi": "python3-gi",
         "gtk": "gir1.2-gtk-3.0",
+        "cava": "cava",
+        "pactl": "pulseaudio-utils",
+        "xscreensaver": "xscreensaver-data",
+        "xscreensaver_gl": "xscreensaver-gl",
     },
 }
 
