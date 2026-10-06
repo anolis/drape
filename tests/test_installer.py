@@ -380,7 +380,11 @@ class InstallerTest(unittest.TestCase):
             info = tarfile.TarInfo("Light/gtk-3.0/gtk.css")
             t.addfile(info, io.BytesIO(b""))
             info = tarfile.TarInfo("Light/cinnamon/cinnamon.css")
-            t.addfile(info, io.BytesIO(b""))
+            # This is a valid pack fixture, not a legacy-style consent test.
+            # An empty stylesheet is incompatible on an actual Cinnamon session.
+            css = b".dialog { color: #fff; } .prompt-dialog { color: #fff; }\n"
+            info.size = len(css)
+            t.addfile(info, io.BytesIO(css))
             t.add(inner, "variants/dark.zip")
         e = installer.install_file(a, "3", "Pack")
         comps = {c["name"]: c["provides"] for c in e["components"]}
