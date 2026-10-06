@@ -25,8 +25,9 @@ from .ui.gtk import Gdk, GLib, Gtk
 
 
 class Surface:
-    def __init__(self, monitor, path, fit, number):
+    def __init__(self, monitor, path, fit, number, profile="gpu"):
         self.ipc = videos.runtime_dir() / f"mpv-{number}.sock"
+        self.log = self.ipc.with_suffix(".log")
         self.ipc.unlink(missing_ok=True)
         self.process = None
         self.window = Gtk.Window(title="Drape Video Wallpaper")
@@ -53,15 +54,33 @@ class Surface:
         self.window.get_window().input_shape_combine_region(cairo.Region(), 0, 0)
         self.window.get_window().lower()
         try:
-            self.process = subprocess.Popen(
-                video_mpv.command(path, area.get_window().get_xid(), self.ipc, fit),
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            if self.log.exists():
+                self.log.replace(self.log.with_suffix(".previous.log"))
+            # Append lets the periodic cap truncate the file without leaving
+            # sparse holes at the child's previous write position.
+            with self.log.open("ab") as log:
+                self.process = subprocess.Popen(
+                    video_mpv.command(path, area.get_window().get_xid(), self.ipc, fit, profile),
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                )
         except OSError:
             self.close()
             raise
+
+    def limit_log(self):
+        """Keep warnings bounded even if a driver emits errors every frame."""
+        try:
+            if self.log.stat().st_size > 256 * 1024:
+                with self.log.open("r+b") as stream:
+                    stream.seek(-64 * 1024, os.SEEK_END)
+                    tail = stream.read(64 * 1024)
+                    stream.seek(0)
+                    stream.write(tail)
+                    stream.truncate()
+        except OSError:
+            pass  # log maintenance must never stop otherwise healthy playback
 
     def close(self):
         if self.process is not None:
@@ -87,6 +106,7 @@ class Player:
         self.paused = False
         self.locked = False
         self.deadline = 0
+        self.renderer = video_mpv.PROFILES[0]
         display = Gdk.Display.get_default()
         display.connect("monitor-added", self._monitors_changed)
         display.connect("monitor-removed", self._monitors_changed)
@@ -127,7 +147,13 @@ class Player:
             "state": self.state,
             "path": self.path,
             "fit": self.fit,
-            "message": self.error,
+            "message": self.error
+            or (
+                "Using compatibility playback after a graphics-driver failure."
+                if self.renderer != "gpu" and self.state in {"starting", "playing", "paused"}
+                else ""
+            ),
+            "renderer": self.renderer,
             "available": True,
         }
 
@@ -184,7 +210,7 @@ class Player:
         try:
             for number in range(display.get_n_monitors()):
                 self.surfaces.append(
-                    Surface(display.get_monitor(number), self.path, self.fit, number)
+                    Surface(display.get_monitor(number), self.path, self.fit, number, self.renderer)
                 )
             if not self.surfaces:
                 raise videos.VideoError("No monitor is available for video playback.")
@@ -204,6 +230,7 @@ class Player:
             if fit not in {"fill", "fit"}:
                 raise videos.VideoError("Unknown video layout.")
             self.path, self.fit, self.paused, self.error = path, fit, False, ""
+            self.renderer = video_mpv.PROFILES[0]
             try:
                 self._build()
             except (OSError, videos.VideoError) as exc:
@@ -246,11 +273,29 @@ class Player:
         self._clear()
         self.state, self.error = "error", message
 
+    def _retry(self, reason):
+        """Each play request may try each backend once; never crash-loop."""
+        index = video_mpv.PROFILES.index(self.renderer) + 1
+        if index == len(video_mpv.PROFILES):
+            return False
+        self.renderer = video_mpv.PROFILES[index]
+        print(f"{reason} Retrying wallpaper with {self.renderer}.", flush=True)
+        try:
+            self._build()
+        except (OSError, videos.VideoError) as exc:
+            self._failed(str(exc))
+        return True
+
     def _tick(self):
         if self.state not in {"playing", "paused", "starting"}:
             return True
-        if any(s.process.poll() is not None for s in self.surfaces):
-            self._failed("mpv could not play this video. Check the file and your video drivers.")
+        for surface in self.surfaces:
+            surface.limit_log()
+        exits = [s.process.poll() for s in self.surfaces]
+        if any(code is not None for code in exits):
+            reason = f"mpv exited during playback (monitor exit codes: {exits})."
+            if not self._retry(reason):
+                self._failed(reason + " Check the mpv logs in Drape's video runtime folder.")
         elif self.state == "starting":
             try:
                 ready = all(
@@ -263,7 +308,9 @@ class Player:
             except (OSError, ValueError, videos.VideoError):
                 pass  # sockets and decoded video parameters appear after process startup
             if self.state == "starting" and time.monotonic() > self.deadline:
-                self._failed("Video playback did not start within 15 seconds.")
+                reason = "Video playback did not start within 15 seconds."
+                if not self._retry(reason):
+                    self._failed(reason)
         return True
 
     def _monitors_changed(self, *_):

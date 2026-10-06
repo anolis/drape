@@ -13,7 +13,7 @@ from drape import desktop, video_mpv, video_x11
 from drape import video_wallpapers as videos
 from drape.ui.gtk import Gdk
 from drape.ui.tray import WallpaperTray
-from drape.video_player import Player
+from drape.video_player import Player, Surface
 
 
 class VideoTests(unittest.TestCase):
@@ -95,6 +95,28 @@ class VideoTests(unittest.TestCase):
         ):
             self.assertIn(arg, args)
 
+    def test_decoding_avoids_direct_gpu_frames_and_vulkan_fallback(self):
+        args = video_mpv.command(str(self.video), 42, self.root / "mpv.sock", "fit")
+        self.assertIn("--gpu-api=opengl", args)
+        self.assertIn("--hwdec=nvdec-copy,vaapi-copy,vdpau-copy", args)
+        self.assertIn("--vd-lavc-dr=no", args)
+        self.assertIn("--vd-lavc-threads=4", args)
+        software = video_mpv.command(str(self.video), 42, self.root / "mpv.sock", "fit", "software")
+        self.assertIn("--hwdec=no", software)
+        self.assertIn("--vo=xv,x11", software)
+
+    def test_noisy_player_log_keeps_tail_and_append_has_no_sparse_holes(self):
+        surface = object.__new__(Surface)
+        surface.log = self.root / "mpv-0.log"
+        tail = b"newest error\n" * 6000
+        surface.log.write_bytes(b"old data\n" * 30000 + tail)
+        with surface.log.open("ab") as child_output:
+            surface.limit_log()
+            self.assertEqual(surface.log.stat().st_size, 64 * 1024)
+            self.assertTrue(surface.log.read_bytes().endswith(tail[-100:]))
+            child_output.write(b"next error\n")
+        self.assertEqual(surface.log.stat().st_size, 64 * 1024 + len(b"next error\n"))
+
     def test_mpv_ipc_ignores_events_before_response(self):
         path = self.root / "mpv.sock"
         with socket.socket(socket.AF_UNIX) as server:
@@ -161,6 +183,7 @@ class PlayerTests(unittest.TestCase):
         player.surfaces = [mock.Mock()]
         player.state, player.path, player.fit, player.error = "playing", "/video.mp4", "fill", ""
         player.paused, player.locked = False, False
+        player.renderer = "gpu"
         return player
 
     def test_lock_resume_preserves_manual_pause(self):
@@ -179,6 +202,63 @@ class PlayerTests(unittest.TestCase):
         surfaces[0].close.assert_called_once()
         self.assertEqual(player.surfaces, [])
         self.assertEqual(player.status()["message"], "bad video")
+
+    def test_player_crash_recovers_without_losing_manual_pause(self):
+        player = self.player()
+        player.paused = True
+        previous = player.surfaces[0]
+        previous.process.poll.return_value = -11
+
+        def build():
+            player._clear()
+            surface = mock.Mock()
+            surface.process.poll.return_value = None
+            player.surfaces.append(surface)
+            player.state, player.deadline = "starting", time.monotonic() + 15
+
+        with (
+            mock.patch.object(player, "_build", side_effect=build),
+            mock.patch.object(player, "_stack_below_icons", return_value=True),
+            mock.patch.object(video_mpv, "send", return_value={"w": 3840}) as send,
+        ):
+            player._tick()
+            self.assertEqual(player.renderer, "gpu-software")
+            previous.close.assert_called_once()
+            player._tick()
+            self.assertEqual(player.state, "paused")
+            self.assertEqual(send.call_args.args[1], ["set_property", "pause", True])
+            self.assertEqual(player.path, "/video.mp4")
+
+    def test_repeated_player_crashes_exhaust_recovery_and_restore_desktop(self):
+        player = self.player()
+        player.surfaces[0].process.poll.return_value = -11
+
+        def build():
+            player._clear()
+            surface = mock.Mock()
+            surface.process.poll.return_value = -11
+            player.surfaces.append(surface)
+            player.state = "starting"
+
+        with mock.patch.object(player, "_build", side_effect=build) as rebuild:
+            for _ in range(5):
+                player._tick()
+            self.assertEqual(rebuild.call_count, 2)
+        self.assertEqual(player.state, "error")
+        self.assertEqual(player.surfaces, [])
+        self.assertIn("-11", player.error)
+
+    def test_startup_timeout_also_has_bounded_recovery(self):
+        player = self.player()
+        player.state, player.deadline = "starting", time.monotonic() - 1
+        player.surfaces[0].process.poll.return_value = None
+        with (
+            mock.patch.object(video_mpv, "send", side_effect=videos.VideoError("not ready")),
+            mock.patch.object(player, "_build") as rebuild,
+        ):
+            player._tick()
+        rebuild.assert_called_once()
+        self.assertEqual(player.renderer, "gpu-software")
 
     def test_stop_only_closes_owned_surfaces(self):
         player = self.player()

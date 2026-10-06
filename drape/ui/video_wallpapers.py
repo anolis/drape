@@ -122,6 +122,8 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
             "paused": "Video wallpaper is paused (by you or the screen lock).",
             "error": state.get("message") or "Video playback failed.",
         }.get(state["state"], "")
+        if active and state.get("message"):
+            text += "\n" + state["message"]
         if not shutil.which("mpv"):
             text = "Install mpv with your system's package manager to enable video playback."
         self.status.set_text(text)

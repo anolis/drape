@@ -5,8 +5,12 @@ import socket
 
 from .video_wallpapers import LIMIT, VideoError
 
+PROFILES = ("gpu", "gpu-software", "software")
 
-def command(path, xid, ipc_path, fit):
+
+def command(path, xid, ipc_path, fit, profile="gpu"):
+    if profile not in PROFILES:
+        raise VideoError("Unknown video playback mode.")
     return [
         "mpv",
         "--no-config",
@@ -25,12 +29,19 @@ def command(path, xid, ipc_path, fit):
         "--input-terminal=no",
         "--stop-screensaver=no",
         "--x11-bypass-compositor=never",
-        "--hwdec=auto-safe",
-        "--vo=gpu,xv,x11",
+        # Direct GPU frames and an automatic Vulkan decoder fallback can crash
+        # NVIDIA/libplacebo at loop boundaries. Copy decoding retains hardware
+        # acceleration while avoiding that interop path. Exhausted decoders fall
+        # back to CPU decoding; cap threads across per-monitor players.
+        "--hwdec=" + ("nvdec-copy,vaapi-copy,vdpau-copy" if profile == "gpu" else "no"),
+        "--vd-lavc-dr=no",
+        "--vd-lavc-threads=4",
+        "--gpu-api=opengl",
+        "--vo=" + ("xv,x11" if profile == "software" else "gpu,xv,x11"),
         "--panscan=" + ("1" if fit == "fill" else "0"),
         f"--wid={xid}",
         f"--input-ipc-server={ipc_path}",
-        "--really-quiet",
+        "--msg-level=all=warn",
         "--",
         path,
     ]
