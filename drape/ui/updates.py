@@ -69,10 +69,6 @@ class AppUpdates:
                 self.button.set_tooltip_text(
                     f"{update.count} new commit(s) available. Click to review and update Drape."
                 )
-                self.window.notify(
-                    "A Drape update is available.",
-                    action=("View update", lambda: self.offer(update)),
-                )
             elif manual:
                 self.window.notify("Drape is up to date.")
 
@@ -90,7 +86,6 @@ class AppUpdates:
         if win.busy or getattr(getattr(win, "configurations", None), "busy", False):
             win.notify(
                 "Finish the current theme operation before updating Drape.",
-                action=("View update", lambda: self.offer(update)),
             )
             return
         dialog = Gtk.MessageDialog(

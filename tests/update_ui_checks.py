@@ -22,6 +22,7 @@ def check():
     callbacks.pop()[1](updater.Update("old", "new", 2, "New changes"))
     header.show_all()
     assert controller.button.get_visible()
+    window.notify.assert_not_called()
     window.notify("Applied an icon theme")
     assert controller.button.get_visible()
     controller.checking = False

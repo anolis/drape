@@ -54,6 +54,7 @@ class UpdateNotificationsTest(unittest.TestCase):
         self.controller.check()
         self.calls.pop()[1](self.update)
         self.controller.button.set_visible.assert_called_with(True)
+        self.window.notify.assert_not_called()
         self.window.notify("Applied a theme")
         self.assertIs(self.controller.available, self.update)
         self.controller.button.set_visible.assert_called_once_with(True)
