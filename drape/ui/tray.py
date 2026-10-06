@@ -59,7 +59,7 @@ class WallpaperTray:
                 return True
             self.app.activate()
             window.notify(
-                "Enable Cinnamon's system tray applet to hide Drape during wallpaper playback."
+                "Enable your desktop's system tray applet to hide Drape during wallpaper playback."
             )
             return True
         window.hide()

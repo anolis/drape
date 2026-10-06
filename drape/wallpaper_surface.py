@@ -57,7 +57,7 @@ class Surface:
             )
         self.window.add(area)
         self.window.show_all()
-        # Keep desktop clicks and drags available to Nemo, including when an mpv
+        # Keep desktop clicks and drags available to the desktop icon host, including when an mpv
         # child covers the entire surface. The panel and icons stay above us.
         self.window.get_window().input_shape_combine_region(cairo.Region(), 0, 0)
         self.window.get_window().lower()
@@ -78,7 +78,12 @@ class Surface:
                     )
                     if source == "xscreensaver"
                     else video_mpv.command(
-                        path, area.get_window().get_xid(), self.ipc, fit, profile
+                        path,
+                        area.get_window().get_xid(),
+                        self.ipc,
+                        fit,
+                        profile,
+                        copy_background=host.copy_background,
                     )
                 )
                 self.process = subprocess.Popen(

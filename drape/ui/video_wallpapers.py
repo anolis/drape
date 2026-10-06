@@ -85,7 +85,7 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
                 label="Your static wallpaper stays unchanged underneath. Selecting a still wallpaper "
                 "in Drape stops live playback. Videos are remembered by their file location; "
                 "moving or deleting a file makes it unavailable. Playback pauses while the screen is locked. "
-                "Supports Cinnamon and GNOME on X11. Local video requires mpv; other sources use their own optional packages. "
+                "Supports Cinnamon, GNOME and MATE on X11. Local video requires mpv; other sources use their own optional packages. "
                 "Start playback manually after login.",
                 xalign=0,
                 wrap=True,

@@ -13,6 +13,13 @@ class X11Desktop:
     """Input-transparent desktop surfaces shared by verified X11 hosts."""
 
     background_without_tray = False
+    copy_background = False
+
+    @staticmethod
+    def video_profiles():
+        from .video_mpv import PROFILES
+
+        return PROFILES
 
     @classmethod
     def supported(cls):
@@ -44,6 +51,10 @@ class X11Desktop:
         window.move(rect.x, rect.y)
         window.set_default_size(rect.width, rect.height)
         return window
+
+    @staticmethod
+    def present(surfaces, source):
+        return None
 
     @staticmethod
     def restack(surfaces):
@@ -93,7 +104,27 @@ class GnomeX11(X11Desktop):
     background_without_tray = True
 
 
-HOSTS = (CinnamonX11, GnomeX11)
+class MateX11(X11Desktop):
+    desktop_name = "mate"
+    lock_service = "org.mate.ScreenSaver"
+    lock_path = "/org/mate/ScreenSaver"
+    label = "MATE on X11"
+    copy_background = True
+
+    @staticmethod
+    def video_profiles():
+        # GPU/XVideo overlays are not guaranteed to enter Caja’s pixmap.
+        # X11 software frames can be copied reliably with or without compositing.
+        return ("software",)
+
+    @staticmethod
+    def present(surfaces, source):
+        from .wallpaper_mate import Mirror
+
+        return Mirror(surfaces, source)
+
+
+HOSTS = (CinnamonX11, GnomeX11, MateX11)
 
 
 def current():

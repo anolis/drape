@@ -48,6 +48,7 @@ class Player:
         self.options = wallpaper_sources.DEFAULTS.copy()
         self.audio = None
         self.audio_timer = None
+        self.presentation = None
         display = Gdk.Display.get_default()
         display.connect("monitor-added", self._monitors_changed)
         display.connect("monitor-removed", self._monitors_changed)
@@ -98,9 +99,15 @@ class Player:
             ],
             "sources": sorted(wallpaper_sources.SOURCES),
             "audio_visuals": 1,
+            "desktop_host": self.host.desktop_name,
+            "mate_background": 1,
             "message": self.error
             or (
-                "Using compatibility playback after a graphics-driver failure."
+                (
+                    "Using software playback for MATE’s desktop icon layer."
+                    if self.host.copy_background
+                    else "Using compatibility playback after a graphics-driver failure."
+                )
                 if self.source == "video"
                 and self.renderer != "gpu"
                 and self.state in {"starting", "playing", "paused"}
@@ -111,6 +118,9 @@ class Player:
         }
 
     def _clear(self):
+        if self.presentation is not None:
+            self.presentation.close()
+            self.presentation = None
         if self.audio_timer is not None:
             GLib.source_remove(self.audio_timer)
             self.audio_timer = None
@@ -180,6 +190,8 @@ class Player:
                 ):
                     for surface in self.surfaces:
                         surface.area.queue_draw()
+                    if self.presentation is not None:
+                        self.presentation.refresh()
         except (OSError, videos.VideoError) as exc:
             # _clear removes this timer too; mark it absent before returning.
             self.audio_timer = None
@@ -192,7 +204,7 @@ class Player:
         if action == "play":
             if not videos.supported():
                 raise videos.VideoError(
-                    "Live wallpapers currently require Cinnamon or GNOME on X11."
+                    "Live wallpapers currently require Cinnamon, GNOME or MATE on X11."
                 )
             source = data.get("source", "video")
             options = data.get("options", {})
@@ -208,7 +220,7 @@ class Player:
             else:
                 self.name = os.path.basename(path)
             self.path, self.fit, self.paused, self.error = path, fit, False, ""
-            self.renderer = video_mpv.PROFILES[0]
+            self.renderer = self.host.video_profiles()[0]
             try:
                 self._build()
             except (OSError, videos.VideoError) as exc:
@@ -235,6 +247,8 @@ class Player:
 
     def _set_pause(self):
         pause = self.paused or self.locked
+        if self.presentation is not None:
+            self.presentation.pause(pause)
         if self.source == "audio":
             self.audio.pause(pause)
         else:
@@ -261,10 +275,11 @@ class Player:
         """Each play request may try each backend once; never crash-loop."""
         if self.source != "video":
             return False
-        index = video_mpv.PROFILES.index(self.renderer) + 1
-        if index == len(video_mpv.PROFILES):
+        profiles = self.host.video_profiles()
+        index = profiles.index(self.renderer) + 1
+        if index == len(profiles):
             return False
-        self.renderer = video_mpv.PROFILES[index]
+        self.renderer = profiles[index]
         print(f"{reason} Retrying wallpaper with {self.renderer}.", flush=True)
         try:
             self._build()
@@ -275,6 +290,12 @@ class Player:
     def _tick(self):
         if self.state not in {"playing", "paused", "starting"}:
             return True
+        if self.presentation is not None:
+            try:
+                self.presentation.ready()
+            except (OSError, ValueError, videos.VideoError) as exc:
+                self._failed(str(exc))
+                return True
         for surface in self.surfaces:
             surface.limit_log()
         exits = [s.process.poll() for s in self.surfaces if s.process is not None]
@@ -296,9 +317,13 @@ class Player:
                         for s in self.surfaces
                     )
                 if ready and self._stack_below_icons():
-                    for surface in self.surfaces:
-                        surface.window.set_opacity(1)
-                    self._set_pause()
+                    if self.presentation is None:
+                        self.presentation = self.host.present(self.surfaces, self.source)
+                    prepared = self.presentation is None or self.presentation.ready()
+                    if prepared:
+                        for surface in self.surfaces:
+                            surface.window.set_opacity(1)
+                        self._set_pause()
             except (OSError, ValueError, videos.VideoError):
                 pass  # sockets and decoded video parameters appear after process startup
             if self.state == "starting" and time.monotonic() > self.deadline:
@@ -379,7 +404,7 @@ class Handler(socketserver.StreamRequestHandler):
 
 def main():
     if not videos.supported():
-        raise videos.VideoError("Live wallpapers currently require Cinnamon or GNOME on X11.")
+        raise videos.VideoError("Live wallpapers currently require Cinnamon, GNOME or MATE on X11.")
     directory = videos.runtime_dir()
     # Held for the worker's entire lifetime; a stale socket never owns a player.
     with (directory / "player.lock").open("w") as lock:

@@ -108,6 +108,8 @@ class VideoTests(unittest.TestCase):
             with mock.patch.object(desktop, "current_desktop", return_value="gnome"):
                 self.assertTrue(videos.supported())
             with mock.patch.object(desktop, "current_desktop", return_value="mate"):
+                self.assertTrue(videos.supported())
+            with mock.patch.object(desktop, "current_desktop", return_value="xfce"):
                 self.assertFalse(videos.supported())
 
     def test_player_argv_cannot_load_scripts_audio_or_external_references(self):
@@ -247,6 +249,28 @@ class VideoTests(unittest.TestCase):
             [call.args[0] for call in request.call_args_list], ["status", "quit", "status"]
         )
 
+    def test_mate_replaces_worker_without_caja_support_through_private_socket(self):
+        with (
+            mock.patch.object(
+                wallpaper_desktop, "current", return_value=wallpaper_desktop.MateX11()
+            ),
+            mock.patch.object(
+                videos,
+                "request",
+                side_effect=[
+                    {"available": True, "state": "stopped", "audio_visuals": 1},
+                    {"state": "stopped"},
+                    {"available": True, "state": "stopped"},
+                ],
+            ) as request,
+            mock.patch.object(videos.subprocess, "Popen") as launch,
+        ):
+            videos._ensure_worker("video")
+        launch.assert_called_once()
+        self.assertEqual(
+            [call.args[0] for call in request.call_args_list], ["status", "quit", "status"]
+        )
+
     def test_still_wallpaper_stops_video_before_gsettings_write(self):
         order = []
         with (
@@ -274,8 +298,41 @@ class PlayerTests(unittest.TestCase):
         player.source, player.name = "video", "video.mp4"
         player.options = wallpaper_sources.DEFAULTS.copy()
         player.audio, player.audio_timer = None, None
+        player.presentation = None
         player.host = wallpaper_desktop.CinnamonX11()
         return player
+
+    def test_mate_background_restores_before_rendering_windows_close(self):
+        player = self.player()
+        player.presentation = mock.Mock()
+        order = []
+        player.presentation.close.side_effect = lambda: order.append("restore")
+        player.surfaces[0].close.side_effect = lambda: order.append("destroy")
+        player._clear()
+        self.assertEqual(order, ["restore", "destroy"])
+        self.assertIsNone(player.presentation)
+
+    def test_mate_helper_exit_stops_renderers_and_reports_failure(self):
+        player = self.player()
+        player.presentation = mock.Mock()
+        player.presentation.ready.side_effect = videos.VideoError("MATE helper exited")
+        surfaces = player.surfaces.copy()
+        player._tick()
+        self.assertEqual(player.state, "error")
+        self.assertIn("MATE helper exited", player.error)
+        surfaces[0].close.assert_called_once()
+
+    def test_unresponsive_mate_helper_does_not_bypass_startup_timeout(self):
+        player = self.player()
+        player.state, player.source, player.deadline = "starting", "xscreensaver", 0
+        player.surfaces[0].started = 0
+        player.surfaces[0].process.poll.return_value = None
+        player.presentation = mock.Mock()
+        player.presentation.ready.return_value = False
+        with mock.patch.object(videos.time, "monotonic", return_value=20):
+            player._tick()
+        self.assertEqual(player.state, "error")
+        self.assertIn("did not start", player.error)
 
     def test_lock_resume_preserves_manual_pause(self):
         player = self.player()

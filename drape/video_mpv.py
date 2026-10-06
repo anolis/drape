@@ -8,7 +8,7 @@ from .video_wallpapers import LIMIT, VideoError
 PROFILES = ("gpu", "gpu-software", "software")
 
 
-def command(path, xid, ipc_path, fit, profile="gpu"):
+def command(path, xid, ipc_path, fit, profile="gpu", *, copy_background=False):
     if profile not in PROFILES:
         raise VideoError("Unknown video playback mode.")
     return [
@@ -37,7 +37,10 @@ def command(path, xid, ipc_path, fit, profile="gpu"):
         "--vd-lavc-dr=no",
         "--vd-lavc-threads=4",
         "--gpu-api=opengl",
-        "--vo=" + ("xv,x11" if profile == "software" else "gpu,xv,x11"),
+        # Caja copies the rendered pixmap; hardware overlays bypass that image.
+        "--vo="
+        + ("x11" if copy_background else "xv,x11" if profile == "software" else "gpu,xv,x11"),
+        *(["--vf=fps=30"] if copy_background else []),
         "--panscan=" + ("1" if fit == "fill" else "0"),
         f"--wid={xid}",
         f"--input-ipc-server={ipc_path}",

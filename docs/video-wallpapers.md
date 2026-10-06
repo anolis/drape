@@ -1,6 +1,6 @@
 # Live wallpapers
 
-Live wallpapers support Cinnamon and GNOME on X11. GNOME video, XScreenSaver
+Live wallpapers support Cinnamon, GNOME and MATE on X11. GNOME video, XScreenSaver
 animations and audio visualizations were verified on GNOME 48.7 with three monitors.
 GNOME/Wayland remains unsupported: an XWayland display cannot host desktop wallpapers.
 Install `mpv` through your system's
@@ -18,11 +18,11 @@ frame-rate target, visualization style, color or audio inputs applies automatica
 Quick edits are combined into one switch. A manual pause is preserved; changing
 controls while stopped does not start playback.
 
-Starting playback puts Drape in Cinnamon's system tray. Closing the main window
+Starting playback puts Drape in Cinnamon or MATE's system tray. Closing the main window
 hides it; the tray's **Show Drape** action or launching Drape again reopens it.
 The tray also offers Pause/Resume, Stop wallpaper and Quit Drape. Stop reveals
 the existing static wallpaper and leaves Drape available in the tray. Quit stops
-the player and exits Drape. The page also offers **Quit Drape**. If Cinnamon's tray
+the player and exits Drape. The page also offers **Quit Drape**. If the desktop's tray
 applet is disabled, Drape keeps its window visible and explains how to enable the applet.
 
 GNOME does not require a tray extension. Closing Drape during playback hides the
@@ -30,6 +30,18 @@ window and keeps its background process running. Launch Drape again to reopen
 Pause/Resume, Stop and Quit controls. If GNOME has a compatible tray extension,
 the tray menu is also available. The GNOME host uses its own screen-lock service;
 it does not enable extensions or change desktop or startup settings.
+
+MATE keeps Caja's desktop icons and desktop clicks available. Its host copies
+rendered frames into Caja's existing shared background and asks Caja to redraw
+its icons, without changing desktop settings or restarting Caja. Presentation is
+capped at 30 FPS, and videos use software X11 output so hardware overlays do not
+bypass the copied background. Stop, Quit and loss of the player connection restore the exact
+original background pixels. If another application changes the static wallpaper,
+Drape stops live playback and leaves the new background alone. This requires the
+X11 Composite extension; the MATE host uses `org.mate.ScreenSaver` for lock
+notifications when MATE's screen locker is running. MATE 1.26 with Compiz was
+verified with video, animations and all audio input combinations on three monitors;
+video and animations were also verified with Marco, with and without compositing.
 
 Static wallpaper settings stay unchanged beneath live playback. Choosing a still
 wallpaper through Drape stops playback before applying the image. There is

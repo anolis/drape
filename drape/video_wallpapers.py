@@ -152,9 +152,18 @@ def request(action, **values):
 
 
 def _ensure_worker(source):
+    from . import wallpaper_desktop
+
     state = request("status")
+    host = wallpaper_desktop.current()
+    mate_upgrade = (
+        isinstance(host, wallpaper_desktop.MateX11)
+        and state.get("available")
+        and (state.get("mate_background") != 1 or state.get("desktop_host") != "mate")
+    )
     if (
-        state.get("stopping")
+        mate_upgrade
+        or state.get("stopping")
         or (state.get("available") and source != "video" and source not in state.get("sources", []))
         or (state.get("available") and source == "audio" and state.get("audio_visuals") != 1)
     ):
@@ -255,7 +264,7 @@ def play(path, fit="fill", source="video", **options):
     from . import wallpaper_sources as sources
 
     if not supported():
-        raise VideoError("Live wallpapers currently require Cinnamon or GNOME on X11.")
+        raise VideoError("Live wallpapers currently require Cinnamon, GNOME or MATE on X11.")
     path, values = selection(path, fit, source, **options)
     if source == "video":
         if not shutil.which("mpv"):

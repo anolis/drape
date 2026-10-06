@@ -38,7 +38,7 @@ click. No hunting for archives, no guessing which folder things go in.
   current-to-saved changes before applying selected parts. Missing files and components
   unsupported by the current desktop are listed and cannot be selected. These are local
   selections, so keep the underlying theme files installed. See [configurations](docs/configurations.md).
-- **Plays live wallpapers on Cinnamon and GNOME/X11.** **Shared assets → Live wallpapers**
+- **Plays live wallpapers on Cinnamon, GNOME and MATE/X11.** **Shared assets → Live wallpapers**
   offers local videos, installed XScreenSaver animations, and audio visualizations.
   Videos loop silently on every monitor with Fill/Fit. Animations offer a frame-rate
   target where supported. Audio styles include bars, a flowing curve, rings and blocks,
