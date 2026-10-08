@@ -119,6 +119,14 @@ upgrade. Drape does not start the XScreenSaver daemon or change your screen lock
 Only the selected animation runs, inside Drape's wallpaper surface rather than the
 root window. Pause freezes its owned processes; Stop also terminates its helper children.
 
+Animations can find their packaged image and text helpers even when a distribution
+keeps them outside the normal PATH. Image-based animations use XScreenSaver's
+configured image folder. GlitchPEG receives temporary JPEG copies of other image
+formats, since corrupting PNG data usually makes it undecodable. Drape retains
+at most eight derived images in the player's private runtime cache, preserving
+originals and XScreenSaver settings. Startup failures include a short animation
+log excerpt in Drape's status.
+
 ## Audio visualizations
 
 Choose **Audio visualization**, select a style, and enable **Desktop audio**, **Microphone**,

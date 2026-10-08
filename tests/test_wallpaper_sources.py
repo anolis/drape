@@ -1,6 +1,8 @@
 """Installed animation discovery, spectrum boundaries and source persistence."""
 
 import json
+import os
+import shutil
 import signal
 import tempfile
 import unittest
@@ -67,6 +69,18 @@ class SourceTests(unittest.TestCase):
         for name in ("/bin/sh", "../flakes", "flakes;evil", None):
             with self.subTest(name=name), self.assertRaises(videos.VideoError):
                 saver.validate(name)
+
+    def test_hacks_can_find_packaged_helpers_without_changing_the_session_path(self):
+        helper = self.bins / "xscreensaver-getimage-file"
+        helper.write_text("#!/bin/sh\nexit 0\n")
+        helper.chmod(0o755)
+        with mock.patch.dict(os.environ, PATH="/usr/bin"):
+            environment = saver.environment()
+            self.assertEqual(environment["PATH"], str(self.bins) + os.pathsep + "/usr/bin")
+            self.assertEqual(os.environ["PATH"], "/usr/bin")
+            self.assertEqual(
+                shutil.which("xscreensaver-getimage-file", path=environment["PATH"]), str(helper)
+            )
 
     def test_source_preferences_merge_and_keep_video_library_independent(self):
         self.assertEqual(sources.preferences()["source"], "video")

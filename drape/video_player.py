@@ -99,6 +99,7 @@ class Player:
             ],
             "sources": sorted(wallpaper_sources.SOURCES),
             "audio_visuals": 1,
+            "animation_helpers": 2,
             "desktop_host": self.host.desktop_name,
             "mate_background": 1,
             "xfce_background": 1,
@@ -318,7 +319,22 @@ class Player:
         if any(code is not None for code in exits):
             reason = f"{self.source} player exited during playback (monitor exit codes: {exits})."
             if not self._retry(reason):
-                self._failed(reason + " Check the logs in Drape's video runtime folder.")
+                details = ""
+                if self.source == "xscreensaver":
+                    for surface in self.surfaces:
+                        try:
+                            with surface.log.open("rb") as stream:
+                                stream.seek(0, os.SEEK_END)
+                                stream.seek(max(0, stream.tell() - 2048))
+                                lines = stream.read().decode(errors="replace").splitlines()
+                            # Include enough context to name a missing helper,
+                            # while bounding noisy animation diagnostics.
+                            details = "\n" + "\n".join(lines[-3:])[:600] if lines else ""
+                        except OSError:
+                            pass
+                        if details:
+                            break
+                self._failed(reason + details + "\nCheck the logs in Drape's video runtime folder.")
         elif self.state == "starting":
             try:
                 if self.source == "audio":

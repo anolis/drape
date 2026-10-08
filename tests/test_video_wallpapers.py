@@ -370,6 +370,7 @@ class PlayerTests(unittest.TestCase):
     def player(self):
         player = object.__new__(Player)
         player.surfaces = [mock.Mock()]
+        player.surfaces[0].log = Path("/missing/drape-animation.log")
         player.state, player.path, player.fit, player.error = "playing", "/video.mp4", "fill", ""
         player.paused, player.locked = False, False
         player.renderer = "gpu"
@@ -549,6 +550,23 @@ class PlayerTests(unittest.TestCase):
             player.dispatch({"action": "pause", "paused": False})
             surface.pause_animation.assert_called_with(False)
             send.assert_not_called()
+
+    def test_animation_exit_reports_a_bounded_helper_error_from_its_log(self):
+        player = self.player()
+        player.source = "xscreensaver"
+        surface = player.surfaces[0]
+        surface.process.poll.return_value = 1
+        with tempfile.TemporaryDirectory() as directory:
+            surface.log = Path(directory) / "animation.log"
+            surface.log.write_text(
+                "old noise\n" * 1000
+                + "xscreensaver-getimage-file: not found\nglitchpeg: too many errors loading images\n"
+            )
+            player._tick()
+        self.assertEqual(player.state, "error")
+        self.assertIn("xscreensaver-getimage-file: not found", player.error)
+        self.assertNotIn("old noise\nold noise\nold noise\nold noise", player.error)
+        self.assertLess(len(player.error), 1000)
 
     def test_animation_exit_has_no_video_decoder_retry_and_releases_windows(self):
         player = self.player()

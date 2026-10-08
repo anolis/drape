@@ -70,9 +70,10 @@ class Surface:
             # Append lets the periodic cap truncate the file without leaving
             # sparse holes at the child's previous write position.
             with self.log.open("ab") as log:
+                entry = wallpaper_xscreensaver.validate(path) if source == "xscreensaver" else None
                 args = (
                     wallpaper_xscreensaver.command(
-                        wallpaper_xscreensaver.validate(path),
+                        entry,
                         area.get_window().get_xid(),
                         options["fps"],
                         options.get("settings", {}),
@@ -93,6 +94,7 @@ class Surface:
                     stdout=log,
                     stderr=subprocess.STDOUT,
                     start_new_session=source == "xscreensaver",
+                    env=wallpaper_xscreensaver.environment(entry) if entry else None,
                 )
         except (OSError, videos.VideoError):
             self.close()

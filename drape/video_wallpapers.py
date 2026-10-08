@@ -177,6 +177,11 @@ def _ensure_worker(source):
         or plasma_upgrade
         or state.get("stopping")
         or (state.get("available") and source != "video" and source not in state.get("sources", []))
+        or (
+            state.get("available")
+            and source == "xscreensaver"
+            and state.get("animation_helpers") != 2
+        )
         or (state.get("available") and source == "audio" and state.get("audio_visuals") != 1)
     ):
         # A player from an older checkout cannot render the new source. Stop it
