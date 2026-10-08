@@ -38,7 +38,7 @@ click. No hunting for archives, no guessing which folder things go in.
   current-to-saved changes before applying selected parts. Missing files and components
   unsupported by the current desktop are listed and cannot be selected. These are local
   selections, so keep the underlying theme files installed. See [configurations](docs/configurations.md).
-- **Plays live wallpapers on Cinnamon, GNOME and MATE/X11.** **Shared assets → Live wallpapers**
+- **Plays live wallpapers on Cinnamon, GNOME, MATE, Xfce and Plasma 6/X11.** **Shared assets → Live wallpapers**
   offers local videos, installed XScreenSaver animations, and audio visualizations.
   Videos loop silently on every monitor with Fill/Fit. Animations offer a frame-rate
   target where supported. Audio styles include bars, a flowing curve, rings and blocks,
@@ -61,7 +61,14 @@ click. No hunting for archives, no guessing which folder things go in.
   are referenced in place, so moving a file makes it unavailable; removing a list entry
   does not delete the video. Wayland, including GNOME/Wayland, and other desktops are not
   supported yet. Desktop integration is separate from rendering to support
-  additional desktops later. See [live wallpapers](docs/video-wallpapers.md).
+  additional desktops later. Xfce asks before restarting its icon host with a temporary
+  background adapter, requires a C compiler (`gcc` or `clang`), and provides **Restore
+  standard Xfce desktop** to unload it. Its panel and menu entries are untouched.
+  Plasma 6 uses a native wallpaper plugin on the current activity's screens, keeping
+  icons, widgets and panels available. Stop restores each screen's previous wallpaper;
+  **Restore previous Plasma wallpapers** also recovers an interrupted session.
+  Plasma presentation is capped at 20 FPS and uses software video playback.
+  See [live wallpapers](docs/video-wallpapers.md).
 - **Deletes installed items in batches.** Check wallpaper or theme-pack cards in Installed,
   or use Select all in category, then Delete selected. Selection carries across categories;
   one confirmation lists the affected images/packs and flags anything currently in use.

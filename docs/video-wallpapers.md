@@ -1,6 +1,6 @@
 # Live wallpapers
 
-Live wallpapers support Cinnamon, GNOME and MATE on X11. GNOME video, XScreenSaver
+Live wallpapers support Cinnamon, GNOME, MATE, Xfce and Plasma 6 on X11. GNOME video, XScreenSaver
 animations and audio visualizations were verified on GNOME 48.7 with three monitors.
 GNOME/Wayland remains unsupported: an XWayland display cannot host desktop wallpapers.
 Install `mpv` through your system's
@@ -18,7 +18,7 @@ frame-rate target, visualization style, color or audio inputs applies automatica
 Quick edits are combined into one switch. A manual pause is preserved; changing
 controls while stopped does not start playback.
 
-Starting playback puts Drape in Cinnamon or MATE's system tray. Closing the main window
+Starting playback puts Drape in Cinnamon, MATE, Xfce or Plasma's system tray. Closing the main window
 hides it; the tray's **Show Drape** action or launching Drape again reopens it.
 The tray also offers Pause/Resume, Stop wallpaper and Quit Drape. Stop reveals
 the existing static wallpaper and leaves Drape available in the tray. Quit stops
@@ -43,7 +43,47 @@ notifications when MATE's screen locker is running. MATE 1.26 with Compiz was
 verified with video, animations and all audio input combinations on three monitors;
 video and animations were also verified with Marco, with and without compositing.
 
-Static wallpaper settings stay unchanged beneath live playback. Choosing a still
+Xfce keeps Xfdesktop's icons and desktop input available. On first Play, Drape
+asks before briefly restarting Xfdesktop with a temporary background adapter.
+Choose **Cancel** to leave it alone or **Enable & play** to proceed. This requires
+`gcc` or `clang` to build a small adapter once; no development headers are needed.
+The adapter changes only that Xfdesktop process's background rendering. Menu entries,
+startup commands, Xfconf settings, the panel and Thunar windows are untouched.
+Renderers stay offscreen so animations cannot cover icons if they raise their window.
+Presentation is capped at 30 FPS and videos use software X11 output.
+
+**Stop & restore static wallpaper** stops the source while keeping the adapter
+available for the next selection. **Restore standard Xfce desktop** stops playback
+and reloads Xfdesktop without the adapter. Quit Drape or a disconnected player also
+restores the standard desktop; an unexpectedly killed guardian is recovered by the
+player. Source switches reuse the same icon host. The host uses `org.xfce.ScreenSaver`
+when Xfce's screen locker is running. Xfdesktop 4.20.1 was verified with video,
+animations and all audio input combinations on three monitors with Compiz; video,
+animations and restoration were also verified with Xfwm, with and without compositing.
+Wayland remains unsupported.
+
+Plasma 6 keeps its own desktop, icons, widgets and panels. First Play installs
+Drape's native wallpaper plugin in your user data directory and selects it for
+each visible screen in the current activity. Other activities are left alone.
+Plasma is not restarted, and panel layouts, menu entries and startup settings
+are not changed. Your previous wallpaper plugins and their settings are retained.
+**Stop & restore static wallpaper**, Quit or a lost player connection returns
+each screen to its previous wallpaper. **Restore previous Plasma wallpapers**
+also recovers a saved session after an unexpected helper termination. Choosing
+another wallpaper type through Plasma stops playback, preserving your new choice
+and restoring the other screens. Restoration only affects screens still owned by Drape.
+
+Plasma presentation is capped at 20 FPS with locally encoded JPEG frames, and
+videos use software X11 output. This can use more CPU than hardware playback,
+especially across several high-resolution monitors. The higher XScreenSaver
+frame-rate targets still control the animation itself; presentation remains
+capped. Plasma uses `org.freedesktop.ScreenSaver` for lock notifications and can
+keep playback running without a tray. Plasma 6.3.6 with KWin/X11 was verified
+with video, animations, all audio input combinations and crash restoration on
+three monitors with fractional scaling. Plasma 5 and Plasma/Wayland are not
+supported by this host yet.
+
+Static wallpaper settings are retained during live playback. Choosing a still
 wallpaper through Drape stops playback before applying the image. There is
 no login startup entry in this version: start playback manually after login.
 Menu entries and existing startup commands are not edited.
@@ -128,18 +168,39 @@ draws spectrum styles, and `wallpaper_colors.py` supplies palettes and smooth co
 `wallpaper_process.py` bounds logs and controls only worker-owned processes.
 
 `wallpaper_desktop.py` owns desktop-specific window setup, icon layering and lock
-service details. The registered hosts are Cinnamon/X11 and GNOME/X11, using their
-respective screen-lock services. Rendering sources do not
-depend on Cinnamon: MATE and Xfce hosts can reuse them after their desktop-window
-and screen-lock behavior is implemented and tested. A Wayland host needs compositor
-integration rather than X11 window IDs; it is not enabled by an XWayland connection.
+service details. Registered hosts are Cinnamon, GNOME, MATE, Xfce and Plasma 6 on X11,
+using their respective screen-lock services. A Wayland host needs compositor
+integration rather than X11 window IDs; an XWayland connection does not enable it.
 
-The X11 hosts use `video_x11.py` to place only Drape's surfaces below any icon-hosting
-desktop windows through the window manager's EWMH interface. Ordinary GDK lowering
-can be rejected by focus-stealing checks; stacking is verified before revealing a decoded video,
-then checked again when desktop windows change. Input regions are empty, preserving
-desktop clicks and any icon host's selection, drag-and-drop and context menu. GNOME
-without desktop icons needs no separate icon window or Shell extension.
+Cinnamon and GNOME use `video_x11.py` to place Drape's surfaces below icon-hosting
+desktop windows through the window manager's EWMH interface. Stacking is verified
+before revealing a decoded video. All hosts keep input regions empty, preserving
+desktop clicks, selection, drag-and-drop and context menus.
+
+MATE and Xfce isolate frame copying in `wallpaper_background.py` and the shared
+X11 bridge `wallpaper_x11.py`. MATE updates Caja's existing shared pixmap and
+restores its original pixels on disconnect. Xfce publishes its own pixmap through
+`wallpaper_xfce_x11.py`; `native/xfdesktop_background.c` draws it behind Xfdesktop's
+icons using public GTK/GDK/Cairo APIs. `wallpaper_xfce_adapter.py` caches the compiled
+adapter by source revision and supervises its temporary desktop process. Its
+`xfdesktop-adapter.log` is in the player's runtime directory. Removing playback's
+owned properties reveals Xfdesktop's original background; the standard desktop is
+restored without retaining the adapter in saved-session commands. Repaint serials
+remain unchanged on pause and idle audio.
+
+Plasma isolates X11 capture in `wallpaper_frame_server.py`, with bounded,
+loopback-only HTTP transport using a private random URL. `wallpaper_plasma.py`
+owns the current activity's wallpaper lease and stores an atomic restoration
+record in `~/.config/drape/plasma-wallpaper.json` (or the XDG config equivalent)
+before changing any screen. `plasma_wallpaper/` supplies the native Plasma 6
+package; it polls frame metadata and swaps decoded images without changing
+desktop containment or widgets. Paused frames and idle audio are not re-encoded.
+Render windows stay offscreen. A disconnected player restores the wallpaper;
+a killed presentation helper is recovered by the player, the Restore action
+or the next Play. Lease ownership checks preserve external wallpaper changes.
+Ownership queries pause with playback and retry temporary D-Bus timeouts rather
+than treating them as wallpaper changes. Unlock resumes playback unless it was
+manually paused; this applies to video, animations and audio visualizations.
 
 The worker listens on a private Unix socket in `$XDG_RUNTIME_DIR/drape-video`
 (or a private per-user temporary directory). It runs one mpv per monitor, disables

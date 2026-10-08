@@ -104,5 +104,14 @@
       "Add a GNOME/X11 host for local videos, XScreenSaver animations and audio visualizations, verified on GNOME 48.7 across three monitors. Keep wallpaper surfaces behind ordinary windows and existing icon hosts, use GNOME’s screen-lock service, and allow playback to continue with the main window hidden even without a tray extension. Reopen Drape for controls or use the new Quit Drape action. GNOME/Wayland remains unsupported.",
       "Expand live audio wallpapers to nine styles with mirrored spectrum, circular wave, layered ribbons, orbiting lights and spectrum spiral. Add seven color modes, including custom two-color gradients and Rainbow, Aurora, Sunset, Fire & gold and Ocean palettes. Preview the palette and cycle colors smoothly at three speeds; changes apply live and persist. Pause freezes animation, silence avoids continuous repainting, and older preferences load with compatible defaults."
     ]
+  },
+  "2026-10-07": {
+    "title": "Live wallpapers on Xfce and Plasma, with lock recovery",
+    "changes": [
+      "Add Xfce/X11 live wallpapers with an explicitly confirmed temporary Xfdesktop background adapter. Keep desktop icons and clicks available, reuse the icon host across source switches, and provide Restore standard Xfce desktop. Panels, menu entries and startup settings are unchanged. Verify video, animations, audio and restoration with Compiz and Xfwm.",
+      "Add Plasma 6/X11 live wallpapers through a native wallpaper plugin on the current activity’s screens. Keep icons, desktop widgets and panels available; restore each screen’s previous wallpaper on Stop, Quit or player disconnect, and preserve wallpaper changes made outside Drape. Provide durable crash recovery and Restore previous Plasma wallpapers. Verify all sources on three monitors with fractional scaling. Presentation is capped at 20 FPS with software video playback.",
+      "Fix live wallpapers stopping after Plasma screen lock when a wallpaper ownership query times out. Pause queries with playback and retry temporary D-Bus timeouts without discarding the lease. Unlock resumes video, animations and audio unless manually paused. Confirm an actual Plasma lock/unlock cycle resumes Distort and frame updates; all 527 regression tests pass.",
+      "Update the website and live-wallpaper guide with Xfce and Plasma support, recovery controls, optional dependencies, performance limits and the X11 requirement."
+    ]
   }
 }

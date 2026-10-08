@@ -154,11 +154,28 @@
     <div class="intro">
       <h1>Changelog</h1>
       <p class="lede">New features, fixes and the work behind Drape, from the first commit onward. Browse daily highlights, then expand a day to see every commit.</p>
-      <p class="note">108 commits since <time datetime="2026-09-25">September 25, 2026</time>.
-        History through <a href="https://github.com/anolis/drape/commit/4d4a813092738f50adfab4063aced0d7829fba78">4d4a813</a>.
+      <p class="note">111 commits since <time datetime="2026-09-25">September 25, 2026</time>.
+        History through <a href="https://github.com/anolis/drape/commit/645202c8fca457afabb065e9113f36cd4b11c9a1">645202c</a>.
         <a href="https://github.com/anolis/drape/commits/main/">View the latest Git history</a>.</p>
       <a class="btn" href="index.html#install">Update your install</a>
     </div>
+    <section class="entry" id="day-2026-10-07" aria-labelledby="title-2026-10-07">
+      <p class="date"><a href="#day-2026-10-07"><time datetime="2026-10-07">October 7, 2026</time></a></p>
+      <h2 id="title-2026-10-07">Live wallpapers on Xfce and Plasma, with lock recovery</h2>
+      <ul class="changes">
+        <li>Add Xfce/X11 live wallpapers with an explicitly confirmed temporary Xfdesktop background adapter. Keep desktop icons and clicks available, reuse the icon host across source switches, and provide Restore standard Xfce desktop. Panels, menu entries and startup settings are unchanged. Verify video, animations, audio and restoration with Compiz and Xfwm.</li>
+        <li>Add Plasma 6/X11 live wallpapers through a native wallpaper plugin on the current activity’s screens. Keep icons, desktop widgets and panels available; restore each screen’s previous wallpaper on Stop, Quit or player disconnect, and preserve wallpaper changes made outside Drape. Provide durable crash recovery and Restore previous Plasma wallpapers. Verify all sources on three monitors with fractional scaling. Presentation is capped at 20 FPS with software video playback.</li>
+        <li>Fix live wallpapers stopping after Plasma screen lock when a wallpaper ownership query times out. Pause queries with playback and retry temporary D-Bus timeouts without discarding the lease. Unlock resumes video, animations and audio unless manually paused. Confirm an actual Plasma lock/unlock cycle resumes Distort and frame updates; all 527 regression tests pass.</li>
+        <li>Update the website and live-wallpaper guide with Xfce and Plasma support, recovery controls, optional dependencies, performance limits and the X11 requirement.</li>
+      </ul>
+      <details>
+        <summary>View 2 commits</summary>
+        <ol class="commits">
+          <li data-commit="645202c8fca457afabb065e9113f36cd4b11c9a1"><a class="commit" href="https://github.com/anolis/drape/commit/645202c8fca457afabb065e9113f36cd4b11c9a1">645202c</a><span>feat: add Plasma 6 X11 live wallpapers with lock recovery</span></li>
+          <li data-commit="0820eef853c8475f7d157f97cc901d6b4fb5c9bb"><a class="commit" href="https://github.com/anolis/drape/commit/0820eef853c8475f7d157f97cc901d6b4fb5c9bb">0820eef</a><span>feat: add Xfce X11 live wallpaper support</span></li>
+        </ol>
+      </details>
+    </section>
     <section class="entry" id="day-2026-10-06" aria-labelledby="title-2026-10-06">
       <p class="date"><a href="#day-2026-10-06"><time datetime="2026-10-06">October 6, 2026</time></a></p>
       <h2 id="title-2026-10-06">Live wallpapers on more desktops and colorful audio visualizations</h2>
@@ -169,8 +186,9 @@
         <li>Expand live audio wallpapers to nine styles with mirrored spectrum, circular wave, layered ribbons, orbiting lights and spectrum spiral. Add seven color modes, including custom two-color gradients and Rainbow, Aurora, Sunset, Fire &amp; gold and Ocean palettes. Preview the palette and cycle colors smoothly at three speeds; changes apply live and persist. Pause freezes animation, silence avoids continuous repainting, and older preferences load with compatible defaults.</li>
       </ul>
       <details>
-        <summary>View 4 commits</summary>
+        <summary>View 5 commits</summary>
         <ol class="commits">
+          <li data-commit="a2d3122a60f062b2f47793830883de4f91f6b7e0"><a class="commit" href="https://github.com/anolis/drape/commit/a2d3122a60f062b2f47793830883de4f91f6b7e0">a2d3122</a><span>docs: update website with live wallpaper sources and desktop support</span></li>
           <li data-commit="4d4a813092738f50adfab4063aced0d7829fba78"><a class="commit" href="https://github.com/anolis/drape/commit/4d4a813092738f50adfab4063aced0d7829fba78">4d4a813</a><span>feat: add MATE X11 live wallpaper support</span></li>
           <li data-commit="dd2873c3b5713feca8dc3c211ea43c31361cb4bd"><a class="commit" href="https://github.com/anolis/drape/commit/dd2873c3b5713feca8dc3c211ea43c31361cb4bd">dd2873c</a><span>docs: describe live wallpaper sources and GNOME support</span></li>
           <li data-commit="0c1fe8da8996d7c9e580bcb2c7949bece89db2d0"><a class="commit" href="https://github.com/anolis/drape/commit/0c1fe8da8996d7c9e580bcb2c7949bece89db2d0">0c1fe8d</a><span>feat: add live wallpaper sources and GNOME X11 support</span></li>
