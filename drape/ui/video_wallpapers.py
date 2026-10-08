@@ -81,15 +81,36 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
         self.controls.pack_start(actions, False, False, 0)
         host = wallpaper_desktop.current()
         self.xfce = isinstance(host, wallpaper_desktop.XfceX11)
+        self.plasma = isinstance(host, wallpaper_desktop.PlasmaX11)
         self.restore_desktop = Gtk.Button(label="Restore standard Xfce desktop")
         self.restore_desktop.set_sensitive(False)
         self.restore_desktop.set_no_show_all(True)
-        self.restore_desktop.set_visible(self.xfce)
+        self.restore_desktop.set_visible(self.xfce or self.plasma)
+        if self.plasma:
+            self.restore_desktop.set_label("Restore previous Plasma wallpapers")
         self.restore_desktop.set_tooltip_text(
             "Stop playback and restart Xfdesktop without Drape’s adapter. Keeps icons, wallpaper settings and panel layout."
         )
         self.restore_desktop.connect("clicked", lambda *_: self._run(videos.restore_desktop))
+        if self.plasma:
+            self.restore_desktop.set_tooltip_text(
+                "Stop playback and restore each screen’s previous wallpaper plugin and settings. "
+                "Keeps wallpapers you changed separately in Plasma."
+            )
         self.controls.pack_start(self.restore_desktop, False, False, 0)
+        if self.plasma:
+            self.body.pack_start(
+                Gtk.Label(
+                    label="Playback temporarily selects Drape’s wallpaper plugin on each screen in the current Plasma activity. "
+                    "Stop restores the previous wallpapers. Desktop widgets stay available. "
+                    "Presentation is capped at 20 FPS and uses software video playback, which can use more CPU.",
+                    xalign=0,
+                    wrap=True,
+                ),
+                False,
+                False,
+                0,
+            )
         self.status = Gtk.Label(xalign=0, wrap=True)
         self.body.pack_start(self.status, False, False, 0)
         self.body.pack_start(
@@ -97,7 +118,7 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
                 label="Your static wallpaper stays unchanged underneath. Selecting a still wallpaper "
                 "in Drape stops live playback. Videos are remembered by their file location; "
                 "moving or deleting a file makes it unavailable. Playback pauses while the screen is locked. "
-                "Supports Cinnamon, GNOME, MATE and Xfce on X11. Local video requires mpv; other sources use their own optional packages. "
+                "Supports Cinnamon, GNOME, MATE, Xfce and Plasma 6 on X11. Local video requires mpv; other sources use their own optional packages. "
                 "Start playback manually after login.",
                 xalign=0,
                 wrap=True,
@@ -176,6 +197,10 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
     def update_status(self, state):
         self.state = state
         restorable = bool(state.get("xfce_adapter"))
+        if self.plasma:
+            from ..wallpaper_plasma import STATE
+
+            restorable = STATE.exists()
         self.restore_desktop.set_sensitive(restorable)
         active = state["state"] in {"starting", "playing", "paused"}
         self.pause_button.set_sensitive(active and state["state"] != "starting")

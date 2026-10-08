@@ -102,6 +102,7 @@ class Player:
             "desktop_host": self.host.desktop_name,
             "mate_background": 1,
             "xfce_background": 1,
+            "plasma_background": 2,
             "xfce_adapter": bool(
                 getattr(self.host, "guardian", None) and self.host.guardian.process.poll() is None
             ),
@@ -207,7 +208,7 @@ class Player:
         if action == "play":
             if not videos.supported():
                 raise videos.VideoError(
-                    "Live wallpapers currently require Cinnamon, GNOME, MATE or Xfce on X11."
+                    "Live wallpapers currently require Cinnamon, GNOME, MATE, Xfce or Plasma 6 on X11."
                 )
             source = data.get("source", "video")
             options = data.get("options", {})
@@ -419,7 +420,7 @@ class Handler(socketserver.StreamRequestHandler):
 def main():
     if not videos.supported():
         raise videos.VideoError(
-            "Live wallpapers currently require Cinnamon, GNOME, MATE or Xfce on X11."
+            "Live wallpapers currently require Cinnamon, GNOME, MATE, Xfce or Plasma 6 on X11."
         )
     directory = videos.runtime_dir()
     # Held for the worker's entire lifetime; a stale socket never owns a player.

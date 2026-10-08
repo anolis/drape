@@ -161,6 +161,11 @@ def _ensure_worker(source):
         and state.get("available")
         and (state.get("xfce_background") != 1 or state.get("desktop_host") != "xfce")
     )
+    plasma_upgrade = (
+        isinstance(host, wallpaper_desktop.PlasmaX11)
+        and state.get("available")
+        and (state.get("plasma_background") != 2 or state.get("desktop_host") != "kde")
+    )
     mate_upgrade = (
         isinstance(host, wallpaper_desktop.MateX11)
         and state.get("available")
@@ -169,6 +174,7 @@ def _ensure_worker(source):
     if (
         mate_upgrade
         or xfce_upgrade
+        or plasma_upgrade
         or state.get("stopping")
         or (state.get("available") and source != "video" and source not in state.get("sources", []))
         or (state.get("available") and source == "audio" and state.get("audio_visuals") != 1)
@@ -270,7 +276,9 @@ def play(path, fit="fill", source="video", *, allow_desktop_restart=False, **opt
     from . import wallpaper_sources as sources
 
     if not supported():
-        raise VideoError("Live wallpapers currently require Cinnamon, GNOME, MATE or Xfce on X11.")
+        raise VideoError(
+            "Live wallpapers currently require Cinnamon, GNOME, MATE, Xfce or Plasma 6 on X11."
+        )
     path, values = selection(path, fit, source, **options)
     if source == "video":
         if not shutil.which("mpv"):
@@ -311,5 +319,13 @@ def stop():
 
 
 def restore_desktop():
-    """Stop playback and unload the temporary desktop adapter."""
+    """Explicit exit route, including a Plasma lease left without a player."""
+    from . import wallpaper_desktop
+
+    if isinstance(wallpaper_desktop.current(), wallpaper_desktop.PlasmaX11):
+        from . import wallpaper_plasma
+
+        stop()
+        wallpaper_plasma.restore()
+        return request("status")
     return request("restore_desktop")

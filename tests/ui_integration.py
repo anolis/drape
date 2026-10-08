@@ -120,6 +120,28 @@ with tempfile.TemporaryDirectory() as temp:
         request.assert_called_with("restore_desktop")
         assert not xfce_page.restore_desktop.get_sensitive()
         xfce_page.destroy()
+    # Plasma exposes recovery even with no surviving player; availability is
+    # based on the durable wallpaper lease, never on an unrelated Xfce adapter.
+    from drape import wallpaper_plasma
+    with mock.patch.object(wallpaper_desktop, "current", return_value=wallpaper_desktop.PlasmaX11()), mock.patch.object(wallpaper_plasma, "STATE", Path(temp) / "plasma-lease.json"), mock.patch.object(videos, "request", return_value={"state": "stopped", "path": ""}):
+        plasma_page = VideoWallpapersPage(win)
+        plasma_page.load()
+        pump()
+        assert plasma_page.restore_desktop.get_visible()
+        assert plasma_page.restore_desktop.get_label() == "Restore previous Plasma wallpapers"
+        assert not plasma_page.restore_desktop.get_sensitive()
+        wallpaper_plasma.STATE.touch()
+        plasma_page.update_status({"state": "stopped", "path": ""})
+        assert plasma_page.restore_desktop.get_sensitive()
+        def restore_plasma():
+            wallpaper_plasma.STATE.unlink()
+            return {"state": "stopped", "path": ""}
+        with mock.patch.object(videos, "restore_desktop", side_effect=restore_plasma) as restore:
+            plasma_page.restore_desktop.clicked()
+            pump()
+            restore.assert_called_once()
+            assert not plasma_page.restore_desktop.get_sensitive()
+        plasma_page.destroy()
     # Source changes share tray/lifecycle controls, without requiring mpv for
     # animations or accidentally enabling microphone capture.
     animation = {"name": "fuzzyflakes", "label": "Fuzzy Flakes", "description": "Falling flakes", "delay": "--delay", "executable": "/fake/fuzzyflakes"}

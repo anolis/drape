@@ -293,6 +293,62 @@ class VideoTests(unittest.TestCase):
             [call.args[0] for call in request.call_args_list], ["status", "quit", "status"]
         )
 
+    def test_plasma_replaces_legacy_or_other_desktop_worker(self):
+        for state in (
+            {"available": True, "desktop_host": "kde"},
+            {"available": True, "desktop_host": "kde", "plasma_background": 1},
+            {"available": True, "desktop_host": "mate", "plasma_background": 1},
+        ):
+            with (
+                self.subTest(state=state),
+                mock.patch.object(
+                    wallpaper_desktop, "current", return_value=wallpaper_desktop.PlasmaX11()
+                ),
+                mock.patch.object(
+                    videos, "request", side_effect=[state, {}, {"available": True}]
+                ) as request,
+                mock.patch.object(videos.subprocess, "Popen") as launch,
+            ):
+                videos._ensure_worker("video")
+                launch.assert_called_once()
+                self.assertEqual(
+                    [call.args[0] for call in request.call_args_list],
+                    ["status", "quit", "status"],
+                )
+
+    def test_plasma_worker_with_lock_recovery_is_reused(self):
+        with (
+            mock.patch.object(
+                wallpaper_desktop, "current", return_value=wallpaper_desktop.PlasmaX11()
+            ),
+            mock.patch.object(
+                videos,
+                "request",
+                return_value={"available": True, "desktop_host": "kde", "plasma_background": 2},
+            ),
+            mock.patch.object(videos.subprocess, "Popen") as launch,
+        ):
+            videos._ensure_worker("video")
+        launch.assert_not_called()
+
+    def test_plasma_restore_recovers_a_lease_even_without_a_player(self):
+        from drape import wallpaper_plasma
+
+        order = []
+        with (
+            mock.patch.object(
+                wallpaper_desktop, "current", return_value=wallpaper_desktop.PlasmaX11()
+            ),
+            mock.patch.object(videos, "stop", side_effect=lambda: order.append("stop")),
+            mock.patch.object(
+                wallpaper_plasma, "restore", side_effect=lambda: order.append("restore")
+            ),
+            mock.patch.object(videos, "request", return_value={"state": "stopped"}) as request,
+        ):
+            self.assertEqual(videos.restore_desktop(), {"state": "stopped"})
+        self.assertEqual(order, ["stop", "restore"])
+        request.assert_called_once_with("status")
+
     def test_still_wallpaper_stops_video_before_gsettings_write(self):
         order = []
         with (
@@ -379,6 +435,36 @@ class PlayerTests(unittest.TestCase):
             player._lock_changed(None, None, None, None, None, mock.Mock(unpack=lambda: (False,)))
             self.assertEqual(player.state, "paused")
             self.assertEqual(send.call_args.args[1], ["set_property", "pause", True])
+
+    def test_lock_unlock_controls_every_source_and_preserves_manual_pause(self):
+        for source in ("video", "xscreensaver", "audio"):
+            for manual_pause in (False, True):
+                with self.subTest(source=source, manual_pause=manual_pause):
+                    player = self.player()
+                    player.source, player.paused = source, manual_pause
+                    player.presentation, player.audio = mock.Mock(), mock.Mock()
+                    surface = player.surfaces[0]
+                    with mock.patch.object(video_mpv, "send") as send:
+                        player._lock_changed(
+                            None, None, None, None, None, mock.Mock(unpack=lambda: (True,))
+                        )
+                        self.assertEqual(player.state, "paused")
+                        player.presentation.pause.assert_called_with(True)
+                        player._lock_changed(
+                            None, None, None, None, None, mock.Mock(unpack=lambda: (False,))
+                        )
+                        self.assertEqual(player.state, "paused" if manual_pause else "playing")
+                        player.presentation.pause.assert_called_with(manual_pause)
+                        if source == "video":
+                            send.assert_called_with(
+                                surface.ipc, ["set_property", "pause", manual_pause]
+                            )
+                        elif source == "xscreensaver":
+                            surface.pause_animation.assert_called_with(manual_pause)
+                            send.assert_not_called()
+                        else:
+                            player.audio.pause.assert_called_with(manual_pause)
+                            send.assert_not_called()
 
     def test_failed_player_releases_all_surfaces(self):
         player = self.player()

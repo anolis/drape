@@ -212,7 +212,46 @@ class XfceX11(X11Desktop):
             self.guardian = None
 
 
-HOSTS = (CinnamonX11, GnomeX11, MateX11, XfceX11)
+class PlasmaX11(X11Desktop):
+    desktop_name = "kde"
+    lock_service = "org.freedesktop.ScreenSaver"
+    lock_path = "/ScreenSaver"
+    label = "Plasma 6 on X11"
+    copy_background = True
+    background_without_tray = True
+
+    @classmethod
+    def supported(cls):
+        from . import kde
+
+        return super().supported() and kde.major_version() == 6
+
+    @staticmethod
+    def video_profiles():
+        return ("software",)
+
+    @staticmethod
+    def window(monitor):
+        # Plasma's wallpaper plugin presents the copied frames, while the
+        # original render windows remain outside the visible desktop.
+        return XfceX11.window(monitor)
+
+    restack = staticmethod(XfceX11.restack)
+    reveal = staticmethod(XfceX11.reveal)
+
+    def setup(self, allow_restart=False):
+        from . import wallpaper_plasma
+
+        wallpaper_plasma.install()
+
+    @staticmethod
+    def present(surfaces, source):
+        from .wallpaper_plasma import Presentation
+
+        return Presentation(surfaces, source)
+
+
+HOSTS = (CinnamonX11, GnomeX11, MateX11, XfceX11, PlasmaX11)
 
 
 def current():

@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/Wallpaper",
+    "KPlugin": {
+        "Id": "org.anolis.drape.wallpaper",
+        "Name": "Drape live wallpaper",
+        "Description": "Live wallpaper controlled by Drape; Stop restores your previous wallpaper",
+        "Version": "1.0",
+        "License": "GPL-3.0-or-later",
+        "Authors": [{"Name": "Drape contributors"}]
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}
