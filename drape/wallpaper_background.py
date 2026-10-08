@@ -1,4 +1,4 @@
-"""Caja background presentation with crash-safe restoration in a separate process."""
+"""Desktop background presentation, isolated from GTK and the theme browser."""
 
 import json
 import os
@@ -12,14 +12,32 @@ from .video_wallpapers import VideoError
 
 
 class Mirror:
-    def __init__(self, surfaces, source):
+    def __init__(self, surfaces, source, desktop="mate"):
         windows = []
         for surface in surfaces:
             scale = surface.window.get_scale_factor()
-            xx, yy = surface.window.get_position()
-            windows.append([surface.area.get_window().get_xid(), xx * scale, yy * scale])
+            if desktop == "xfce":
+                rect = surface.monitor.get_geometry()
+                xx, yy = rect.x, rect.y
+            else:
+                xx, yy = surface.window.get_position()
+            windows.append(
+                [
+                    surface.area.get_window().get_xid(),
+                    xx * scale,
+                    yy * scale,
+                    surface.window.get_window().get_xid(),
+                ]
+            )
         self.process = subprocess.Popen(
-            [sys.executable, "-m", "drape.wallpaper_mate", json.dumps(windows), source],
+            [
+                sys.executable,
+                "-m",
+                "drape.wallpaper_background",
+                json.dumps(windows),
+                source,
+                desktop,
+            ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -39,7 +57,7 @@ class Mirror:
                 break
             self.buffer += chunk
             if len(self.buffer) > 8192:
-                raise VideoError("MATE's background helper returned an invalid response.")
+                raise VideoError("The desktop background helper returned an invalid response.")
         lines = self.buffer.split(b"\n")
         self.buffer = lines.pop()
         for line in lines:
@@ -48,7 +66,9 @@ class Mirror:
                 raise VideoError(response["error"])
             self.prepared |= response.get("ready", False)
         if self.process.poll() is not None:
-            raise VideoError("MATE's background helper stopped. The static wallpaper was restored.")
+            raise VideoError(
+                "The desktop background helper stopped. The static wallpaper was restored."
+            )
         return self.prepared
 
     def _send(self, command):
@@ -57,7 +77,7 @@ class Mirror:
         except BlockingIOError:
             pass  # Frame invalidations may coalesce; never stall GTK.
         except BrokenPipeError as exc:
-            raise VideoError("MATE's background helper stopped.") from exc
+            raise VideoError("The desktop background helper stopped.") from exc
 
     def pause(self, paused):
         self._send(b"pause" if paused else b"resume")
@@ -80,8 +100,8 @@ class Mirror:
         self.process.stdout.close()
 
 
-def run(surfaces, source):
-    from .wallpaper_mate_x11 import X11, Background
+def run(surfaces, source, desktop="mate"):
+    from .wallpaper_x11 import X11, Background
 
     stopped = False
 
@@ -94,7 +114,12 @@ def run(surfaces, source):
     x11 = background = None
     try:
         x11 = X11()
-        background = Background(x11, surfaces)
+        if desktop == "xfce":
+            from .wallpaper_xfce_x11 import Background as XfceBackground
+
+            background = XfceBackground(x11, surfaces)
+        else:
+            background = Background(x11, surfaces)
         # Redirected windows need a rendering interval before their first copy.
         next_frame = time.monotonic() + 0.1
         next_check = next_frame
@@ -111,7 +136,7 @@ def run(surfaces, source):
                     break
                 pending += chunk
                 if len(pending) > 8192:
-                    raise ValueError("Invalid MATE wallpaper commands.")
+                    raise ValueError("Invalid wallpaper commands.")
                 lines = pending.split(b"\n")
                 pending = lines.pop()
                 for command in lines:
@@ -123,9 +148,9 @@ def run(surfaces, source):
                         dirty = True
             now = time.monotonic()
             if now >= next_check:
-                if background.caja and not background.unchanged():
+                if not background.unchanged():
                     raise VideoError(
-                        "MATE’s wallpaper changed outside Drape. Live playback has stopped."
+                        "The desktop background changed outside Drape. Live playback has stopped."
                     )
                 next_check = now + 1
             if now >= next_frame:
@@ -145,4 +170,4 @@ def run(surfaces, source):
 
 
 if __name__ == "__main__":
-    run(json.loads(sys.argv[1]), sys.argv[2])
+    run(json.loads(sys.argv[1]), sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "mate")

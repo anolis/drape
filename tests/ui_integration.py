@@ -82,6 +82,44 @@ with tempfile.TemporaryDirectory() as temp:
             pump()
             forget.assert_called_once_with(str(fixture))
     video_page.destroy()
+    # Xfce's desktop restart is explicit: Cancel cannot launch a player;
+    # Enable supplies consent and the restore action unloads the adapter.
+    from drape import wallpaper_desktop
+    with mock.patch.object(wallpaper_desktop, "current", return_value=wallpaper_desktop.XfceX11()), mock.patch.object(videos, "request", return_value={"state": "stopped", "path": ""}) as request:
+        xfce_page = VideoWallpapersPage(win)
+        xfce_page.load()
+        pump()
+        assert xfce_page.restore_desktop.get_visible()
+        assert not xfce_page.restore_desktop.get_sensitive()
+        def respond_xfce(response):
+            for top in Gtk.Window.list_toplevels():
+                if isinstance(top, Gtk.MessageDialog) and top.get_property("text") == "Enable live wallpapers on Xfce?":
+                    explanation = top.get_property("secondary-text")
+                    assert "restart Xfdesktop" in explanation
+                    assert "Restore standard Xfce desktop" in explanation
+                    top.response(response)
+            return False
+        state = {"state": "playing", "path": str(fixture), "xfce_adapter": True}
+        with mock.patch.object(videos, "play", return_value=state) as play:
+            GLib.idle_add(respond_xfce, Gtk.ResponseType.CANCEL)
+            xfce_page._play()
+            pump()
+            play.assert_not_called()
+            GLib.idle_add(respond_xfce, Gtk.ResponseType.OK)
+            xfce_page._play()
+            pump()
+            play.assert_called_once_with(str(fixture), "fit", allow_desktop_restart=True)
+            assert xfce_page.restore_desktop.get_sensitive()
+            play.reset_mock()
+            with mock.patch.object(Gtk.MessageDialog, "run", side_effect=AssertionError("unexpected restart dialog")):
+                xfce_page._play()
+                pump()
+            play.assert_called_once_with(str(fixture), "fit")
+        xfce_page.restore_desktop.clicked()
+        pump()
+        request.assert_called_with("restore_desktop")
+        assert not xfce_page.restore_desktop.get_sensitive()
+        xfce_page.destroy()
     # Source changes share tray/lifecycle controls, without requiring mpv for
     # animations or accidentally enabling microphone capture.
     animation = {"name": "fuzzyflakes", "label": "Fuzzy Flakes", "description": "Falling flakes", "delay": "--delay", "executable": "/fake/fuzzyflakes"}

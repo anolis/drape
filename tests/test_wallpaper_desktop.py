@@ -36,6 +36,18 @@ class DesktopHostTests(unittest.TestCase):
             with mock.patch.dict(os.environ, XDG_SESSION_TYPE="wayland"):
                 self.assertIsNone(wallpaper_desktop.current())
 
+    def test_xfce_uses_its_own_lock_service_and_rejects_xwayland(self):
+        with (
+            mock.patch.object(desktop, "current_desktop", return_value="xfce"),
+            mock.patch.dict(os.environ, DISPLAY=":1", XDG_SESSION_TYPE="x11", WAYLAND_DISPLAY=""),
+        ):
+            host = wallpaper_desktop.current()
+            self.assertIsInstance(host, wallpaper_desktop.XfceX11)
+            self.assertEqual(host.lock_service, "org.xfce.ScreenSaver")
+            self.assertEqual(host.lock_path, "/org/xfce/ScreenSaver")
+            with mock.patch.dict(os.environ, WAYLAND_DISPLAY="wayland-0"):
+                self.assertIsNone(wallpaper_desktop.current())
+
     def test_gnome_wallpaper_is_restacked_below_existing_icon_windows(self):
         surface = mock.Mock()
         wallpaper = surface.window.get_window.return_value

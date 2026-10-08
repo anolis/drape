@@ -4,9 +4,10 @@ import json
 import unittest
 from unittest import mock
 
-from drape import video_mpv, wallpaper_desktop, wallpaper_mate
+from drape import video_mpv, wallpaper_desktop
+from drape import wallpaper_background as wallpaper_mate
 from drape.video_wallpapers import VideoError
-from drape.wallpaper_mate_x11 import Background, BackgroundError
+from drape.wallpaper_x11 import Background, BackgroundError
 
 
 class BackgroundTests(unittest.TestCase):

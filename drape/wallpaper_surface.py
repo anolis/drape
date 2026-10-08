@@ -24,6 +24,7 @@ class Surface:
     ):
         options = options or wallpaper_sources.DEFAULTS
         self.source = source
+        self.monitor = monitor
         self.started = time.monotonic()
         self.ipc = videos.runtime_dir() / f"mpv-{number}.sock"
         self.log = (

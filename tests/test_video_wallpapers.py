@@ -109,7 +109,7 @@ class VideoTests(unittest.TestCase):
                 self.assertTrue(videos.supported())
             with mock.patch.object(desktop, "current_desktop", return_value="mate"):
                 self.assertTrue(videos.supported())
-            with mock.patch.object(desktop, "current_desktop", return_value="xfce"):
+            with mock.patch.object(desktop, "current_desktop", return_value="lxqt"):
                 self.assertFalse(videos.supported())
 
     def test_player_argv_cannot_load_scripts_audio_or_external_references(self):
@@ -249,6 +249,28 @@ class VideoTests(unittest.TestCase):
             [call.args[0] for call in request.call_args_list], ["status", "quit", "status"]
         )
 
+    def test_xfce_replaces_a_worker_without_adapter_support_through_its_socket(self):
+        with (
+            mock.patch.object(
+                wallpaper_desktop, "current", return_value=wallpaper_desktop.XfceX11()
+            ),
+            mock.patch.object(
+                videos,
+                "request",
+                side_effect=[
+                    {"available": True, "state": "stopped", "mate_background": 1},
+                    {"state": "stopped"},
+                    {"available": True, "state": "stopped"},
+                ],
+            ) as request,
+            mock.patch.object(videos.subprocess, "Popen") as launch,
+        ):
+            videos._ensure_worker("video")
+        launch.assert_called_once()
+        self.assertEqual(
+            [call.args[0] for call in request.call_args_list], ["status", "quit", "status"]
+        )
+
     def test_mate_replaces_worker_without_caja_support_through_private_socket(self):
         with (
             mock.patch.object(
@@ -329,10 +351,25 @@ class PlayerTests(unittest.TestCase):
         player.surfaces[0].process.poll.return_value = None
         player.presentation = mock.Mock()
         player.presentation.ready.return_value = False
-        with mock.patch.object(videos.time, "monotonic", return_value=20):
+        with (
+            mock.patch.object(videos.time, "monotonic", return_value=20),
+            mock.patch.object(player, "_stack_below_icons", return_value=True),
+        ):
             player._tick()
         self.assertEqual(player.state, "error")
         self.assertIn("did not start", player.error)
+
+    def test_restore_desktop_stops_surfaces_and_releases_xfce_adapter(self):
+        player = self.player()
+        player.host = wallpaper_desktop.XfceX11()
+        player.host.guardian = mock.Mock()
+        guardian = player.host.guardian
+        surfaces = player.surfaces.copy()
+        player.dispatch({"action": "restore_desktop"})
+        surfaces[0].close.assert_called_once()
+        guardian.close.assert_called_once()
+        self.assertIsNone(player.host.guardian)
+        self.assertEqual(player.state, "stopped")
 
     def test_lock_resume_preserves_manual_pause(self):
         player = self.player()

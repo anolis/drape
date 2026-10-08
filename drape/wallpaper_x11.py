@@ -52,6 +52,11 @@ class X11:
             ),
             "XCreatePixmap": ([pointer, xid, c.c_uint, c.c_uint, c.c_uint], xid),
             "XCreateGC": ([pointer, xid, xid, pointer], pointer),
+            "XSetForeground": ([pointer, pointer, xid], integer),
+            "XFillRectangle": (
+                [pointer, xid, pointer, integer, integer, c.c_uint, c.c_uint],
+                integer,
+            ),
             "XCopyArea": (
                 [
                     pointer,
@@ -73,7 +78,13 @@ class X11:
             "XFreePixmap": ([pointer, xid], integer),
             "XFreeGC": ([pointer, pointer], integer),
             "XCloseDisplay": ([pointer], integer),
+            "XChangeProperty": (
+                [pointer, xid, xid, xid, integer, integer, pointer, integer],
+                integer,
+            ),
+            "XDeleteProperty": ([pointer, xid, xid], integer),
             "XGrabServer": ([pointer], integer),
+            "XLowerWindow": ([pointer, xid], integer),
             "XUngrabServer": ([pointer], integer),
         }
         for name, (args, result) in signatures.items():
@@ -91,7 +102,7 @@ class X11:
         self.composite.XCompositeQueryExtension.restype = integer
         self.display = self.lib.XOpenDisplay(None)
         if not self.display:
-            raise BackgroundError("Cannot access MATE's X11 display.")
+            raise BackgroundError("Cannot access the X11 display.")
         # Xlib's error handler is process-global. This bridge is isolated from
         # GTK so a disappeared drawable cannot terminate the wallpaper player.
         self.errors = []
@@ -101,7 +112,7 @@ class X11:
         self.root = self.lib.XDefaultRootWindow(self.display)
 
     def _error(self, _display, _event):
-        self.errors[:] = ["MATE's desktop or rendering surface changed during playback."]
+        self.errors[:] = ["The desktop or rendering surface changed during playback."]
         return 0
 
     def sync(self):
@@ -139,6 +150,18 @@ class X11:
         finally:
             if data.value:
                 self.lib.XFree(data)
+
+    def set_property(self, name, value, property_type):
+        atom = self.lib.XInternAtom(self.display, name.encode(), 0)
+        data = c.c_ulong(value)
+        self.lib.XChangeProperty(
+            self.display, self.root, atom, property_type, 32, 0, c.byref(data), 1
+        )
+
+    def delete_property(self, name):
+        atom = self.lib.XInternAtom(self.display, name.encode(), 1)
+        if atom:
+            self.lib.XDeleteProperty(self.display, self.root, atom)
 
     def geometry(self, drawable):
         root, xx, yy = c.c_ulong(), c.c_int(), c.c_int()
@@ -200,7 +223,7 @@ class Background:
                 raise BackgroundError("Cannot allocate MATE background buffers.")
             x11.copy(self.pixmap, self.backup, self.gc, self.width, self.height)
             x11.sync()
-            for window, xx, yy in surfaces:
+            for window, xx, yy, *_ in surfaces:
                 width, height, surface_depth = x11.geometry(window)
                 if (
                     surface_depth != depth
@@ -224,6 +247,8 @@ class Background:
             raise
 
     def unchanged(self):
+        if not self.caja:
+            return True
         return (
             self.x.property("_XROOTPMAP_ID", 20) == self.pixmap
             and self.x.property("CAJA_DESKTOP_WINDOW_ID", 33) == self.caja

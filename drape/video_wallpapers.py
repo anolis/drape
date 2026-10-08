@@ -156,6 +156,11 @@ def _ensure_worker(source):
 
     state = request("status")
     host = wallpaper_desktop.current()
+    xfce_upgrade = (
+        isinstance(host, wallpaper_desktop.XfceX11)
+        and state.get("available")
+        and (state.get("xfce_background") != 1 or state.get("desktop_host") != "xfce")
+    )
     mate_upgrade = (
         isinstance(host, wallpaper_desktop.MateX11)
         and state.get("available")
@@ -163,6 +168,7 @@ def _ensure_worker(source):
     )
     if (
         mate_upgrade
+        or xfce_upgrade
         or state.get("stopping")
         or (state.get("available") and source != "video" and source not in state.get("sources", []))
         or (state.get("available") and source == "audio" and state.get("audio_visuals") != 1)
@@ -260,11 +266,11 @@ def selection(path, fit="fill", source="video", **options):
     return path, values
 
 
-def play(path, fit="fill", source="video", **options):
+def play(path, fit="fill", source="video", *, allow_desktop_restart=False, **options):
     from . import wallpaper_sources as sources
 
     if not supported():
-        raise VideoError("Live wallpapers currently require Cinnamon, GNOME or MATE on X11.")
+        raise VideoError("Live wallpapers currently require Cinnamon, GNOME, MATE or Xfce on X11.")
     path, values = selection(path, fit, source, **options)
     if source == "video":
         if not shutil.which("mpv"):
@@ -286,11 +292,24 @@ def play(path, fit="fill", source="video", **options):
             style=path,
             **{key: values[key] for key in ("desktop_audio", "microphone", *sources.COLOR_OPTIONS)},
         )
+    if allow_desktop_restart and supported():
+        from .wallpaper_desktop import XfceX11, current
+
+        if isinstance(current(), XfceX11):
+            from .wallpaper_xfce_adapter import build
+
+            build()  # Compile outside the player's bounded control request.
     sources.remember(**preferences)
     _ensure_worker(source)
-    return request("play", path=path, fit=fit, source=source, options=options)
+    extra = {"allow_desktop_restart": True} if allow_desktop_restart else {}
+    return request("play", path=path, fit=fit, source=source, options=options, **extra)
 
 
 def stop():
     """Removing the video window reveals the untouched static wallpaper."""
     return request("stop")
+
+
+def restore_desktop():
+    """Stop playback and unload the temporary desktop adapter."""
+    return request("restore_desktop")

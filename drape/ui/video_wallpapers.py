@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 from .. import video_wallpapers as videos
+from .. import wallpaper_desktop
 from .. import wallpaper_sources as sources
 from .common import error_dialog, run_async
 from .gtk import GLib, Gtk
@@ -78,6 +79,17 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
             actions.pack_start(button, False, False, 0)
         actions.pack_end(self.quit_button, False, False, 0)
         self.controls.pack_start(actions, False, False, 0)
+        host = wallpaper_desktop.current()
+        self.xfce = isinstance(host, wallpaper_desktop.XfceX11)
+        self.restore_desktop = Gtk.Button(label="Restore standard Xfce desktop")
+        self.restore_desktop.set_sensitive(False)
+        self.restore_desktop.set_no_show_all(True)
+        self.restore_desktop.set_visible(self.xfce)
+        self.restore_desktop.set_tooltip_text(
+            "Stop playback and restart Xfdesktop without Drape’s adapter. Keeps icons, wallpaper settings and panel layout."
+        )
+        self.restore_desktop.connect("clicked", lambda *_: self._run(videos.restore_desktop))
+        self.controls.pack_start(self.restore_desktop, False, False, 0)
         self.status = Gtk.Label(xalign=0, wrap=True)
         self.body.pack_start(self.status, False, False, 0)
         self.body.pack_start(
@@ -85,7 +97,7 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
                 label="Your static wallpaper stays unchanged underneath. Selecting a still wallpaper "
                 "in Drape stops live playback. Videos are remembered by their file location; "
                 "moving or deleting a file makes it unavailable. Playback pauses while the screen is locked. "
-                "Supports Cinnamon, GNOME and MATE on X11. Local video requires mpv; other sources use their own optional packages. "
+                "Supports Cinnamon, GNOME, MATE and Xfce on X11. Local video requires mpv; other sources use their own optional packages. "
                 "Start playback manually after login.",
                 xalign=0,
                 wrap=True,
@@ -163,6 +175,8 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
 
     def update_status(self, state):
         self.state = state
+        restorable = bool(state.get("xfce_adapter"))
+        self.restore_desktop.set_sensitive(restorable)
         active = state["state"] in {"starting", "playing", "paused"}
         self.pause_button.set_sensitive(active and state["state"] != "starting")
         self.pause_button.set_label("Resume" if state["state"] == "paused" else "Pause")
@@ -252,12 +266,39 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
         self._run(work, reload=True)
 
     def _play(self, *_, automatic=False):
+        if self.busy:
+            return
         try:
             path, fit, source, options = self.sources.selection()
         except videos.VideoError as exc:
             error_dialog(self.win, "Could not update live wallpaper", exc)
             return
         if path:
+            extra = {}
+            if self.xfce and not self.state.get("xfce_adapter") and not automatic:
+                dialog = Gtk.MessageDialog(
+                    transient_for=self.win,
+                    modal=True,
+                    message_type=Gtk.MessageType.QUESTION,
+                    buttons=Gtk.ButtonsType.NONE,
+                    text="Enable live wallpapers on Xfce?",
+                )
+                dialog.format_secondary_text(
+                    "Drape will restart Xfdesktop with a temporary background adapter. Your desktop icons "
+                    "briefly reload, then stay visible and clickable over playback. The panel and Thunar windows are separate.\n\n"
+                    "The adapter is loaded only into this Xfdesktop process; menu entries, startup commands "
+                    "and wallpaper settings are unchanged. Videos use software playback at 30 FPS.\n\n"
+                    "Stop restores your static wallpaper. Restore standard Xfce desktop removes the adapter; "
+                    "Quit Drape or loss of its player connection also restores the standard desktop."
+                )
+                dialog.add_buttons(
+                    "Cancel", Gtk.ResponseType.CANCEL, "Enable & play", Gtk.ResponseType.OK
+                )
+                response = dialog.run()
+                dialog.destroy()
+                if response != Gtk.ResponseType.OK:
+                    return
+                extra["allow_desktop_restart"] = True
 
             def work():
                 state = videos.request("status") if automatic else {}
@@ -265,9 +306,9 @@ class VideoWallpapersPage(Gtk.ScrolledWindow):
                 if automatic and state["state"] not in {"starting", "playing", "paused"}:
                     return state
                 result = (
-                    videos.play(path, fit)
+                    videos.play(path, fit, **extra)
                     if source == "video"
-                    else videos.play(path, fit, source=source, **options)
+                    else videos.play(path, fit, source=source, **options, **extra)
                 )
                 if automatic and state.get("manual_paused", state.get("state") == "paused"):
                     result = videos.request("pause", paused=True)

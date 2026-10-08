@@ -101,10 +101,14 @@ class Player:
             "audio_visuals": 1,
             "desktop_host": self.host.desktop_name,
             "mate_background": 1,
+            "xfce_background": 1,
+            "xfce_adapter": bool(
+                getattr(self.host, "guardian", None) and self.host.guardian.process.poll() is None
+            ),
             "message": self.error
             or (
                 (
-                    "Using software playback for MATE’s desktop icon layer."
+                    f"Using software playback for {self.host.label}’s desktop icon layer."
                     if self.host.copy_background
                     else "Using compatibility playback after a graphics-driver failure."
                 )
@@ -137,8 +141,7 @@ class Player:
     def _maintain_stacking(self):
         try:
             if self._stack_below_icons() and self.state in {"playing", "paused"}:
-                for surface in self.surfaces:
-                    surface.window.set_opacity(1)
+                self.host.reveal(self.surfaces)
         except (OSError, videos.VideoError) as exc:
             self._failed(str(exc))
         return True
@@ -204,7 +207,7 @@ class Player:
         if action == "play":
             if not videos.supported():
                 raise videos.VideoError(
-                    "Live wallpapers currently require Cinnamon, GNOME or MATE on X11."
+                    "Live wallpapers currently require Cinnamon, GNOME, MATE or Xfce on X11."
                 )
             source = data.get("source", "video")
             options = data.get("options", {})
@@ -212,6 +215,7 @@ class Player:
                 raise videos.VideoError("Invalid wallpaper playback options.")
             fit = data.get("fit", "fill")
             path, options = videos.selection(data.get("path"), fit, source, **options)
+            self.host.setup(data.get("allow_desktop_restart") is True)
             self.source, self.options = source, options
             if source == "xscreensaver":
                 self.name = wallpaper_xscreensaver.validate(path)["label"]
@@ -237,8 +241,13 @@ class Player:
         elif action == "stop":
             self._clear()
             self.state, self.path, self.error, self.name = "stopped", "", "", ""
+        elif action == "restore_desktop":
+            self._clear()
+            self.host.close()
+            self.state, self.path, self.error, self.name = "stopped", "", "", ""
         elif action == "quit":
             self._clear()
+            self.host.close()
             self.state, self.path, self.error, self.name = "stopped", "", "", ""
             GLib.idle_add(Gtk.main_quit)
         elif action != "status":
@@ -269,6 +278,7 @@ class Player:
 
     def _failed(self, message):
         self._clear()
+        self.host.close()
         self.state, self.error = "error", message
 
     def _retry(self, reason):
@@ -288,6 +298,11 @@ class Player:
         return True
 
     def _tick(self):
+        try:
+            self.host.check()
+        except (OSError, ValueError, videos.VideoError) as exc:
+            self._failed(str(exc))
+            return True
         if self.state not in {"playing", "paused", "starting"}:
             return True
         if self.presentation is not None:
@@ -321,8 +336,7 @@ class Player:
                         self.presentation = self.host.present(self.surfaces, self.source)
                     prepared = self.presentation is None or self.presentation.ready()
                     if prepared:
-                        for surface in self.surfaces:
-                            surface.window.set_opacity(1)
+                        self.host.reveal(self.surfaces)
                         self._set_pause()
             except (OSError, ValueError, videos.VideoError):
                 pass  # sockets and decoded video parameters appear after process startup
@@ -404,7 +418,9 @@ class Handler(socketserver.StreamRequestHandler):
 
 def main():
     if not videos.supported():
-        raise videos.VideoError("Live wallpapers currently require Cinnamon, GNOME or MATE on X11.")
+        raise videos.VideoError(
+            "Live wallpapers currently require Cinnamon, GNOME, MATE or Xfce on X11."
+        )
     directory = videos.runtime_dir()
     # Held for the worker's entire lifetime; a stale socket never owns a player.
     with (directory / "player.lock").open("w") as lock:
@@ -439,6 +455,7 @@ def main():
                     control.shutdown()
         finally:
             player._clear()
+            player.host.close()
             player.bus.signal_unsubscribe(player.subscription)
             socket_path.unlink(missing_ok=True)
 

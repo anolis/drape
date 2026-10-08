@@ -31,10 +31,13 @@ class X11Desktop:
         )
 
     @staticmethod
-    def window(monitor):
+    def window(monitor, *, popup=False):
         from .ui.gtk import Gdk, Gtk
 
-        window = Gtk.Window(title="Drape Live Wallpaper")
+        window = Gtk.Window(
+            title="Drape Live Wallpaper",
+            type=Gtk.WindowType.POPUP if popup else Gtk.WindowType.TOPLEVEL,
+        )
         window.set_wmclass("drape-video-wallpaper", "DrapeVideoWallpaper")
         window.set_type_hint(Gdk.WindowTypeHint.DESKTOP)
         window.set_decorated(False)
@@ -51,6 +54,20 @@ class X11Desktop:
         window.move(rect.x, rect.y)
         window.set_default_size(rect.width, rect.height)
         return window
+
+    def setup(self, allow_restart=False):
+        pass
+
+    def close(self):
+        pass
+
+    def check(self):
+        pass
+
+    @staticmethod
+    def reveal(surfaces):
+        for surface in surfaces:
+            surface.window.set_opacity(1)
 
     @staticmethod
     def present(surfaces, source):
@@ -119,12 +136,83 @@ class MateX11(X11Desktop):
 
     @staticmethod
     def present(surfaces, source):
-        from .wallpaper_mate import Mirror
+        from .wallpaper_background import Mirror
 
         return Mirror(surfaces, source)
 
 
-HOSTS = (CinnamonX11, GnomeX11, MateX11)
+class XfceX11(X11Desktop):
+    desktop_name = "xfce"
+    lock_service = "org.xfce.ScreenSaver"
+    lock_path = "/org/xfce/ScreenSaver"
+    label = "Xfce on X11"
+    copy_background = True
+
+    def __init__(self):
+        self.guardian = None
+
+    @staticmethod
+    def video_profiles():
+        return ("software",)
+
+    @staticmethod
+    def window(monitor):
+        # Xfwm keeps its managed desktop above other desktop-type clients.
+        # These unmapped-to-the-WM render hosts are copied into Xfdesktop;
+        # the adapter, rather than the render host, draws the visible wallpaper.
+        from .ui.gtk import Gdk
+
+        window = X11Desktop.window(monitor, popup=True)
+        rect = monitor.get_geometry()
+        # Render outside the root viewport. Some hacks raise their host;
+        # an offscreen host cannot cover icons even with compositing enabled.
+        window.move(Gdk.get_default_root_window().get_width() + rect.x, rect.y)
+        return window
+
+    @staticmethod
+    def restack(surfaces):
+        for surface in surfaces:
+            surface.window.get_window().lower()
+        return all(surface.window.get_window().is_visible() for surface in surfaces)
+
+    @staticmethod
+    def reveal(surfaces):
+        for surface in surfaces:
+            surface.window.set_opacity(0)
+
+    def setup(self, allow_restart=False):
+        from .video_wallpapers import VideoError
+        from .wallpaper_xfce_adapter import Guardian
+
+        if self.guardian is not None:
+            try:
+                self.guardian.ready()
+                return
+            except VideoError:
+                self.close()
+        if not allow_restart:
+            raise VideoError(
+                "Enable Xfce’s desktop adapter from Live wallpapers before starting playback."
+            )
+        self.guardian = Guardian()
+
+    def check(self):
+        if self.guardian is not None:
+            self.guardian.ready()
+
+    def present(self, surfaces, source):
+        from .wallpaper_background import Mirror
+
+        self.guardian.ready()
+        return Mirror(surfaces, source, "xfce")
+
+    def close(self):
+        if self.guardian is not None:
+            self.guardian.close()
+            self.guardian = None
+
+
+HOSTS = (CinnamonX11, GnomeX11, MateX11, XfceX11)
 
 
 def current():
